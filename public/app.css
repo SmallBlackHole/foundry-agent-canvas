@@ -178,6 +178,12 @@ body {
 .init-panel { padding: 6px 0 12px; flex-direction: column; gap: 12px; display: none; }
 .init[data-open="true"] .init-panel { display: flex; }
 
+/* ---------------- Generic collapsible parts (resources, deploy) ---------------- */
+.fold-chev { color: var(--muted); transition: transform .15s ease; }
+.fold[data-open="true"] .fold-chev { transform: rotate(180deg); }
+.fold-panel { display: none; }
+.fold[data-open="true"] .fold-panel { display: block; }
+
 .init-prompt-label { font-size: 12px; color: var(--muted); }
 .init-prompt {
     width: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);

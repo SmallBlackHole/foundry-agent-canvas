@@ -30,6 +30,8 @@ const state = {
         framework: "Microsoft Agent Framework", // SDK/framework phrase in the prompt
         idea: "", // purpose phrase; empty => "single-purpose"
     },
+    // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
+    folds: { resources: true, deploy: true },
 };
 
 const root = document.getElementById("root");
@@ -175,6 +177,24 @@ function renderBuild() {
     renderDeployList();
     renderToolboxList();
     renderInit();
+    renderFolds();
+}
+
+// Apply a collapsible card's open/closed state to the DOM. Mirrors the
+// "Initialize Agent Code" fold but generic for the resources/deploy cards.
+function applyFold(blockId, open) {
+    const block = document.getElementById(blockId);
+    if (!block) return;
+    block.setAttribute("data-open", String(open));
+    const toggle = block.querySelector(".fold-toggle");
+    if (toggle) toggle.setAttribute("aria-expanded", String(open));
+    const panel = block.querySelector(".fold-panel");
+    if (panel) panel.hidden = !open;
+}
+
+function renderFolds() {
+    applyFold("resourcesBlock", state.folds.resources);
+    applyFold("deployBlock", state.folds.deploy);
 }
 
 // ----------------------------------------------------- Initialize agent code
@@ -1376,6 +1396,16 @@ root.addEventListener("click", (e) => {
     if (e.target.closest("#initToggle")) {
         state.init.open = !state.init.open;
         renderInit();
+        return;
+    }
+    if (e.target.closest("#resourcesToggle")) {
+        state.folds.resources = !state.folds.resources;
+        applyFold("resourcesBlock", state.folds.resources);
+        return;
+    }
+    if (e.target.closest("#deployToggle")) {
+        state.folds.deploy = !state.folds.deploy;
+        applyFold("deployBlock", state.folds.deploy);
         return;
     }
     if (e.target.closest("#initStart")) {
