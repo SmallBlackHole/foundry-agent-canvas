@@ -826,6 +826,30 @@ function createRequestHandler(instanceId) {
             }
         }
 
+        // Probe whether the local agent is up and accepting requests.
+        // Returns { ready: true } when localhost:AGENT_PORT responds to any HTTP request,
+        // { ready: false } on connection refused / timeout. Used by the UI to poll before
+        // loading the inspector iframe.
+        if (method === "GET" && path === "/api/inspect/ready") {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 2000);
+                try {
+                    await fetch(`http://localhost:${AGENT_PORT}/agentdev/version`, {
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timeout);
+                    // Any HTTP response (including 404) means the server is up.
+                    return sendJson(res, 200, { ready: true });
+                } catch {
+                    clearTimeout(timeout);
+                    return sendJson(res, 200, { ready: false });
+                }
+            } catch (err) {
+                return sendJson(res, 200, { ready: false });
+            }
+        }
+
         // Launch (or reuse) the local Agent Inspector and return its URL.
         if (method === "GET" && path === "/api/inspect/start") {
             try {

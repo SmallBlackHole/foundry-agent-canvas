@@ -1871,6 +1871,7 @@ async function launchInspector(btn) {
     const view = document.getElementById("inspectorView");
     const frame = document.getElementById("inspectorFrame");
     const statusEl = document.getElementById("inspectorStatus");
+    const waitingEl = document.getElementById("inspectorWaiting");
     if (!view || !frame) return;
 
     // Ask the chat agent to start the Foundry agent locally so it is running
@@ -1888,9 +1889,38 @@ async function launchInspector(btn) {
     try {
         const data = await getJSON("/api/inspect/start");
         if (data && data.ok && data.url) {
-            frame.src = data.url;
-            statusEl.hidden = true;
+            // Show the inspector view immediately with a waiting overlay — the
+            // iframe src is set below but the agent may not be up yet.
             view.hidden = false;
+            if (waitingEl) waitingEl.hidden = false;
+            frame.src = "";
+
+            // Poll until the agent is reachable, then load the frame.
+            const POLL_INTERVAL_MS = 2000;
+            const POLL_TIMEOUT_MS = 120_000;
+            const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+            const poll = async () => {
+                if (Date.now() > deadline) {
+                    if (waitingEl) waitingEl.hidden = true;
+                    statusEl.textContent = "Agent did not start within 2 minutes. Check the terminal for errors.";
+                    statusEl.hidden = false;
+                    frame.src = data.url; // load anyway so user sees the inspector error
+                    return;
+                }
+                try {
+                    const r = await getJSON("/api/inspect/ready");
+                    if (r && r.ready) {
+                        if (waitingEl) waitingEl.hidden = true;
+                        frame.src = data.url;
+                        return;
+                    }
+                } catch {
+                    /* network error — keep polling */
+                }
+                setTimeout(poll, POLL_INTERVAL_MS);
+            };
+            setTimeout(poll, POLL_INTERVAL_MS);
         } else {
             const msg = (data && data.error) || "Inspector not ready.";
             statusEl.textContent = msg;
@@ -1911,8 +1941,10 @@ async function launchInspector(btn) {
 function closeInspector() {
     const view = document.getElementById("inspectorView");
     const frame = document.getElementById("inspectorFrame");
+    const waitingEl = document.getElementById("inspectorWaiting");
     if (view) view.hidden = true;
     if (frame) frame.src = "";
+    if (waitingEl) waitingEl.hidden = true;
 }
 
 document.addEventListener("click", (e) => {
