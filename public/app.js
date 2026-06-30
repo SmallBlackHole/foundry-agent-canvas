@@ -1425,7 +1425,7 @@ root.addEventListener("click", (e) => {
     if (e.target.closest("#initStart")) {
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
-        if (text) sendToChat(text);
+        if (text) sendToChat(withProjectContext(text));
         return;
     }
     if (e.target.closest("#initReset")) {
