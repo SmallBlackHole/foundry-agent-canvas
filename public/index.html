@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Foundry Agent Canvas</title>
+        <link rel="stylesheet" href="app.css" />
+    </head>
+    <body>
+        <main id="root" class="root"></main>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <!-- Local Agent Inspector overlay (hidden until "Inspect locally") -->
+        <div id="inspectorView" class="inspector-view" hidden>
+            <div class="inspector-bar">
+                <button class="inspector-back" id="inspectorBack" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m15 5-1.4-1.4L7.2 10l6.4 6.4L15 15l-5-5 5-5Z"/></svg>
+                    Back
+                </button>
+                <span class="inspector-title">Agent Inspector</span>
+            </div>
+            <div class="inspector-status" id="inspectorStatus" hidden></div>
+            <iframe id="inspectorFrame" class="inspector-frame" title="Agent Inspector" src=""></iframe>
+        </div>
+
+        <template id="tpl-build">
+            <section class="layout">
+                <!-- Project selector -->
+                <div class="project-bar">
+                    <div class="project-info">
+                        <span class="project-label">Foundry project</span>
+                        <span class="project-name">
+                            <span class="project-dot"></span>
+                            <span id="projectName">Select a project</span>
+                        </span>
+                    </div>
+                    <div class="project-switch">
+                        <button class="btn btn-switch" id="projectSwitch" type="button" aria-haspopup="menu" aria-expanded="false">Switch project</button>
+                        <div class="project-menu" id="projectMenu" role="menu" hidden>
+                            <!-- Account -->
+                            <div class="pm-section pm-account">
+                                <div class="pm-acc-head">
+                                    <div class="pm-id">
+                                        <span class="pm-id-avatar" id="pmAvatar">?</span>
+                                        <div class="pm-id-text">
+                                            <span class="pm-id-name" id="pmAccount">Not signed in</span>
+                                            <span class="pm-id-sub" id="pmTenant"></span>
+                                        </div>
+                                    </div>
+                                    <button class="pm-auth-btn" id="pmAuthBtn" type="button">Sign in</button>
+                                </div>
+                                <div class="pm-device" id="pmDevice" hidden>
+                                    <div class="pm-device-row" id="pmDeviceBody"></div>
+                                </div>
+                            </div>
+
+                            <div class="menu-sep"></div>
+
+                            <!-- Subscription -->
+                            <div class="pm-section">
+                                <button class="pm-acc" id="pmSubAcc" data-acc="sub" type="button" aria-expanded="false">
+                                    <span class="pm-acc-label">Subscription</span>
+                                    <span class="pm-acc-value" id="pmSubValue">—</span>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" class="pm-acc-chev"><path fill="currentColor" d="m7 10 5 5 5-5H7Z"/></svg>
+                                </button>
+                                <div class="pm-body" id="pmSubBody" hidden>
+                                    <input class="pm-search" id="pmSubSearch" type="text" placeholder="Search subscriptions" autocomplete="off" />
+                                    <div class="pm-list" id="pmSubList"></div>
+                                </div>
+                            </div>
+
+                            <div class="menu-sep"></div>
+
+                            <!-- Project -->
+                            <div class="pm-section">
+                                <button class="pm-acc" id="pmProjAcc" data-acc="proj" type="button" aria-expanded="true">
+                                    <span class="pm-acc-label">Project</span>
+                                    <span class="pm-acc-value" id="pmProjValue">—</span>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" class="pm-acc-chev"><path fill="currentColor" d="m7 10 5 5 5-5H7Z"/></svg>
+                                </button>
+                                <div class="pm-body" id="pmProjBody">
+                                    <input class="pm-search" id="pmProjSearch" type="text" placeholder="Search projects" autocomplete="off" />
+                                    <div class="pm-list" id="pmProjList"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PART 1: Initialize Agent Code -->
+                <section class="card part init" id="initBlock" data-open="false" aria-label="Initialize agent code">
+                    <div class="part-head">
+                        <div class="part-text">
+                            <div class="part-title">Initialize Agent Code</div>
+                            <div class="part-sub">Generate a starter agent scaffold to build on</div>
+                        </div>
+                        <button class="add-btn init-toggle" id="initToggle" type="button" aria-expanded="false" aria-controls="initPanel" aria-label="Toggle initialize agent code">
+                            <svg viewBox="0 0 24 24" width="16" height="16" class="init-chev"><path fill="currentColor" d="m7 10 5 5 5-5H7Z"/></svg>
+                        </button>
+                    </div>
+                    <div class="init-panel" id="initPanel" hidden>
+                        <div class="init-sections">
+                            <div class="init-section init-section--inline">
+                                <span class="init-section-label">Get ready</span>
+                                <div class="init-bubbles">
+                                    <button class="init-bubble" id="prepPrereqs" type="button">
+                                        Install latest Foundry Skills
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="init-prompt-wrap">
+                            <span class="init-prompt-label">Prompt to send &mdash; edit before starting</span>
+                            <textarea class="init-prompt" id="initPrompt" rows="6" spellcheck="false"></textarea>
+                        </div>
+                        <div class="init-sections">
+                            <div class="init-section">
+                                <span class="init-section-label">Quick actions</span>
+                                <div class="init-bubbles">
+                                    <button class="init-bubble" id="inspireIdea" type="button">
+                                        Inspire me an idea
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="init-section">
+                                <span class="init-section-label">Help me decide</span>
+                                <div class="init-bubbles">
+                                    <button class="init-bubble" id="decideProtocol" type="button">
+                                        Responses vs Invocations
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="init-actions">
+                            <button class="btn btn-deploy" id="initStart" type="button">
+                                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M8 5v14l11-7L8 5Z"/></svg>
+                                Start
+                            </button>
+                            <button class="init-reset" id="initReset" type="button">Reset</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PART 2: Add project resources -->
+                <section class="card part" aria-label="Add project resources">
+                    <div class="part-head">
+                        <div class="part-text">
+                            <div class="part-title">Add Project Resources</div>
+                            <div class="part-sub">Bring models, tools, skills, knowledge and more from your selected Foundry project into the agent code</div>
+                        </div>
+                    </div>
+
+                    <!-- Model -->
+                    <div class="row">
+                        <div class="row-head">
+                            <div class="row-text">
+                                <div class="row-title">Model</div>
+                                <div class="row-sub">Power your agent&rsquo;s reasoning and responses</div>
+                            </div>
+                            <div class="model-select">
+                                <button class="add-btn" id="modelAdd" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Add model">+</button>
+                                <div class="model-menu" id="modelMenu" role="menu" hidden>
+                                    <div class="menu-section">
+                                        <div class="menu-head">
+                                            <div class="menu-label">Deployed in <span id="menuProject">your project</span></div>
+                                            <button class="menu-refresh" id="deployRefresh" type="button" aria-label="Refresh deployments" title="Refresh">
+                                                <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6Z"/></svg>
+                                            </button>
+                                        </div>
+                                        <div id="deployList"></div>
+                                    </div>
+                                    <div class="menu-sep"></div>
+                                    <div class="menu-section">
+                                        <button class="menu-deploy" data-nav="models" type="button">
+                                            <span class="menu-deploy-plus">+</span>
+                                            <span class="menu-deploy-text">
+                                                <span class="menu-deploy-title">Deploy new model</span>
+                                                <span class="menu-deploy-sub">Browse the model catalog</span>
+                                            </span>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" class="chev-right"><path fill="currentColor" d="M9 6 7.6 7.4 12.2 12l-4.6 4.6L9 18l6-6-6-6Z"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tools (functional) -->
+                    <div class="row">
+                        <div class="row-head">
+                            <div class="row-text">
+                                <div class="row-title">Tools</div>
+                                <div class="row-sub">Connect the agent to external systems and actions</div>
+                            </div>
+                            <div class="tool-select">
+                                <button class="add-btn" id="toolAdd" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Add tool">+</button>
+                                <div class="model-menu tool-menu" id="toolMenu" role="menu" hidden>
+                                    <div class="menu-section">
+                                        <div class="menu-head">
+                                            <div class="menu-label">Toolboxes in <span id="toolboxMenuProject">your project</span></div>
+                                            <button class="menu-refresh" id="toolboxRefresh" type="button" aria-label="Refresh toolboxes" title="Refresh">
+                                                <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6Z"/></svg>
+                                            </button>
+                                        </div>
+                                        <div id="toolboxList"></div>
+                                    </div>
+                                    <div class="menu-sep"></div>
+                                    <div class="menu-section">
+                                        <button class="menu-deploy" data-nav="tools" type="button">
+                                            <span class="menu-deploy-plus">+</span>
+                                            <span class="menu-deploy-text">
+                                                <span class="menu-deploy-title">Add or update toolbox</span>
+                                                <span class="menu-deploy-sub">Browse the tool catalog</span>
+                                            </span>
+                                            <svg viewBox="0 0 24 24" width="16" height="16" class="chev-right"><path fill="currentColor" d="M9 6 7.6 7.4 12.2 12l-4.6 4.6L9 18l6-6-6-6Z"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Skills -->
+                    <div class="row">
+                        <div class="row-head">
+                            <div class="row-text">
+                                <div class="row-title">Skills</div>
+                                <div class="row-sub">Define behaviors through structured instructions</div>
+                            </div>
+                            <button class="add-btn" data-soon="Skills" type="button" aria-label="Add skill">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Knowledge -->
+                    <div class="row">
+                        <div class="row-head">
+                            <div class="row-text">
+                                <div class="row-title">Knowledge</div>
+                                <div class="row-sub">Provide trusted context to guide decisions</div>
+                            </div>
+                            <button class="add-btn" data-soon="Knowledge" type="button" aria-label="Add knowledge">+</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PART 3: Deploy & test -->
+                <section class="card part" aria-label="Deploy and test">
+                    <div class="part-head">
+                        <div class="part-text">
+                            <div class="part-title">Deploy &amp; Test</div>
+                            <div class="part-sub">Publish the agent to Foundry or run it locally</div>
+                        </div>
+                    </div>
+                    <div class="row row-deploy">
+                        <button class="btn btn-deploy" id="deployBtn" type="button">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M13.13 2.34a10.9 10.9 0 0 0-6.99 3.2L4 5.06 2 7.06l3.2 1.2a10.9 10.9 0 0 0-.4 2.1l3.95 3.95a10.9 10.9 0 0 0 2.1-.4l1.2 3.2 2-2-.48-2.14a10.9 10.9 0 0 0 3.2-6.99l.02-.66a4 4 0 0 0-1.27-3.04 4 4 0 0 0-3.04-1.27l-.66.02Zm1.62 4.28a1.5 1.5 0 1 1 2.12 2.12 1.5 1.5 0 0 1-2.12-2.12ZM4.2 16.2c-1.2 1.2-1.2 4.6-1.2 4.6s3.4 0 4.6-1.2a1.96 1.96 0 1 0-3.4-3.4Z"/></svg>
+                            Deploy to Foundry
+                        </button>
+                        <button class="btn btn-inspect" id="inspectBtn" type="button">
+                            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10 2a8 8 0 1 0 4.9 14.32l4.39 4.39 1.42-1.42-4.39-4.39A8 8 0 0 0 10 2Zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/></svg>
+                            Inspect locally
+                        </button>
+                    </div>
+                </section>
+            </section>
+        </template>
+
+        <template id="tpl-catalog">
+            <section class="catalog">
+                <div class="catalog-head">
+                    <button class="back" data-nav="build" type="button">
+                        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m15 5-1.4-1.4L7.2 10l6.4 6.4L15 15l-5-5 5-5Z"/></svg>
+                        Back
+                    </button>
+                    <div>
+                        <h2 class="catalog-title" id="catalogTitle"></h2>
+                        <p class="catalog-sub" id="catalogSub"></p>
+                    </div>
+                </div>
+                <div class="reco" id="recoSection">
+                    <div class="reco-label" id="recoLabel"></div>
+                    <div class="grid" id="recoGrid"></div>
+                </div>
+                <div class="more-label" id="moreLabel"></div>
+                <div class="grid" id="moreGrid"></div>
+            </section>
+        </template>
+
+        <script src="app.js"></script>
+    </body>
+</html>
