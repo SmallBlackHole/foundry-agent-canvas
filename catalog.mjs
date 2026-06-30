@@ -22,7 +22,9 @@ export const selectToolboxPrompt = (name) =>
     `Use the existing "${name}" Foundry Toolbox in my Foundry agent`;
 
 export const DEPLOY_PROMPT = "deploy it as a Foundry hosted agent";
-export const INSPECT_PROMPT = "start the Foundry agent locally so I can inspect it";
+export const INSPECT_PROMPT =
+    "start the Foundry agent locally so I can inspect it. " +
+    "Open the terminal, then re-focus the agent-builder canvas that's already open.";
 
 // ---------------------------------------------------------------------------
 // Initialize agent code
