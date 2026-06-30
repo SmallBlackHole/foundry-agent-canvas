@@ -221,11 +221,17 @@ function summarizeSkillOutput(raw, code) {
         }
         return "Installed latest Foundry Skills";
     }
+    // Strip the decorative box-drawing / bullet glyphs the skills CLI prints,
+    // but never letters or digits. (An earlier version stripped o/O/0 too, which
+    // turned a real "Installation failed" line into "Installati n failed".)
+    const DECOR = /[\u2500-\u25FF\u2022\u00B7|]/g;
     const lines = text
         .split(/\r?\n/)
-        .map((l) => l.replace(/[|+\-o•O0]+/g, " ").trim())
+        .map((l) => l.replace(DECOR, " ").replace(/^[\s*+-]+/, "").replace(/\s+/g, " ").trim())
         .filter(Boolean);
-    const lastErr = lines.reverse().find((l) => /(error|fail|not found|cannot|denied|permission)/i.test(l));
+    const lastErr = lines.reverse().find((l) =>
+        /(error|err!|fail|not found|cannot|could ?n['o]t|unable|denied|permission|refused|timed? out|enoent|econn|resolve)/i.test(l)
+    );
     return lastErr || lines[0] || `npx exited with code ${code}`;
 }
 

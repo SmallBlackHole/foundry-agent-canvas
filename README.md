@@ -30,7 +30,10 @@ affordance sends a ready-to-edit prompt to chat.
 
 1. Add a project using a local folder or repo in the Copilot App.
 2. Add [https://github.com/SmallBlackHole/foundry-agent-canvas](https://github.com/SmallBlackHole/foundry-agent-canvas) under `.github\extensions`.
-3. Prompt the Copilot App to open the Foundry Agent Canvas.
+3. Install dependencies: from `.github\extensions\foundry-agent-canvas`, run `npm install`.
+   (`node_modules` is not committed, so without this the canvas fails to load with
+   `Cannot find module 'ws'`.)
+4. Prompt the Copilot App to open the Foundry Agent Canvas.
 
 ## Configuration
 
