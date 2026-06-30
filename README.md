@@ -28,13 +28,9 @@ affordance sends a ready-to-edit prompt to chat.
 
 ## Install
 
-```bash
-npm install
-```
-
-Copy the folder into your extensions directory (project: `.github/extensions/`,
-or your user extensions dir), then reload extensions. The canvas registers as
-`agent-builder`.
+1. Add a project using a local folder or repo in the Copilot App.
+2. Add [https://github.com/SmallBlackHole/foundry-agent-canvas](https://github.com/SmallBlackHole/foundry-agent-canvas) under `.github\extensions`.
+3. Prompt the Copilot App to open the Foundry Agent Canvas.
 
 ## Configuration
 
