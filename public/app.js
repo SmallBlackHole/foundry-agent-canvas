@@ -59,6 +59,53 @@ async function postJSON(url, body) {
     return res.json();
 }
 
+// Run the non-LLM skills install via the backend and reflect status inline next
+// to the "Install latest Foundry Skills" bubble. No chat turn.
+async function installSkills() {
+    const btn = document.getElementById("prepPrereqs");
+    const status = document.getElementById("skillStatus");
+    if (btn?.dataset.busy === "1") return;
+    if (btn) {
+        btn.dataset.busy = "1";
+        btn.disabled = true;
+    }
+    if (status) {
+        status.className = "init-skill-status is-loading";
+        status.textContent = "Installing…";
+    }
+    try {
+        const res = await fetch("/api/skills/install", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        const ok = !!data.ok;
+        const msg = data.summary || (ok ? "Done" : "Install failed");
+        if (status) {
+            status.className = "init-skill-status " + (ok ? "is-ok" : "is-err");
+            status.textContent = (ok ? "\u2713 " : "\u2717 ") + msg;
+        }
+        toast(ok ? "Foundry Skills ready \u2713" : "Skills install failed");
+    } catch (err) {
+        const isNetwork = err instanceof TypeError || /failed to fetch/i.test(err.message || "");
+        const msg = isNetwork
+            ? "Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again."
+            : "Could not install: " + err.message;
+        if (status) {
+            status.className = "init-skill-status is-err";
+            status.textContent = "\u2717 " + msg;
+        }
+        toast(msg);
+    } finally {
+        if (btn) {
+            btn.dataset.busy = "0";
+            btn.disabled = false;
+        }
+    }
+}
+
 async function sendToChat(prompt) {
     try {
         const res = await fetch("/api/send", {
@@ -135,6 +182,39 @@ function renderBuild() {
 // framework, and deploy clause are driven by state.init so the bubble buttons
 // (and AI-invoked canvas actions) can rewrite them.
 const PROTOCOL_BLOG = "https://ankitbko.github.io/blog/2026/05/hosted-agents-part-1/";
+
+// The "Responses vs Invocations" button points the agent at one local reference
+// file (its absolute path comes from GET /api/protocol-ref) instead of inlining
+// the whole comparison into the chat prompt. The file is bundled with the
+// extension under references/responses-vs-invocations.md.
+async function protocolRefPath() {
+    try {
+        const res = await fetch("/api/protocol-ref", { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        return typeof data.path === "string" ? data.path : "";
+    } catch {
+        return "";
+    }
+}
+
+// Build + send the protocol-comparison prompt, pointing the agent at the bundled
+// reference file rather than embedding its contents.
+async function decideProtocol() {
+    const path = await protocolRefPath();
+    const fileClause = path
+        ? `Read the reference file at:\n${path}\n(use your file-read tool for that one file only — do NOT fetch any URL or use web search).`
+        : `Use the reference distilled from ${PROTOCOL_BLOG} (do NOT fetch the URL or use web search).`;
+    sendToChat(
+        "Briefly compare the Responses and Invocations protocols for Microsoft Foundry hosted " +
+            "agents. " +
+            fileClause +
+            " Then reply with 3-5 short bullets plus a one-line recommendation for a single-purpose " +
+            "Python agent, and immediately call the Foundry Agent Canvas's \"setProtocol\" action " +
+            'once with "Responses" or "Invocations".',
+    );
+}
+
 function initPromptText() {
     const proto = state.init.protocol === "Invocations" ? "Invocations" : "Responses";
     const fw = (state.init.framework || "Microsoft Agent Framework").trim();
@@ -1310,36 +1390,23 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#prepPrereqs")) {
-        sendToChat(
-            "Install the latest Foundry Skills so I'm ready to create Foundry agents. Run " +
-                "`npx skills add https://github.com/microsoft/azure-skills --skill microsoft-foundry`. " +
-                "First check whether the microsoft-foundry skill is already installed and what version it " +
-                "is; if it's missing or an older version than the latest available, install/upgrade it to " +
-                "the latest version. If it's already on the latest version, tell me it's up to date instead " +
-                "of reinstalling.",
-        );
+        installSkills();
         return;
     }
     if (e.target.closest("#inspireIdea")) {
         sendToChat(
             "Suggest one creative but practical single-purpose agent I could build as a Microsoft " +
-                "Foundry hosted agent. Reply with a one-sentence pitch, then call the Foundry Agent " +
-                'Builder canvas\'s "setAgentIdea" action with a short phrase (2-4 words) that fits the ' +
-                'sentence "Create a ___ Python hosted agent" (for example "meeting-notes-summarizing" ' +
-                'or "invoice-parsing").',
+                "Foundry hosted agent. Answer from your own knowledge only — do NOT use web search, " +
+                "web fetch, or any tools except the canvas action. Reply with ONE short sentence " +
+                "(no preamble, no lists, no extra explanation), then immediately call the Foundry " +
+                'Agent Canvas\'s "setAgentIdea" action once with a short 2-4 word phrase that fits ' +
+                '"Create a ___ Python hosted agent" (for example "meeting-notes-summarizing" or ' +
+                '"invoice-parsing").',
         );
         return;
     }
     if (e.target.closest("#decideProtocol")) {
-        sendToChat(
-            "Explain the difference between the Responses protocol and the Invocations protocol " +
-                "for Microsoft Foundry hosted agents, using " +
-                PROTOCOL_BLOG +
-                " as a reference. Keep it short and give a recommendation for a single-purpose " +
-                "Python agent. Then update my starter prompt to match: either tell me which word " +
-                'to edit, or set it directly by calling the Foundry Agent Canvas\'s ' +
-                '"setProtocol" action with "Responses" or "Invocations".',
-        );
+        decideProtocol();
         return;
     }
     if (e.target.closest("#modelAdd")) {

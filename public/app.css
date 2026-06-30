@@ -209,6 +209,21 @@ body {
 }
 .init-bubble:hover { border-color: var(--accent); color: var(--accent); }
 .init-bubble svg { color: var(--accent); }
+.init-bubble:disabled { opacity: .6; cursor: default; border-color: var(--border); color: var(--muted); }
+
+/* Inline status next to the "Install latest Foundry Skills" bubble. */
+.init-skill-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+}
+.init-skill-status:empty { display: none; }
+.init-skill-status.is-loading::before {
+    content: ""; width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: menu-spin .7s linear infinite;
+}
+.init-skill-status.is-ok { color: #1a7f37; }
+.init-skill-status.is-err { color: #cf222e; }
 
 .badge { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
 

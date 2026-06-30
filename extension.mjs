@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { createInspectorServer } from "./inspector-backend/index.mjs";
@@ -141,6 +142,84 @@ async function getOrCreateInspectorProxy() {
 async function ensureInspectorProxy() {
     return getOrCreateInspectorProxy();
 }
+
+// The skills package + skill to (re)install when the user clicks "Install latest
+// Foundry Skills". Deterministic — runs the command directly so there is no chat
+// round-trip.
+const SKILLS_REPO = "https://github.com/microsoft/azure-skills";
+const SKILLS_SKILL = "microsoft-foundry";
+const SKILLS_INSTALL_TIMEOUT_MS = 180_000;
+
+// Run `npx skills add <repo> --skill <skill>` directly and resolve with a small
+// status object. No LLM/chat turn involved. `shell:true` so `npx` resolves to
+// npx.cmd on Windows. We capture output and surface the last meaningful line so
+// the canvas can show "up to date" vs "installed".
+function installFoundrySkill() {
+    return new Promise((resolve) => {
+        const args = ["skills", "add", SKILLS_REPO, "--skill", SKILLS_SKILL];
+        let child;
+        try {
+            child = spawn("npx", args, {
+                cwd: EXT_DIR,
+                shell: true,
+                windowsHide: true,
+                env: process.env,
+            });
+        } catch (err) {
+            resolve({ ok: false, code: -1, summary: `Could not start npx: ${err?.message ?? err}` });
+            return;
+        }
+
+        let out = "";
+        let settled = false;
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(result);
+        };
+
+        const timer = setTimeout(() => {
+            try {
+                child.kill();
+            } catch {
+                /* ignore */
+            }
+            finish({ ok: false, code: -1, summary: "Timed out after 3 min. Try installing from a terminal." });
+        }, SKILLS_INSTALL_TIMEOUT_MS);
+
+        child.stdout?.on("data", (d) => {
+            out += d.toString();
+        });
+        child.stderr?.on("data", (d) => {
+            out += d.toString();
+        });
+        child.on("error", (err) => {
+            finish({ ok: false, code: -1, summary: `npx failed: ${err?.message ?? err}` });
+        });
+        child.on("close", (code) => {
+            finish({ ok: code === 0, code: code ?? -1, summary: summarizeSkillOutput(out, code) });
+        });
+    });
+}
+
+// Distil the npx output into one short status line for the canvas.
+function summarizeSkillOutput(raw, code) {
+    const text = String(raw || "").replace(/\u001b\[[0-9;]*m/g, ""); // strip ANSI
+    if (code === 0) {
+        if (/up[\s-]?to[\s-]?date|already.*(installed|latest|up to date)/i.test(text)) {
+            return "Already up to date";
+        }
+        return "Installed latest Foundry Skills";
+    }
+    const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.replace(/[|+\-o•O0]+/g, " ").trim())
+        .filter(Boolean);
+    const lastErr = lines.reverse().find((l) => /(error|fail|not found|cannot|denied|permission)/i.test(l));
+    return lastErr || lines[0] || `npx exited with code ${code}`;
+}
+
 
 // Default selected Foundry project (data-plane endpoint). Empty by default;
 // overridable per instance via the canvas open() input or resolved at runtime
@@ -582,6 +661,29 @@ function createRequestHandler(instanceId) {
             } catch (err) {
                 await session.log(`Failed to send prompt to chat: ${err?.message ?? err}`, { level: "error" });
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
+            }
+        }
+
+        // Absolute path of the embedded Responses-vs-Invocations reference file,
+        // so the "Responses vs Invocations" prompt can point the agent at one file
+        // instead of inlining the whole text.
+        if (method === "GET" && path === "/api/protocol-ref") {
+            return sendJson(res, 200, {
+                path: join(EXT_DIR, "references", "responses-vs-invocations.md"),
+            });
+        }
+
+        // Install/upgrade the microsoft-foundry skill directly (no chat turn).
+        if (method === "POST" && path === "/api/skills/install") {
+            try {
+                const result = await installFoundrySkill();
+                if (!result.ok) {
+                    await session.log(`Skills install failed: ${result.summary}`, { level: "error" });
+                }
+                return sendJson(res, 200, result);
+            } catch (err) {
+                await session.log(`Skills install error: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, code: -1, summary: String(err?.message ?? err) });
             }
         }
 
