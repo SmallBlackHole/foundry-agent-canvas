@@ -197,6 +197,20 @@ function renderFolds() {
     applyFold("deployBlock", state.folds.deploy);
 }
 
+// Set the initial expand/fold state of the Build sections from whether the
+// workspace is already scaffolded. Not initialized => focus on Initialize
+// Agent Code (expanded, others folded). Initialized => fold Initialize Agent
+// Code and surface Add Project Resources / Deploy & Test (expanded). Applied
+// once on load; manual toggles afterward take over.
+function applyInitDefaults(info) {
+    const initialized = !!(info && info.initialized);
+    state.init.open = !initialized;
+    state.folds.resources = initialized;
+    state.folds.deploy = initialized;
+    renderInit();
+    renderFolds();
+}
+
 // ----------------------------------------------------- Initialize agent code
 // Starter prompt the developer can edit before sending. The purpose, protocol,
 // framework, and deploy clause are driven by state.init so the bubble buttons
@@ -1576,6 +1590,16 @@ async function init() {
         render(s.page || "build");
     } catch {
         render("build");
+    }
+
+    // Seed the Build sections' expand/fold state from whether the workspace is
+    // already scaffolded (azure.yaml / agent.yaml). Non-fatal: on failure we
+    // keep the static defaults.
+    try {
+        const pi = await getJSON("/api/project-init");
+        if (pi && pi.ok) applyInitDefaults(pi);
+    } catch {
+        /* keep static fold defaults */
     }
 
     // Resolve the default selection (az default subscription + first project)

@@ -47,6 +47,15 @@ const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 
+// Repo/workspace root. A project-scoped extension lives at
+// <workspace>/.github/extensions/<name>, so the workspace root is three levels
+// up from EXT_DIR. Fall back to the process cwd if that shape doesn't hold.
+function workspaceRoot() {
+    const up = join(EXT_DIR, "..", "..", "..");
+    if (existsSync(join(up, ".github"))) return up;
+    return process.cwd();
+}
+
 // ─── Selection persistence ─────────────────────────────────────────────────
 // Remembers the user's chosen subscription + project so the picker keeps the
 // selection across canvas reopens, extension reloads, and app restarts.
@@ -670,6 +679,22 @@ function createRequestHandler(instanceId) {
         if (method === "GET" && path === "/api/protocol-ref") {
             return sendJson(res, 200, {
                 path: join(EXT_DIR, "references", "responses-vs-invocations.md"),
+            });
+        }
+
+        // Whether the workspace already has agent scaffolding. Drives the
+        // initial expand/fold state of the Build sections: an un-initialized
+        // project expands "Initialize Agent Code"; an initialized one folds it
+        // and expands "Add Project Resources" / "Deploy & Test".
+        if (method === "GET" && path === "/api/project-init") {
+            const root = workspaceRoot();
+            const hasAzure = existsSync(join(root, "azure.yaml")) || existsSync(join(root, "azure.yml"));
+            const hasAgent = existsSync(join(root, "agent.yaml")) || existsSync(join(root, "agent.yml"));
+            return sendJson(res, 200, {
+                ok: true,
+                hasAzure,
+                hasAgent,
+                initialized: hasAzure || hasAgent,
             });
         }
 
