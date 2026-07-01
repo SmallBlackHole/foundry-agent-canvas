@@ -358,6 +358,24 @@ body {
 .btn-inspect:hover { background: var(--bg-subtle); border-color: var(--accent); }
 .deploy-hint { margin: 0; color: var(--muted); text-align: center; font-size: 12px; }
 
+/* Hosted-agent region warning + gated deploy button */
+.region-warn {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 10px 12px; margin-bottom: 10px;
+    border: 1px solid var(--severe-color-amber, #d4a72c);
+    background: var(--severe-color-amber-subtle, rgba(212, 167, 44, 0.12));
+    border-radius: 10px; color: var(--text);
+    font-size: 12.5px; line-height: 1.45;
+}
+.region-warn[hidden] { display: none; }
+.region-warn-ico { flex: 0 0 auto; color: #bf8700; margin-top: 1px; }
+.region-warn-text { display: flex; flex-direction: column; gap: 2px; }
+.region-warn-text a { color: inherit; text-decoration: underline; }
+.btn-deploy.is-blocked {
+    cursor: not-allowed; opacity: 0.5; filter: grayscale(0.35);
+}
+.btn-deploy.is-blocked:hover { filter: grayscale(0.35); }
+
 /* ---------------- Catalog ---------------- */
 .catalog { max-width: 1100px; margin: 0 auto; padding: 20px; }
 .catalog-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }

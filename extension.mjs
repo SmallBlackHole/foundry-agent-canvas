@@ -31,7 +31,7 @@ import {
     providerColor,
     toolIconFor,
 } from "./catalog.mjs";
-import { listDeployments, listConnections, listToolboxes, listToolboxTools, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject } from "./foundry.mjs";
+import { listDeployments, listConnections, listToolboxes, listToolboxTools, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject, resolveProjectLocation, isHostedAgentRegionSupported, HOSTED_AGENT_REGIONS, HOSTED_AGENT_REGIONS_DOC } from "./foundry.mjs";
 import {
     getIdentity,
     getDefaultSubscriptionId,
@@ -260,6 +260,7 @@ function defaultState() {
         agentName: "",
         project: { ...project },
         projectEndpoint: PROJECT_ENDPOINT,
+        projectLocation: "",
         subscriptionId: "",
         bootstrapped: false,
         model: { name: "", color: "#10a37f" },
@@ -341,6 +342,7 @@ async function bootstrapInstance(entry) {
             if (saved.subscriptionName) identity.subscriptionName = saved.subscriptionName;
             if (saved.projectEndpoint) {
                 entry.state.projectEndpoint = saved.projectEndpoint;
+                entry.state.projectLocation = saved.projectLocation || "";
                 entry.state.project = {
                     ...entry.state.project,
                     name: saved.projectName || getProject(saved.projectEndpoint).projectName || "",
@@ -348,6 +350,7 @@ async function bootstrapInstance(entry) {
                 resolved = true;
             } else {
                 entry.state.projectEndpoint = "";
+                entry.state.projectLocation = "";
                 entry.state.project = { ...entry.state.project, name: "" };
             }
         } else {
@@ -358,6 +361,7 @@ async function bootstrapInstance(entry) {
                 if (proj.ok && proj.data.length) {
                     const first = proj.data[0];
                     entry.state.projectEndpoint = first.endpoint;
+                    entry.state.projectLocation = first.location || "";
                     entry.state.project = { ...entry.state.project, name: first.name };
                     resolved = true;
                 } else {
@@ -367,6 +371,7 @@ async function bootstrapInstance(entry) {
                     // from another subscription (e.g. the hardcoded sample
                     // endpoint). The user can pick a project via "Switch project".
                     entry.state.projectEndpoint = "";
+                    entry.state.projectLocation = "";
                     entry.state.project = { ...entry.state.project, name: "" };
                 }
             }
@@ -648,6 +653,7 @@ function createRequestHandler(instanceId) {
                     return sendJson(res, 400, { ok: false, error: "Missing subscriptionId" });
                 }
                 if (entry) entry.state.subscriptionId = subscriptionId;
+                if (entry) entry.state.projectLocation = "";
                 // Persist the subscription. Switching subscription resets the
                 // project, so clear the persisted project too until one is picked.
                 saveSelection({
@@ -655,6 +661,7 @@ function createRequestHandler(instanceId) {
                     subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
                     projectEndpoint: "",
                     projectName: "",
+                    projectLocation: "",
                 });
                 return sendJson(res, 200, { ok: true });
             } catch (err) {
@@ -670,8 +677,10 @@ function createRequestHandler(instanceId) {
                 const p = getProject(ep);
                 const name = (typeof body.name === "string" && body.name.trim()) || p.projectName || "project";
                 const subscriptionId = typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
+                const location = typeof body.location === "string" ? body.location.trim() : "";
                 if (entry) {
                     entry.state.projectEndpoint = ep;
+                    entry.state.projectLocation = location;
                     entry.state.project = { ...entry.state.project, name };
                     if (subscriptionId) entry.state.subscriptionId = subscriptionId;
                 }
@@ -681,11 +690,35 @@ function createRequestHandler(instanceId) {
                     subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
                     projectEndpoint: p.endpoint,
                     projectName: name,
+                    projectLocation: location,
                 });
                 return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint });
             } catch (err) {
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }
+        }
+
+        // Hosted-agent region availability for the selected project. Drives the
+        // Deploy button + warning banner. `supported` is true / false / null
+        // (null = unknown → the client leaves Deploy enabled, i.e. fail open).
+        if (method === "GET" && path === "/api/region-support") {
+            const docsUrl = HOSTED_AGENT_REGIONS_DOC;
+            const regions = HOSTED_AGENT_REGIONS;
+            const ep = entry ? entry.state.projectEndpoint : "";
+            if (!ep) {
+                return sendJson(res, 200, { ok: true, location: "", supported: null, regions, docsUrl });
+            }
+            let location = (entry && entry.state.projectLocation) || "";
+            if (!location) {
+                try {
+                    location = await resolveProjectLocation(ep, entry ? entry.state.subscriptionId : "");
+                    if (location && entry) entry.state.projectLocation = location;
+                } catch {
+                    location = "";
+                }
+            }
+            const supported = isHostedAgentRegionSupported(location);
+            return sendJson(res, 200, { ok: true, location, supported, regions, docsUrl });
         }
 
         // ── Sign in / out (device-code flow shown in the canvas) ─────────────

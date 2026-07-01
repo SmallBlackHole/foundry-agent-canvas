@@ -994,6 +994,70 @@ export async function listProjects(subscriptionId) {
     }
 }
 
+// ─── Hosted-agent region availability ────────────────────────────────────────
+// Foundry hosted agents are only supported in a subset of Azure regions. There
+// is no clean live ARM capability API for this, so the list below is the
+// authoritative docs list, kept as normalized region codes.
+// Source: https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability
+// Last synced: 2026-07-01. Update when Microsoft adds regions.
+export const HOSTED_AGENT_REGIONS_DOC =
+    "https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability";
+
+export const HOSTED_AGENT_REGIONS = [
+    "eastus2",
+    "northcentralus",
+    "swedencentral",
+    "canadacentral",
+    "canadaeast",
+    "southeastasia",
+    "polandcentral",
+    "southafricanorth",
+    "koreacentral",
+    "southindia",
+    "brazilsouth",
+    "westus",
+    "westus3",
+    "norwayeast",
+    "japaneast",
+    "francecentral",
+    "germanywestcentral",
+    "switzerlandnorth",
+    "spaincentral",
+    "australiaeast",
+];
+
+const _hostedRegionSet = new Set(HOSTED_AGENT_REGIONS);
+
+// Normalize an ARM/ARG location to the canonical lowercase, space-free code
+// (e.g. "East US 2" and "eastus2" both → "eastus2").
+export function normalizeRegion(loc) {
+    return String(loc || "").toLowerCase().replace(/[\s_]+/g, "");
+}
+
+// true (supported) / false (unsupported) / null (unknown — no region given).
+export function isHostedAgentRegionSupported(loc) {
+    const code = normalizeRegion(loc);
+    if (!code) return null;
+    return _hostedRegionSet.has(code);
+}
+
+// Resolve a project's Azure region (location) from its data-plane endpoint by
+// matching against the subscription's projects (ARG). Cached like project ARM
+// ids. Returns "" when it can't be resolved.
+const _projLoc = new Map(); // endpoint -> location code
+export async function resolveProjectLocation(endpoint, subscriptionId) {
+    const ep = normalizeEndpoint(endpoint);
+    if (!ep) return "";
+    if (_projLoc.has(ep)) return _projLoc.get(ep);
+    if (!subscriptionId) return "";
+    const r = await listProjects(subscriptionId);
+    if (!r.ok) return "";
+    const match = (r.data || []).find((p) => normalizeEndpoint(p.endpoint) === ep);
+    const loc = normalizeRegion(match?.location || "");
+    if (loc) _projLoc.set(ep, loc);
+    return loc;
+}
+
 // ─── Sign in / out (in-process interactive browser; no Azure CLI required) ────
 // Uses @azure/identity InteractiveBrowserCredential: opens the system browser
 // with a localhost redirect so the extension never shells out to `az login` and

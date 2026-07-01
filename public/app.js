@@ -32,6 +32,9 @@ const state = {
     },
     // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
     folds: { resources: true, deploy: true },
+    // Hosted-agent region availability for the selected project.
+    // supported: true | false | null (null = unknown → don't block, fail open).
+    hostedRegion: { status: "idle", location: "", supported: null, regions: [], docsUrl: "" },
 };
 
 const root = document.getElementById("root");
@@ -178,6 +181,7 @@ function renderBuild() {
     renderToolboxList();
     renderInit();
     renderFolds();
+    renderRegionSupport();
 }
 
 // Apply a collapsible card's open/closed state to the DOM. Mirrors the
@@ -195,6 +199,76 @@ function applyFold(blockId, open) {
 function renderFolds() {
     applyFold("resourcesBlock", state.folds.resources);
     applyFold("deployBlock", state.folds.deploy);
+}
+
+// Prettify an ARM region code for display, e.g. "eastus2" → "East US 2".
+function prettyRegion(code) {
+    const c = String(code || "");
+    if (!c) return "";
+    const map = {
+        eastus2: "East US 2", northcentralus: "North Central US", swedencentral: "Sweden Central",
+        canadacentral: "Canada Central", canadaeast: "Canada East", southeastasia: "Southeast Asia",
+        polandcentral: "Poland Central", southafricanorth: "South Africa North", koreacentral: "Korea Central",
+        southindia: "South India", brazilsouth: "Brazil South", westus: "West US", westus3: "West US 3",
+        norwayeast: "Norway East", japaneast: "Japan East", francecentral: "France Central",
+        germanywestcentral: "Germany West Central", switzerlandnorth: "Switzerland North",
+        spaincentral: "Spain Central", australiaeast: "Australia East",
+    };
+    return map[c.toLowerCase()] || c;
+}
+
+// Reflect the current hosted-region check onto the Deploy button + warning
+// banner. Safe to call even when the deploy DOM isn't mounted (other pages).
+function renderRegionSupport() {
+    const warn = document.getElementById("regionWarn");
+    const btn = document.getElementById("deployBtn");
+    const hr = state.hostedRegion;
+    const blocked = hr.supported === false;
+    if (btn) {
+        btn.classList.toggle("is-blocked", blocked);
+        btn.setAttribute("aria-disabled", String(blocked));
+        btn.title = blocked
+            ? "Hosted agents aren't supported in this project's region"
+            : "";
+    }
+    if (warn) {
+        warn.hidden = !blocked;
+        if (blocked) {
+            const head = document.getElementById("regionWarnHead");
+            if (head) {
+                const loc = prettyRegion(hr.location);
+                head.textContent = loc
+                    ? `Hosted agents aren't available in this project's region (${loc}).`
+                    : "Hosted agents aren't available in this project's region.";
+            }
+            const link = document.getElementById("regionWarnLink");
+            if (link && hr.docsUrl) link.href = hr.docsUrl;
+        }
+    }
+}
+
+// Fetch hosted-agent region support for the selected project and update the UI.
+async function loadRegionSupport() {
+    state.hostedRegion.status = "loading";
+    try {
+        const r = await getJSON("/api/region-support");
+        if (r && r.ok) {
+            state.hostedRegion = {
+                status: "ready",
+                location: r.location || "",
+                supported: typeof r.supported === "boolean" ? r.supported : null,
+                regions: Array.isArray(r.regions) ? r.regions : [],
+                docsUrl: r.docsUrl || "",
+            };
+        } else {
+            state.hostedRegion.status = "error";
+            state.hostedRegion.supported = null; // fail open
+        }
+    } catch {
+        state.hostedRegion.status = "error";
+        state.hostedRegion.supported = null; // fail open
+    }
+    renderRegionSupport();
 }
 
 // Set the initial expand/fold state of the Build sections from whether the
@@ -1097,6 +1171,7 @@ async function selectProject(p) {
         await postJSON("/api/select-project", {
             endpoint: p.endpoint,
             name: p.name,
+            location: p.location || "",
             subscriptionId: state.identity.subscriptionId,
             subscriptionName: state.identity.subscriptionName,
         });
@@ -1108,6 +1183,8 @@ async function selectProject(p) {
     closeProjectMenu();
     resetSelectors();
     toast("Project: " + p.name);
+    // Re-evaluate hosted-agent region support for the newly selected project.
+    loadRegionSupport();
 }
 
 // Generic search-list row.
@@ -1772,6 +1849,15 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#deployBtn")) {
+        if (state.hostedRegion.supported === false) {
+            const loc = prettyRegion(state.hostedRegion.location);
+            toast(
+                loc
+                    ? `Hosted agents aren't supported in ${loc} — pick a project in a supported region`
+                    : "Hosted agents aren't supported in this project's region",
+            );
+            return;
+        }
         sendToChat(withProjectContext(state.deployPrompt));
         return;
     }
@@ -1909,6 +1995,14 @@ async function init() {
         } catch {
             /* keep default project label */
         }
+    }
+
+    // Evaluate hosted-agent region support for the resolved project so the
+    // Deploy button/warning are correct on first paint. Non-fatal.
+    try {
+        await loadRegionSupport();
+    } catch {
+        /* fail open — leave Deploy enabled */
     }
 
     // Optional: let an agent-invoked navigate() action reflect in the open iframe.
