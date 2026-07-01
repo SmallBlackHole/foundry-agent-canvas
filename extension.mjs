@@ -31,7 +31,7 @@ import {
     providerColor,
     toolIconFor,
 } from "./catalog.mjs";
-import { listDeployments, listConnections, listToolboxes, listToolboxTools, getProject } from "./foundry.mjs";
+import { listDeployments, listConnections, listToolboxes, listToolboxTools, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject } from "./foundry.mjs";
 import {
     getIdentity,
     getDefaultSubscriptionId,
@@ -532,6 +532,81 @@ function createRequestHandler(instanceId) {
             const r = await listToolboxTools(ep, name, version);
             if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
             return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        // Add a catalog tool into an EXISTING toolbox directly via the data-plane
+        // API (no chat turn). Returns a structured result; the frontend falls back
+        // to the prompt path on { ok:false, reason:'needs_connection' }.
+        if (method === "POST" && path === "/api/toolbox/add-tool") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            try {
+                const { toolbox, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
+                if (!toolbox || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                const r = await addToolToToolbox(ep, toolbox, toolId, toolName || "");
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`add-tool failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        // Create a NEW toolbox containing just the catalog tool, via the API.
+        if (method === "POST" && path === "/api/toolbox/create-with-tool") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            try {
+                const { name, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
+                if (!name || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                const r = await createToolboxWithTool(ep, name, toolId, toolName || "");
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`create-with-tool failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        // ── Work IQ sub-tool picker ─────────────────────────────────────────
+        // List the Work IQ MCP variants (Teams, Mail, Word, ...) the developer
+        // can add. Live catalog with a hardcoded fallback.
+        if (method === "GET" && path === "/api/workiq/variants") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            const r = await listWorkIQVariants(ep);
+            return sendJson(res, 200, r);
+        }
+
+        // Add selected Work IQ sub-tools into an EXISTING toolbox, CREATING the
+        // required (secret-free, OBO) connections along the way. Falls back to
+        // the chat prompt via { ok:false, reason:'needs_connection' }.
+        if (method === "POST" && path === "/api/workiq/add-tools") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            const sub = entry ? entry.state.subscriptionId : "";
+            try {
+                const { toolbox, variantIds } = JSON.parse((await readBody(req)) || "{}");
+                if (!toolbox || !Array.isArray(variantIds) || !variantIds.length) {
+                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                }
+                const r = await addWorkIQToolsToToolbox(ep, sub, toolbox, variantIds);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`workiq add-tools failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        // Create a NEW toolbox containing the selected Work IQ sub-tools.
+        if (method === "POST" && path === "/api/workiq/create-with-tools") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            const sub = entry ? entry.state.subscriptionId : "";
+            try {
+                const { name, variantIds } = JSON.parse((await readBody(req)) || "{}");
+                if (!name || !Array.isArray(variantIds) || !variantIds.length) {
+                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                }
+                const r = await createToolboxWithWorkIQTools(ep, sub, name, variantIds);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`workiq create-with-tools failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
         }
 
         // ── Project picker: identity / subscriptions / projects ──────────────

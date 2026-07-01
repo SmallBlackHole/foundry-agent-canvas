@@ -412,6 +412,40 @@ body {
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---------------- Work IQ sub-tool picker dialog ---------------- */
+.wiq-overlay {
+    position: fixed; inset: 0; z-index: 70;
+    display: grid; place-items: center;
+    background: rgba(0, 0, 0, .38); padding: 16px;
+}
+.wiq-dialog {
+    width: min(360px, 100%); max-height: 80vh; display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .28); padding: 16px;
+}
+.wiq-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.wiq-sub { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
+.wiq-list { overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.wiq-row {
+    display: flex; align-items: center; gap: 10px; padding: 7px 8px;
+    border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text);
+}
+.wiq-row:hover { background: var(--bg-subtle); }
+.wiq-row input { accent-color: var(--accent); width: 15px; height: 15px; flex: 0 0 auto; margin: 0; }
+.wiq-row-name { flex: 1; font-weight: 500; }
+.wiq-loading, .wiq-empty {
+    display: flex; align-items: center; gap: 8px; padding: 12px 8px; color: var(--muted); font-size: 13px;
+}
+.wiq-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.wiq-btn {
+    font: inherit; font-weight: 600; font-size: 13px; padding: 7px 16px;
+    border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+}
+.wiq-btn-ghost { background: var(--bg); color: var(--text); }
+.wiq-btn-ghost:hover { background: var(--bg-subtle); }
+.wiq-btn-primary { background: var(--accent); color: var(--color-white, #fff); border-color: var(--accent); }
+.wiq-btn-primary:disabled { opacity: .5; cursor: default; }
+
 /* ---------------- Local Agent Inspector overlay ---------------- */
 .inspector-view {
     position: fixed; inset: 0; z-index: 60;

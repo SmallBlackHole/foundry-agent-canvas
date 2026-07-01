@@ -1219,11 +1219,18 @@ function makeCard(item, kind, featured) {
     add.textContent = kind === "tools" ? "Add tool" : "Add model";
     if (kind === "tools") {
         // Tools are added into a Foundry Toolbox. Let the developer pick which
-        // toolbox to add into (or create a new one). The add itself is done by
-        // sending a prompt to chat — no mutating API call here.
+        // toolbox to add into (or create a new one). The add itself is performed
+        // directly against the Foundry data-plane API (see openToolboxPicker),
+        // falling back to a chat prompt only when a connection is required.
         add.setAttribute("aria-haspopup", "menu");
         add.addEventListener("click", (e) => {
             e.stopPropagation();
+            // Work IQ is a family of Microsoft 365 MCP sub-tools — let the
+            // developer pick which ones before choosing a toolbox.
+            if (item.id === "workiq") {
+                openWorkIQDialog(add, item);
+                return;
+            }
             openToolboxPicker(add, item);
         });
     } else {
@@ -1251,6 +1258,89 @@ function addToolToNewToolboxPrompt(toolName) {
     );
 }
 
+// Auto-generate a toolbox name for a catalog tool, e.g. "toolbox-web-search-0627".
+function newToolboxName(toolItem) {
+    const slug =
+        (toolItem.id || toolItem.name || "tool")
+            .toString()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 24) || "tool";
+    const d = new Date();
+    const mmdd = String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+    return `toolbox-${slug}-${mmdd}`;
+}
+
+// True for fetch failures caused by this panel's backing server being gone.
+function isDeadServer(err) {
+    return err instanceof TypeError || /failed to fetch/i.test(err?.message || "");
+}
+
+// Add a catalog tool into an EXISTING toolbox via the data-plane API. Connection-
+// backed tools we can't wire automatically (reason 'needs_connection') and any
+// hard error fall back to the chat prompt so the developer is never blocked.
+async function apiAddToolToToolbox(toolItem, toolboxName) {
+    toast(`Adding ${toolItem.name} to ${toolboxName}\u2026`);
+    try {
+        const r = await postJSON("/api/toolbox/add-tool", {
+            toolbox: toolboxName,
+            toolId: toolItem.id,
+            toolName: toolItem.name,
+        });
+        if (r.ok) {
+            toast(
+                r.already
+                    ? `${toolItem.name} is already in ${toolboxName}`
+                    : `Added ${toolItem.name} to ${toolboxName}${r.version ? ` \u00b7 v${r.version}` : ""} \u2713`,
+            );
+            await loadToolboxes(true);
+            return;
+        }
+        if (r.reason === "needs_connection") {
+            sendToChat(withProjectContext(addToolToToolboxPrompt(toolItem.name, toolboxName)));
+            return;
+        }
+        throw new Error(r.detail || r.reason || "add failed");
+    } catch (err) {
+        if (isDeadServer(err)) {
+            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
+            return;
+        }
+        sendToChat(withProjectContext(addToolToToolboxPrompt(toolItem.name, toolboxName)));
+    }
+}
+
+// Create a NEW toolbox (auto-named) containing just the catalog tool, via the
+// API. Same connection/error fallback to the chat prompt.
+async function apiCreateToolboxWithTool(toolItem) {
+    const name = newToolboxName(toolItem);
+    toast(`Creating ${name}\u2026`);
+    try {
+        const r = await postJSON("/api/toolbox/create-with-tool", {
+            name,
+            toolId: toolItem.id,
+            toolName: toolItem.name,
+        });
+        if (r.ok) {
+            toast(`Created ${name} with ${toolItem.name}${r.version ? ` \u00b7 v${r.version}` : ""} \u2713`);
+            await loadToolboxes(true);
+            return;
+        }
+        if (r.reason === "needs_connection") {
+            sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
+            return;
+        }
+        throw new Error(r.detail || r.reason || "create failed");
+    } catch (err) {
+        if (isDeadServer(err)) {
+            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
+            return;
+        }
+        sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
+    }
+}
+
 // Remove any open catalog toolbox picker popover.
 function closeToolboxPicker() {
     const open = document.querySelector(".toolbox-picker");
@@ -1259,10 +1349,12 @@ function closeToolboxPicker() {
 }
 
 // "Add tool" → pick a target Foundry Toolbox. Reads the existing toolbox list
-// (read-only) and sends a chat prompt for the actual add. If the project has no
-// toolbox yet, skip the picker and prompt to create a new toolbox directly.
-async function openToolboxPicker(anchorBtn, toolItem) {
+// (read-only) and performs the add directly via the data-plane API. If the
+// project has no toolbox yet, skip the picker and create a new one for this tool.
+async function openToolboxPicker(anchorBtn, toolItem, handlers) {
     closeToolboxPicker();
+    const onExisting = handlers?.onExisting || apiAddToolToToolbox;
+    const onNew = handlers?.onNew || apiCreateToolboxWithTool;
 
     // Load toolboxes if we don't already have them.
     if (state.toolboxesState.status !== "ready") {
@@ -1276,9 +1368,9 @@ async function openToolboxPicker(anchorBtn, toolItem) {
 
     const toolboxes = state.toolboxesState.items || [];
 
-    // No toolbox available → just add a new toolbox for this tool.
+    // No toolbox available → create a new toolbox for this tool.
     if (toolboxes.length === 0) {
-        sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
+        onNew(toolItem);
         return;
     }
 
@@ -1315,7 +1407,7 @@ async function openToolboxPicker(anchorBtn, toolItem) {
         row.addEventListener("click", (e) => {
             e.stopPropagation();
             closeToolboxPicker();
-            sendToChat(withProjectContext(addToolToToolboxPrompt(toolItem.name, tb.name)));
+            onExisting(toolItem, tb.name);
         });
         list.appendChild(row);
     }
@@ -1341,7 +1433,7 @@ async function openToolboxPicker(anchorBtn, toolItem) {
     newRow.addEventListener("click", (e) => {
         e.stopPropagation();
         closeToolboxPicker();
-        sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
+        onNew(toolItem);
     });
     menu.appendChild(newRow);
 
@@ -1352,6 +1444,186 @@ async function openToolboxPicker(anchorBtn, toolItem) {
 
     // Close on the next outside click.
     setTimeout(() => document.addEventListener("click", closeToolboxPicker), 0);
+}
+
+// ── Work IQ sub-tool picker ─────────────────────────────────────────────────
+// Clicking Work IQ opens this dialog so the developer can pick which Microsoft
+// 365 MCP sub-tools to add. Selected variants are then added to a toolbox (the
+// backend creates the secret-free OBO connection for each automatically).
+function closeWorkIQDialog() {
+    const open = document.querySelector(".wiq-overlay");
+    if (open) open.remove();
+}
+
+async function openWorkIQDialog(anchorBtn, toolItem) {
+    closeWorkIQDialog();
+
+    const overlay = document.createElement("div");
+    overlay.className = "wiq-overlay";
+    const panel = document.createElement("div");
+    panel.className = "wiq-dialog";
+    overlay.appendChild(panel);
+
+    const title = document.createElement("div");
+    title.className = "wiq-title";
+    title.textContent = "Add Work IQ tools";
+    const sub = document.createElement("div");
+    sub.className = "wiq-sub";
+    sub.textContent = "Pick the Microsoft 365 tools to add. A connection is created for each automatically.";
+    panel.append(title, sub);
+
+    const listWrap = document.createElement("div");
+    listWrap.className = "wiq-list";
+    listWrap.innerHTML = '<div class="wiq-loading"><span class="menu-spinner"></span> Loading Work IQ tools\u2026</div>';
+    panel.appendChild(listWrap);
+
+    const footer = document.createElement("div");
+    footer.className = "wiq-footer";
+    const cancel = document.createElement("button");
+    cancel.className = "wiq-btn wiq-btn-ghost";
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", closeWorkIQDialog);
+    const addBtn = document.createElement("button");
+    addBtn.className = "wiq-btn wiq-btn-primary";
+    addBtn.type = "button";
+    addBtn.textContent = "Add";
+    addBtn.disabled = true;
+    footer.append(cancel, addBtn);
+    panel.appendChild(footer);
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeWorkIQDialog();
+    });
+
+    let variants = [];
+    try {
+        const r = await getJSON("/api/workiq/variants");
+        variants = (r && r.data) || [];
+    } catch {
+        variants = [];
+    }
+    // Dialog may have been dismissed while loading.
+    if (!document.body.contains(overlay)) return;
+
+    if (!variants.length) {
+        listWrap.innerHTML = '<div class="wiq-empty">Couldn\u2019t load Work IQ tools. Close and try again.</div>';
+        return;
+    }
+
+    listWrap.innerHTML = "";
+    const checks = new Map();
+    const refreshAdd = () => {
+        addBtn.disabled = ![...checks.values()].some((c) => c.cb.checked);
+    };
+    for (const v of variants) {
+        const row = document.createElement("label");
+        row.className = "wiq-row";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = v.entityId;
+        const nm = document.createElement("span");
+        nm.className = "wiq-row-name";
+        nm.textContent = v.title;
+        row.append(cb, nm);
+        listWrap.appendChild(row);
+        checks.set(v.entityId, { cb, title: v.title });
+        cb.addEventListener("change", refreshAdd);
+    }
+
+    addBtn.addEventListener("click", () => {
+        const selected = [...checks.entries()].filter(([, c]) => c.cb.checked);
+        if (!selected.length) return;
+        const variantIds = selected.map(([id]) => id);
+        const titles = selected.map(([, c]) => c.title);
+        closeWorkIQDialog();
+        // Now choose a target toolbox (existing or new), then add + create
+        // connections via the Work IQ API routes.
+        openToolboxPicker(anchorBtn, toolItem, {
+            onExisting: (ti, name) => apiAddWorkIQToolsToToolbox(ti, name, variantIds, titles),
+            onNew: (ti) => apiCreateToolboxWithWorkIQTools(ti, variantIds, titles),
+        });
+    });
+}
+
+// Prompt fallback when the API can't create the connection (e.g. project ARM id
+// couldn't be resolved) — hand the work to the chat agent instead.
+function workIqPrompt(titles, toolboxName) {
+    const list = titles.join(", ");
+    if (toolboxName) {
+        return (
+            `Add these Work IQ tools to my "${toolboxName}" Foundry Toolbox: ${list}. ` +
+            "Create the required Work IQ connections in Foundry, then make sure my Foundry agent uses that toolbox."
+        );
+    }
+    return (
+        `Create a new Foundry Toolbox with these Work IQ tools: ${list}. ` +
+        "Create the required Work IQ connections in Foundry, then make sure my Foundry agent uses that toolbox."
+    );
+}
+
+function summarizeWorkIQResults(results, toolboxName, version) {
+    const rs = results || [];
+    const added = rs.filter((r) => r.ok && !r.already).length;
+    const already = rs.filter((r) => r.ok && r.already).length;
+    const created = rs.filter((r) => r.created).length;
+    const bits = [];
+    if (added) bits.push(`Added ${added} Work IQ tool${added > 1 ? "s" : ""}`);
+    if (already) bits.push(`${already} already present`);
+    let msg = bits.join(" \u00b7 ") || "No changes";
+    if (toolboxName) msg += ` \u2192 ${toolboxName}`;
+    if (version) msg += ` \u00b7 v${version}`;
+    if (created) msg += ` (${created} connection${created > 1 ? "s" : ""} created)`;
+    return `${msg} \u2713`;
+}
+
+async function apiAddWorkIQToolsToToolbox(toolItem, toolboxName, variantIds, titles) {
+    const n = variantIds.length;
+    toast(`Adding ${n} Work IQ tool${n > 1 ? "s" : ""} to ${toolboxName}\u2026`);
+    try {
+        const r = await postJSON("/api/workiq/add-tools", { toolbox: toolboxName, variantIds });
+        if (r.ok) {
+            toast(summarizeWorkIQResults(r.results, toolboxName, r.version));
+            await loadToolboxes(true);
+            return;
+        }
+        if (r.reason === "needs_connection" || r.reason === "no_project") {
+            sendToChat(withProjectContext(workIqPrompt(titles, toolboxName)));
+            return;
+        }
+        throw new Error(r.detail || r.reason || "add failed");
+    } catch (err) {
+        if (isDeadServer(err)) {
+            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
+            return;
+        }
+        sendToChat(withProjectContext(workIqPrompt(titles, toolboxName)));
+    }
+}
+
+async function apiCreateToolboxWithWorkIQTools(toolItem, variantIds, titles) {
+    const name = newToolboxName(toolItem);
+    toast(`Creating ${name}\u2026`);
+    try {
+        const r = await postJSON("/api/workiq/create-with-tools", { name, variantIds });
+        if (r.ok) {
+            toast(summarizeWorkIQResults(r.results, name, r.version));
+            await loadToolboxes(true);
+            return;
+        }
+        if (r.reason === "needs_connection" || r.reason === "no_project") {
+            sendToChat(withProjectContext(workIqPrompt(titles, "")));
+            return;
+        }
+        throw new Error(r.detail || r.reason || "create failed");
+    } catch (err) {
+        if (isDeadServer(err)) {
+            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
+            return;
+        }
+        sendToChat(withProjectContext(workIqPrompt(titles, "")));
+    }
 }
 
 async function renderCatalog(kind) {
