@@ -6,6 +6,7 @@
     "description": "Foundry Agent Canvas — a canvas extension for building Microsoft Foundry agents, with live project model deployments, tool connections, and toolboxes.",
     "scripts": {
         "build": "node scripts/build.mjs",
+        "preview": "node scripts/preview.mjs",
         "package": "node scripts/package.mjs"
     },
     "dependencies": {
