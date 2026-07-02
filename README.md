@@ -28,8 +28,22 @@ affordance sends a ready-to-edit prompt to chat.
 
 ## Install
 
+The bundled extension is published as a zip on the
+[`nightly` release](https://github.com/SmallBlackHole/foundry-agent-canvas/releases/tag/nightly),
+rebuilt automatically from `main` on every push (see
+[`.github/workflows/release.yml`](.github/workflows/release.yml)). It's a
+prerelease and gets overwritten on each build.
+
 1. Add a project using a local folder or repo in the Copilot App.
-2. Add [https://github.com/SmallBlackHole/foundry-agent-canvas](https://github.com/SmallBlackHole/foundry-agent-canvas) under `.github\extensions`.
+2. Install the extension — prompt Copilot:
+
+   > Install https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip
+   > into .github/extensions/foundry-agent-canvas/
+
+   Or manually: download the zip from
+   [this direct link](https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip)
+   and unzip it into `.github/extensions/foundry-agent-canvas/` in your
+   project root.
 3. Prompt the Copilot App to open the Foundry Agent Canvas.
 
 ## Configuration
