@@ -5,10 +5,7 @@
 import { createServer, request as httpRequest } from "node:http";
 import { readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-const { WebSocketServer, WebSocket } = require("ws");
+import { WebSocketServer, WebSocket } from "ws";
 
 // ─── Static file serving ──────────────────────────────────────────────────────
 

@@ -1,0 +1,44 @@
+name: Release nightly build
+
+# Bundles the extension with esbuild and publishes it as a zip asset on a
+# rolling "nightly" prerelease every time main changes, so users can grab a
+# ready-to-run build without installing dependencies themselves.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package extension
+        run: npm run package
+
+      - name: Publish nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly dist/foundry-agent-canvas.zip \
+            --title "Nightly build ($SHORT_SHA)" \
+            --notes "Automated build from \`main\` @ ${{ github.sha }}. Download \`foundry-agent-canvas.zip\` and unzip it into \`.github/extensions/foundry-agent-canvas/\` in your project root." \
+            --prerelease \
+            --target "${{ github.sha }}"

@@ -7,3 +7,7 @@ node_modules/
 
 # Local env / secrets
 .env
+
+# Build output — produced by `npm run package` in CI, published to GitHub
+# Releases, never committed.
+dist/
