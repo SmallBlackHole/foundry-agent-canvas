@@ -886,7 +886,7 @@ const session = await joinSession({
             id: "agent-builder",
             displayName: "Foundry Agent Canvas",
             description:
-                "Build a Microsoft Foundry agent: add models, tools, skills, knowledge, connected agents and memory, then deploy as a Foundry hosted agent.",
+                "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, knowledge, then deploy it as a Foundry hosted agent.",
             inputSchema: {
                 type: "object",
                 properties: {
