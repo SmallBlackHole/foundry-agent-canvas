@@ -102,12 +102,6 @@ function mockProjectState(url) {
     return { name: selectedProject.name, endpoint: selectedProject.endpoint };
 }
 
-function mockSkillPrereqs(url) {
-    const git = mockBool(url, "git", true);
-    const npx = mockBool(url, "npx", true);
-    return { ok: git && npx, git, npx };
-}
-
 const previewDeployments = models
     .filter((m) => m.recommended)
     .slice(0, 3)
@@ -413,7 +407,6 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/skills/status") {
         const scenario = url.searchParams.get("skillStatus") || "missing";
-        const prereqs = mockSkillPrereqs(url);
         const scenarios = {
             missing: {
                 ok: true,
@@ -448,27 +441,10 @@ async function handleApi(req, res, url) {
                 summary: "Unable to access GitHub to verify whether Foundry Skills are up to date.",
             },
         };
-        return sendJson(res, 200, { prereqs, ...(scenarios[scenario] || scenarios.missing) });
-    }
-
-    if (method === "GET" && path === "/api/skills/prereqs") {
-        return sendJson(res, 200, mockSkillPrereqs(url));
+        return sendJson(res, 200, scenarios[scenario] || scenarios.missing);
     }
 
     if (method === "POST" && path === "/api/skills/install") {
-        const prereqs = mockSkillPrereqs(url);
-        if (!prereqs.ok) {
-            const missing = [];
-            if (!prereqs.git) missing.push("git");
-            if (!prereqs.npx) missing.push("npx");
-            return sendJson(res, 200, {
-                ok: false,
-                code: -1,
-                missing,
-                prereqs,
-                summary: `Missing prerequisite${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`,
-            });
-        }
         return sendJson(res, 200, { ok: true, code: 0, summary: "Preview mode: command skipped" });
     }
 

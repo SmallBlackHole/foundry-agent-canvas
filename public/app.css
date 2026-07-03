@@ -243,51 +243,6 @@ body {
 .init-skill-status.is-warn { color: #9a6700; }
 .init-skill-status.is-err { color: #cf222e; }
 
-/* Prerequisite guidance panel (shown when git/npx is missing on click). */
-.init-prereq-guide {
-    border: 1px solid var(--border);
-    border-left: 3px solid #bf8700;
-    border-radius: 10px;
-    background: var(--bg-subtle, var(--bg));
-    padding: 12px 14px;
-    display: flex; flex-direction: column; gap: 10px;
-    margin-top: 4px;
-}
-.init-prereq-guide[hidden] { display: none; }
-.prereq-head { display: flex; align-items: center; gap: 8px; }
-.prereq-head-icon { display: inline-flex; color: #bf8700; }
-.prereq-head-title { font-size: 13px; font-weight: var(--font-weight-semibold, 600); color: var(--text); }
-.prereq-desc { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
-.prereq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.prereq-item {
-    display: flex; align-items: center; gap: 10px;
-    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 8px 10px;
-}
-.prereq-badge {
-    flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff;
-}
-.prereq-item.is-ok .prereq-badge { background: #1a7f37; }
-.prereq-item.is-missing .prereq-badge { background: #cf222e; }
-.prereq-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.prereq-name { font-size: 12px; font-weight: var(--font-weight-semibold, 600); color: var(--text); }
-.prereq-link {
-    flex: 0 0 auto; align-self: center;
-    border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
-    color: var(--accent); font-size: 12px; font-weight: 600; text-decoration: none;
-    padding: 4px 12px; white-space: nowrap; cursor: pointer;
-}
-.prereq-link:hover { background: var(--bg-subtle); border-color: var(--accent); }
-.prereq-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.prereq-recheck {
-    flex: 0 0 auto;
-    border: 1px solid var(--accent); border-radius: 999px; background: var(--accent);
-    color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; padding: 5px 14px;
-}
-.prereq-recheck:hover { filter: brightness(1.05); }
-.prereq-foot-hint { font-size: 11px; color: var(--muted); }
-
 .badge { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
 
 .model-pill {

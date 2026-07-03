@@ -13,10 +13,10 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { spawn } from "node:child_process";
 
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { createInspectorServer } from "./inspector-backend/index.mjs";
+import { installSkillFromGitHub } from "./skill-install.mjs";
 import {
     tools,
     models,
@@ -155,112 +155,51 @@ async function ensureInspectorProxy() {
 }
 
 // The skills package + skill to install/update when the user prepares Foundry
-// Skills. Deterministic: runs the command directly so there is no chat
-// round-trip. The -g flag keeps the install in the user's ~/.agents scope
-// instead of extension-local state.
+// Skills. Downloads the skill tree directly from the GitHub tarball archive
+// and writes it into the user's ~/.agents scope — no git/npx required.
 const SKILLS_SOURCE = "microsoft/azure-skills";
 const SKILLS_SKILL = "microsoft-foundry";
-const SKILLS_PACKAGE = `${SKILLS_SOURCE}@${SKILLS_SKILL}`;
+const SKILLS_TARBALL_URL = `https://github.com/${SKILLS_SOURCE}/archive/refs/heads/main.tar.gz`;
+const SKILLS_TAR_PREFIX = "skills/microsoft-foundry/";
+const SKILLS_INSTALL_TIMEOUT_MS = 60_000;
 const USER_AGENTS_DIR = join(USER_HOME, ".agents");
 const USER_SKILLS_DIR = join(USER_AGENTS_DIR, "skills");
 const USER_SKILL_DIR = join(USER_SKILLS_DIR, SKILLS_SKILL);
 const USER_SKILL_FILE = join(USER_SKILL_DIR, "SKILL.md");
 const USER_SKILL_LOCK_FILE = join(USER_AGENTS_DIR, ".skill-lock.json");
-const SKILLS_INSTALL_TIMEOUT_MS = 180_000;
 const SKILLS_REMOTE_SKILL_PATH = ".github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md";
 const SKILLS_REMOTE_CHECK_TIMEOUT_MS = 10_000;
 
-function skillsCwd() {
-    return existsSync(USER_HOME) ? USER_HOME : EXT_DIR;
-}
-
-function cleanSkillOutput(raw) {
-    return String(raw || "").replace(/\u001b\[[0-9;]*m/g, "");
-}
-
-function runNpxSkills(args, timeoutMs) {
-    return new Promise((resolve) => {
-        let child;
-        try {
-            child = spawn("npx", ["--yes", "skills", ...args], {
-                cwd: skillsCwd(),
-                shell: true,
-                windowsHide: true,
-                env: process.env,
-            });
-        } catch (err) {
-            resolve({ ok: false, code: -1, raw: "", summary: `Could not start npx: ${err?.message ?? err}` });
-            return;
-        }
-
-        let out = "";
-        let settled = false;
-        const finish = (result) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(result);
-        };
-
-        const timer = setTimeout(() => {
-            try {
-                child.kill();
-            } catch {
-                /* ignore */
-            }
-            finish({ ok: false, code: -1, raw: out, summary: "Timed out. Try again from a terminal." });
-        }, timeoutMs);
-
-        child.stdout?.on("data", (d) => {
-            out += d.toString();
-        });
-        child.stderr?.on("data", (d) => {
-            out += d.toString();
-        });
-        child.on("error", (err) => {
-            finish({ ok: false, code: -1, raw: out, summary: `npx failed: ${err?.message ?? err}` });
-        });
-        child.on("close", (code) => {
-            finish({ ok: code === 0, code: code ?? -1, raw: out, summary: summarizeSkillOutput(out, code) });
-        });
-    });
-}
-
-// Run `npx --yes skills add microsoft/azure-skills@microsoft-foundry -g -y`
-// directly and resolve with a small status object. No LLM/chat turn involved.
-// `shell:true` lets `npx` resolve to npx.cmd on Windows.
 async function installFoundrySkill() {
-    const result = await runNpxSkills(["add", SKILLS_PACKAGE, "-g", "-y"], SKILLS_INSTALL_TIMEOUT_MS);
+    const result = await installSkillFromGitHub({
+        tarballUrl: SKILLS_TARBALL_URL,
+        pathPrefix: SKILLS_TAR_PREFIX,
+        targetDir: USER_SKILL_DIR,
+        lockFile: USER_SKILL_LOCK_FILE,
+        skillName: SKILLS_SKILL,
+        source: SKILLS_SOURCE,
+        timeoutMs: SKILLS_INSTALL_TIMEOUT_MS,
+    });
+    if (!result.ok) {
+        return {
+            ok: false,
+            code: -1,
+            summary: result.error,
+            scope: "user",
+            installPath: USER_SKILL_DIR,
+        };
+    }
+    const version = skillVersionFromText(
+        existsSync(USER_SKILL_FILE) ? readFileSync(USER_SKILL_FILE, "utf-8") : ""
+    );
     return {
-        ok: result.ok,
-        code: result.code,
-        summary: summarizeSkillOutput(result.raw || result.summary, result.code),
+        ok: true,
+        code: 0,
+        summary: `Foundry Skills installed (${result.count} files).`,
         scope: "user",
         installPath: USER_SKILL_DIR,
+        installedVersion: version,
     };
-}
-
-// Distil the npx output into one short status line for the canvas.
-function summarizeSkillOutput(raw, code) {
-    const text = cleanSkillOutput(raw);
-    if (code === 0) {
-        if (/up[\s-]?to[\s-]?date|already.*(installed|latest|up to date)/i.test(text)) {
-            return "The latest Foundry Skills are already installed.";
-        }
-        return "Foundry Skills are installed.";
-    }
-    // Strip the decorative box-drawing / bullet glyphs the skills CLI prints,
-    // but never letters or digits. (An earlier version stripped o/O/0 too, which
-    // turned a real "Installation failed" line into "Installati n failed".)
-    const DECOR = /[\u2500-\u25FF\u2022\u00B7|]/g;
-    const lines = text
-        .split(/\r?\n/)
-        .map((l) => l.replace(DECOR, " ").replace(/^[\s*+-]+/, "").replace(/\s+/g, " ").trim())
-        .filter(Boolean);
-    const lastErr = lines.reverse().find((l) =>
-        /(error|err!|fail|not found|cannot|could ?n['o]t|unable|denied|permission|refused|timed? out|enoent|econn|resolve)/i.test(l)
-    );
-    return lastErr || lines[0] || `npx exited with code ${code}`;
 }
 
 function readFoundrySkillLockEntry() {
@@ -407,7 +346,6 @@ async function checkRemoteFoundrySkill(lock, installedVersion) {
 }
 
 async function checkFoundrySkillStatus() {
-    const prereqs = await checkSkillPrereqs();
     const installed = readInstalledFoundrySkill();
     const base = {
         skill: SKILLS_SKILL,
@@ -419,7 +357,6 @@ async function checkFoundrySkillStatus() {
         lockPresent: !!installed.lock,
         skillPath: skillPathFromSkillLock(installed.lock),
         lockUpdatedAt: installed.lockUpdatedAt,
-        prereqs,
         checkMethod: "github-skill-metadata",
     };
     if (!installed.installed) {
@@ -435,116 +372,6 @@ async function checkFoundrySkillStatus() {
     return { ...base, ...latest };
 }
 
-// Installing the Foundry skill runs `npx skills add …`, which needs both git
-// (to fetch the skill repo) and npx (bundled with Node.js) available on PATH.
-// Probe each by running `<cmd> --version` through the shell — this mirrors how
-// the install itself resolves the command (npx.cmd on Windows, npx on *nix) so
-// the check can't disagree with the real install.
-const PREREQ_PROBE_TIMEOUT_MS = 8_000;
-
-function commandAvailable(cmd) {
-    return new Promise((resolve) => {
-        let child;
-        try {
-            // Single command string (no args array) so `shell: true` doesn't trip
-            // Node's DEP0190 warning. `cmd` is a hardcoded literal, never user input.
-            child = spawn(`${cmd} --version`, {
-                cwd: skillsCwd(),
-                shell: true,
-                windowsHide: true,
-                env: process.env,
-            });
-        } catch {
-            resolve(false);
-            return;
-        }
-        let settled = false;
-        const done = (v) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            try {
-                child.kill();
-            } catch {
-                /* ignore */
-            }
-            resolve(v);
-        };
-        const timer = setTimeout(() => done(false), PREREQ_PROBE_TIMEOUT_MS);
-        // Drain output so the child can exit; we only care about the exit code.
-        child.stdout?.on("data", () => {});
-        child.stderr?.on("data", () => {});
-        child.on("error", () => done(false));
-        child.on("close", (code) => done(code === 0));
-    });
-}
-
-// Report which skill-install prerequisites are present. git + npx are what the
-// `npx skills add …` install itself needs on PATH.
-async function checkSkillPrereqs() {
-    const [git, npx] = await Promise.all([
-        commandAvailable("git"),
-        commandAvailable("npx"),
-    ]);
-    return { git, npx };
-}
-
-// Whether every skill prerequisite is satisfied.
-function prereqsSatisfied(p) {
-    return !!(p && p.git && p.npx);
-}
-
-// Human-readable list of the missing prerequisites, in setup order.
-function missingPrereqs(p) {
-    const missing = [];
-    if (!p.git) missing.push("git");
-    if (!p.npx) missing.push("npx");
-    return missing;
-}
-
-// Official download pages for each prerequisite. Hardcoded allowlist — the
-// open-download endpoint maps a tool key to one of these and never opens a URL
-// supplied by the client, so shelling out to the OS opener stays injection-safe.
-const PREREQ_DOWNLOAD_URLS = {
-    git: "https://git-scm.com/downloads",
-    npx: "https://nodejs.org/en/download",
-};
-
-// Open a URL in the user's default browser. The canvas renders inside a
-// sandboxed iframe that usually swallows target="_blank", so external "Install
-// <tool>" links are routed here instead. `url` is always one of the constants
-// above (no shell-unsafe characters), so the platform openers are safe.
-function openExternalUrl(url) {
-    return new Promise((resolve) => {
-        let child;
-        try {
-            if (process.platform === "win32") {
-                // `start` is a cmd builtin; the empty "" is its window-title arg.
-                child = spawn("cmd", ["/c", "start", "", url], { windowsHide: true });
-            } else if (process.platform === "darwin") {
-                child = spawn("open", [url]);
-            } else {
-                child = spawn("xdg-open", [url]);
-            }
-        } catch (err) {
-            resolve({ ok: false, error: String(err?.message ?? err) });
-            return;
-        }
-        let settled = false;
-        const done = (r) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(r);
-        };
-        // The opener detaches immediately; a clean spawn means it launched. Don't
-        // block on the child (xdg-open/open may linger). Fall back after a beat.
-        const timer = setTimeout(() => done({ ok: true, url }), 500);
-        child.on("spawn", () => done({ ok: true, url }));
-        child.on("error", (err) => done({ ok: false, error: String(err?.message ?? err) }));
-        child.unref?.();
-    });
-}
 
 
 // Default selected Foundry project (data-plane endpoint). Empty by default;
@@ -1131,26 +958,9 @@ function createRequestHandler(instanceId) {
             return sendJson(res, 200, status);
         }
 
-        // Report whether the prerequisites for the Foundry skill are available
-        // (git + npx), so the canvas can guide the user before it shells out to
-        // `npx skills add …`.
-        if (method === "GET" && path === "/api/skills/prereqs") {
-            const prereqs = await checkSkillPrereqs();
-            return sendJson(res, 200, { ok: prereqsSatisfied(prereqs), ...prereqs });
-        }
-
         // Install/upgrade the microsoft-foundry skill directly (no chat turn).
         if (method === "POST" && path === "/api/skills/install") {
             try {
-                // Guard: never shell out to npx when a prerequisite is missing —
-                // return actionable guidance instead of a cryptic command error.
-                const prereqs = await checkSkillPrereqs();
-                if (!prereqsSatisfied(prereqs)) {
-                    const missing = missingPrereqs(prereqs);
-                    const summary = `Missing prerequisite${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}. Complete ${missing.join(" and ")}, then try again.`;
-                    await session.log(`Skills install blocked — missing prerequisites: ${missing.join(", ")}`, { level: "info" });
-                    return sendJson(res, 200, { ok: false, code: -1, missing, prereqs, summary });
-                }
                 const result = await installFoundrySkill();
                 if (!result.ok) {
                     await session.log(`Skills install failed: ${result.summary}`, { level: "error" });
@@ -1159,31 +969,6 @@ function createRequestHandler(instanceId) {
             } catch (err) {
                 await session.log(`Skills install error: ${err?.message ?? err}`, { level: "error" });
                 return sendJson(res, 500, { ok: false, code: -1, summary: String(err?.message ?? err) });
-            }
-        }
-
-        // Open a prerequisite's official download page in the user's default
-        // browser. The canvas iframe usually blocks target="_blank", so the
-        // "Install <tool>" links POST here. Accepts only a known tool key
-        // (git|npx) — never a client-supplied URL.
-        if (method === "POST" && path === "/api/skills/open-download") {
-            try {
-                const raw = await readBody(req);
-                let tool = "";
-                try {
-                    tool = String(JSON.parse(raw || "{}").tool || "");
-                } catch {
-                    tool = "";
-                }
-                const url = PREREQ_DOWNLOAD_URLS[tool];
-                if (!url) return sendJson(res, 400, { ok: false, error: "unknown tool" });
-                const result = await openExternalUrl(url);
-                if (!result.ok) {
-                    await session.log(`Open download page failed (${tool}): ${result.error}`, { level: "error" });
-                }
-                return sendJson(res, result.ok ? 200 : 500, { ...result, url });
-            } catch (err) {
-                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }
         }
 
