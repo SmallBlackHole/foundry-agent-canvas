@@ -1,12 +1,10 @@
 name: Release nightly build
 
 # Bundles the extension with esbuild and publishes it as a zip asset on a
-# rolling "nightly" prerelease every time main changes, so users can grab a
+# rolling "nightly" prerelease when manually triggered, so users can grab a
 # ready-to-run build without installing dependencies themselves.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch: {}
 
 permissions:
