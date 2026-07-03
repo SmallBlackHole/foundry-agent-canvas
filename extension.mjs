@@ -561,9 +561,11 @@ const CONTENT_TYPES = {
     ".svg": "image/svg+xml",
 };
 
-// One local server per open canvas instance. Each entry tracks its own view
-// state and the set of connected SSE clients (the open iframe).
-const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set }
+// One local server per canvas instance. Closing the canvas can be transient
+// during host hide/show cycles, so defer teardown and only close after the
+// iframe's SSE connection is gone.
+const SERVER_CLOSE_GRACE_MS = 5 * 60_000;
+const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set, closeTimer }
 
 function defaultState() {
     return {
@@ -1236,7 +1238,29 @@ async function startServer(instanceId) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    return { server, url: `http://127.0.0.1:${port}/`, state: defaultState(), sseClients: new Set() };
+    return { server, url: `http://127.0.0.1:${port}/`, state: defaultState(), sseClients: new Set(), closeTimer: null };
+}
+
+function scheduleServerClose(instanceId, entry) {
+    if (entry.closeTimer) return;
+    entry.closeTimer = setTimeout(() => {
+        entry.closeTimer = null;
+        if (servers.get(instanceId) !== entry) return;
+        if (entry.sseClients.size > 0) {
+            scheduleServerClose(instanceId, entry);
+            return;
+        }
+        servers.delete(instanceId);
+        for (const client of entry.sseClients) {
+            try {
+                client.end();
+            } catch {
+                /* ignore */
+            }
+        }
+        entry.server.close();
+    }, SERVER_CLOSE_GRACE_MS);
+    entry.closeTimer.unref?.();
 }
 
 const session = await joinSession({
@@ -1332,6 +1356,10 @@ const session = await joinSession({
             ],
             open: async (ctx) => {
                 let entry = servers.get(ctx.instanceId);
+                if (entry?.closeTimer) {
+                    clearTimeout(entry.closeTimer);
+                    entry.closeTimer = null;
+                }
                 if (!entry) {
                     entry = await startServer(ctx.instanceId);
                     servers.set(ctx.instanceId, entry);
@@ -1341,17 +1369,7 @@ const session = await joinSession({
             },
             onClose: async (ctx) => {
                 const entry = servers.get(ctx.instanceId);
-                if (entry) {
-                    servers.delete(ctx.instanceId);
-                    for (const client of entry.sseClients) {
-                        try {
-                            client.end();
-                        } catch {
-                            /* ignore */
-                        }
-                    }
-                    await new Promise((resolve) => entry.server.close(() => resolve()));
-                }
+                if (entry) scheduleServerClose(ctx.instanceId, entry);
             },
         }),
     ],

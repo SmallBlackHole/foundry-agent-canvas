@@ -15,6 +15,7 @@ const state = {
     deploymentsState: { status: "idle", items: [], source: null, reason: null },
     connectionsState: { status: "idle", items: [], source: null, reason: null },
     toolboxesState: { status: "idle", items: [], reason: null },
+    canvasDisconnected: false,
     // Project picker state.
     identity: { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" },
     subsState: { status: "idle", items: [], reason: null },
@@ -58,6 +59,7 @@ function toast(msg) {
 async function getJSON(url) {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error("HTTP " + res.status);
+    state.canvasDisconnected = false;
     return res.json();
 }
 
@@ -716,7 +718,7 @@ function menuMsg(text, variant) {
 }
 
 // Error row with a Retry button.
-function menuError(text, onRetry) {
+function menuError(text, onRetry, retryText = "Retry") {
     const el = document.createElement("div");
     el.className = "menu-msg is-error";
     const span = document.createElement("span");
@@ -724,7 +726,7 @@ function menuError(text, onRetry) {
     const retry = document.createElement("button");
     retry.type = "button";
     retry.className = "menu-retry";
-    retry.textContent = "Retry";
+    retry.textContent = retryText;
     retry.addEventListener("click", (e) => {
         e.stopPropagation();
         onRetry();
@@ -747,6 +749,30 @@ function sampleNote(reason) {
     return el;
 }
 
+function isCanvasDisconnectedReason(reason) {
+    return state.canvasDisconnected || reason === "canvas_disconnected";
+}
+
+function dataLoadError(label, reason) {
+    if (isCanvasDisconnectedReason(reason)) return "Canvas disconnected \u2014 reload";
+    const map = {
+        not_signed_in: `Sign in to load ${label}`,
+        unauthorized: `No access to load ${label}`,
+        not_found: "Project not found",
+        fetch_failed: "Couldn\u2019t reach Foundry",
+        timeout: `Timed out loading ${label}`,
+    };
+    return map[reason] || `Couldn\u2019t load ${label}`;
+}
+
+function dataLoadRetry(reason, loader) {
+    return isCanvasDisconnectedReason(reason) ? () => location.reload() : loader;
+}
+
+function dataLoadRetryText(reason) {
+    return isCanvasDisconnectedReason(reason) ? "Reload" : "Retry";
+}
+
 // Section 1 of the model dropdown: models already deployed in the project.
 function renderDeployList() {
     const host = document.getElementById("deployList");
@@ -755,7 +781,11 @@ function renderDeployList() {
     host.replaceChildren();
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading deployments\u2026", "loading"));
-    if (st.status === "error") return host.appendChild(menuError("Couldn\u2019t load deployments", () => loadDeployments(true)));
+    if (st.status === "error") {
+        return host.appendChild(
+            menuError(dataLoadError("deployments", st.reason), dataLoadRetry(st.reason, () => loadDeployments(true)), dataLoadRetryText(st.reason)),
+        );
+    }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No model deployments in this project", "empty"));
 
     for (const m of st.items) {
@@ -790,7 +820,11 @@ function renderToolList() {
     host.replaceChildren();
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading connections\u2026", "loading"));
-    if (st.status === "error") return host.appendChild(menuError("Couldn\u2019t load connections", () => loadConnections(true)));
+    if (st.status === "error") {
+        return host.appendChild(
+            menuError(dataLoadError("connections", st.reason), dataLoadRetry(st.reason, () => loadConnections(true)), dataLoadRetryText(st.reason)),
+        );
+    }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No tool connections in this project", "empty"));
 
     for (const t of st.items) {
@@ -836,7 +870,11 @@ function renderToolboxList() {
     host.replaceChildren();
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading toolboxes\u2026", "loading"));
-    if (st.status === "error") return host.appendChild(menuError("Couldn\u2019t load toolboxes", () => loadToolboxes(true)));
+    if (st.status === "error") {
+        return host.appendChild(
+            menuError(dataLoadError("toolboxes", st.reason), dataLoadRetry(st.reason, () => loadToolboxes(true)), dataLoadRetryText(st.reason)),
+        );
+    }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No toolboxes in this project", "empty"));
 
     for (const t of st.items) {
@@ -937,13 +975,18 @@ async function loadDeployments(force) {
     renderDeployList();
     try {
         const data = await getJSON("/api/deployments");
-        st.items = Array.isArray(data.items) ? data.items : [];
         st.source = data.source || null;
         st.reason = data.reason || null;
-        st.status = "ready";
+        if (data.ok === false) {
+            st.items = [];
+            st.status = "error";
+        } else {
+            st.items = Array.isArray(data.items) ? data.items : [];
+            st.status = "ready";
+        }
     } catch (err) {
         st.status = "error";
-        st.reason = err.message;
+        st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
     }
     renderDeployList();
 }
@@ -955,13 +998,18 @@ async function loadConnections(force) {
     renderToolList();
     try {
         const data = await getJSON("/api/connections");
-        st.items = Array.isArray(data.items) ? data.items : [];
         st.source = data.source || null;
         st.reason = data.reason || null;
-        st.status = "ready";
+        if (data.ok === false) {
+            st.items = [];
+            st.status = "error";
+        } else {
+            st.items = Array.isArray(data.items) ? data.items : [];
+            st.status = "ready";
+        }
     } catch (err) {
         st.status = "error";
-        st.reason = err.message;
+        st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
     }
     renderToolList();
 }
@@ -973,12 +1021,17 @@ async function loadToolboxes(force) {
     renderToolboxList();
     try {
         const data = await getJSON("/api/toolboxes");
-        st.items = Array.isArray(data.items) ? data.items : [];
         st.reason = data.reason || null;
-        st.status = "ready";
+        if (data.ok === false) {
+            st.items = [];
+            st.status = "error";
+        } else {
+            st.items = Array.isArray(data.items) ? data.items : [];
+            st.status = "ready";
+        }
     } catch (err) {
         st.status = "error";
-        st.reason = err.message;
+        st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
     }
     renderToolboxList();
 }
@@ -2337,6 +2390,9 @@ async function init() {
     // Optional: let an agent-invoked navigate() action reflect in the open iframe.
     try {
         const es = new EventSource("/events");
+        es.addEventListener("open", () => {
+            state.canvasDisconnected = false;
+        });
         es.addEventListener("message", (ev) => {
             try {
                 const msg = JSON.parse(ev.data);
@@ -2346,6 +2402,9 @@ async function init() {
             } catch {
                 /* ignore malformed frames */
             }
+        });
+        es.addEventListener("error", () => {
+            state.canvasDisconnected = true;
         });
     } catch {
         /* SSE unsupported — non-fatal */
