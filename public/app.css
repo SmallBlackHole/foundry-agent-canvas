@@ -204,8 +204,17 @@ body {
 
 .init-sections { display: flex; flex-direction: column; gap: 12px; }
 .init-section { display: flex; flex-direction: column; gap: 6px; }
-.init-section--inline { flex-direction: row; align-items: center; gap: 10px; }
-.init-section-label { font-size: 12px; color: var(--muted); font-weight: var(--font-weight-semibold, 600); }
+.init-section--inline {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+    column-gap: 10px;
+}
+.init-section-label {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 12px; color: var(--muted); font-weight: var(--font-weight-semibold, 600);
+}
 .init-bubbles { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .init-bubble {
     display: inline-flex; align-items: center; gap: 6px;
@@ -217,9 +226,11 @@ body {
 .init-bubble svg { color: var(--accent); }
 .init-bubble:disabled { opacity: .6; cursor: default; border-color: var(--border); color: var(--muted); }
 
-/* Inline status next to the "Install latest Foundry Skills" bubble. */
+/* Inline status next to the Foundry Skills install/update action. */
 .init-skill-status {
     display: inline-flex; align-items: center; gap: 6px;
+    min-width: 0;
+    line-height: 18px;
     font-size: 12px; color: var(--muted);
 }
 .init-skill-status:empty { display: none; }
@@ -229,6 +240,7 @@ body {
     animation: menu-spin .7s linear infinite;
 }
 .init-skill-status.is-ok { color: #1a7f37; }
+.init-skill-status.is-warn { color: #9a6700; }
 .init-skill-status.is-err { color: #cf222e; }
 
 /* Prerequisite guidance panel (shown when git/npx is missing on click). */
@@ -339,6 +351,7 @@ body {
 .menu-item .model-dot { width: 10px; height: 10px; flex: 0 0 auto; }
 .menu-item .item-name { flex: 1; font-weight: 500; }
 .menu-item .item-check { color: var(--accent); font-weight: 700; }
+
 /* Toolbox rows: distinct stacked-box icon so they read differently from single tools. */
 .menu-item--toolbox .toolbox-icon { display: inline-flex; flex: 0 0 auto; color: var(--accent); }
 /* Expandable toolbox rows: chevron, inline "Use", nested tool lines. */

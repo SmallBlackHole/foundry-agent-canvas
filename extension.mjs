@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
@@ -46,6 +47,7 @@ import {
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
+const USER_HOME = homedir();
 
 // Repo/workspace root. A project-scoped extension lives at
 // <workspace>/.github/extensions/<name>, so the workspace root is three levels
@@ -152,30 +154,42 @@ async function ensureInspectorProxy() {
     return getOrCreateInspectorProxy();
 }
 
-// The skills package + skill to (re)install when the user clicks "Install latest
-// Foundry Skills". Deterministic — runs the command directly so there is no chat
-// round-trip.
-const SKILLS_REPO = "https://github.com/microsoft/azure-skills";
+// The skills package + skill to install/update when the user prepares Foundry
+// Skills. Deterministic: runs the command directly so there is no chat
+// round-trip. The -g flag keeps the install in the user's ~/.agents scope
+// instead of extension-local state.
+const SKILLS_SOURCE = "microsoft/azure-skills";
 const SKILLS_SKILL = "microsoft-foundry";
+const SKILLS_PACKAGE = `${SKILLS_SOURCE}@${SKILLS_SKILL}`;
+const USER_AGENTS_DIR = join(USER_HOME, ".agents");
+const USER_SKILLS_DIR = join(USER_AGENTS_DIR, "skills");
+const USER_SKILL_DIR = join(USER_SKILLS_DIR, SKILLS_SKILL);
+const USER_SKILL_FILE = join(USER_SKILL_DIR, "SKILL.md");
+const USER_SKILL_LOCK_FILE = join(USER_AGENTS_DIR, ".skill-lock.json");
 const SKILLS_INSTALL_TIMEOUT_MS = 180_000;
+const SKILLS_REMOTE_SKILL_PATH = ".github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md";
+const SKILLS_REMOTE_CHECK_TIMEOUT_MS = 10_000;
 
-// Run `npx skills add <repo> --skill <skill>` directly and resolve with a small
-// status object. No LLM/chat turn involved. `shell:true` so `npx` resolves to
-// npx.cmd on Windows. We capture output and surface the last meaningful line so
-// the canvas can show "up to date" vs "installed".
-function installFoundrySkill() {
+function skillsCwd() {
+    return existsSync(USER_HOME) ? USER_HOME : EXT_DIR;
+}
+
+function cleanSkillOutput(raw) {
+    return String(raw || "").replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+function runNpxSkills(args, timeoutMs) {
     return new Promise((resolve) => {
-        const args = ["skills", "add", SKILLS_REPO, "--skill", SKILLS_SKILL];
         let child;
         try {
-            child = spawn("npx", args, {
-                cwd: EXT_DIR,
+            child = spawn("npx", ["--yes", "skills", ...args], {
+                cwd: skillsCwd(),
                 shell: true,
                 windowsHide: true,
                 env: process.env,
             });
         } catch (err) {
-            resolve({ ok: false, code: -1, summary: `Could not start npx: ${err?.message ?? err}` });
+            resolve({ ok: false, code: -1, raw: "", summary: `Could not start npx: ${err?.message ?? err}` });
             return;
         }
 
@@ -194,8 +208,8 @@ function installFoundrySkill() {
             } catch {
                 /* ignore */
             }
-            finish({ ok: false, code: -1, summary: "Timed out after 3 min. Try installing from a terminal." });
-        }, SKILLS_INSTALL_TIMEOUT_MS);
+            finish({ ok: false, code: -1, raw: out, summary: "Timed out. Try again from a terminal." });
+        }, timeoutMs);
 
         child.stdout?.on("data", (d) => {
             out += d.toString();
@@ -204,22 +218,36 @@ function installFoundrySkill() {
             out += d.toString();
         });
         child.on("error", (err) => {
-            finish({ ok: false, code: -1, summary: `npx failed: ${err?.message ?? err}` });
+            finish({ ok: false, code: -1, raw: out, summary: `npx failed: ${err?.message ?? err}` });
         });
         child.on("close", (code) => {
-            finish({ ok: code === 0, code: code ?? -1, summary: summarizeSkillOutput(out, code) });
+            finish({ ok: code === 0, code: code ?? -1, raw: out, summary: summarizeSkillOutput(out, code) });
         });
     });
 }
 
+// Run `npx --yes skills add microsoft/azure-skills@microsoft-foundry -g -y`
+// directly and resolve with a small status object. No LLM/chat turn involved.
+// `shell:true` lets `npx` resolve to npx.cmd on Windows.
+async function installFoundrySkill() {
+    const result = await runNpxSkills(["add", SKILLS_PACKAGE, "-g", "-y"], SKILLS_INSTALL_TIMEOUT_MS);
+    return {
+        ok: result.ok,
+        code: result.code,
+        summary: summarizeSkillOutput(result.raw || result.summary, result.code),
+        scope: "user",
+        installPath: USER_SKILL_DIR,
+    };
+}
+
 // Distil the npx output into one short status line for the canvas.
 function summarizeSkillOutput(raw, code) {
-    const text = String(raw || "").replace(/\u001b\[[0-9;]*m/g, ""); // strip ANSI
+    const text = cleanSkillOutput(raw);
     if (code === 0) {
         if (/up[\s-]?to[\s-]?date|already.*(installed|latest|up to date)/i.test(text)) {
-            return "Already up to date";
+            return "The latest Foundry Skills are already installed.";
         }
-        return "Installed latest Foundry Skills";
+        return "Foundry Skills are installed.";
     }
     // Strip the decorative box-drawing / bullet glyphs the skills CLI prints,
     // but never letters or digits. (An earlier version stripped o/O/0 too, which
@@ -233,6 +261,178 @@ function summarizeSkillOutput(raw, code) {
         /(error|err!|fail|not found|cannot|could ?n['o]t|unable|denied|permission|refused|timed? out|enoent|econn|resolve)/i.test(l)
     );
     return lastErr || lines[0] || `npx exited with code ${code}`;
+}
+
+function readFoundrySkillLockEntry() {
+    try {
+        if (!existsSync(USER_SKILL_LOCK_FILE)) return null;
+        const data = JSON.parse(readFileSync(USER_SKILL_LOCK_FILE, "utf-8"));
+        const entry = data?.skills?.[SKILLS_SKILL];
+        return entry && typeof entry === "object" ? entry : null;
+    } catch {
+        return null;
+    }
+}
+
+function skillVersionFromText(text) {
+    const source = String(text || "");
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const versionScope = frontmatter ? frontmatter[1] : source.slice(0, 2000);
+    const m = versionScope.match(/^\s*version:\s*["']?([^"'\r\n]+)["']?\s*$/m);
+    return m ? m[1].trim() : "";
+}
+
+function readInstalledFoundrySkill() {
+    const lock = readFoundrySkillLockEntry();
+    let installed = existsSync(USER_SKILL_FILE) || !!lock;
+    let installedVersion = "";
+    try {
+        if (existsSync(USER_SKILL_FILE)) {
+            const text = readFileSync(USER_SKILL_FILE, "utf-8");
+            installedVersion = skillVersionFromText(text);
+        }
+    } catch {
+        installed = !!lock;
+    }
+    return {
+        installed,
+        installedVersion,
+        lock,
+        lockUpdatedAt: lock?.updatedAt || "",
+        installPath: USER_SKILL_DIR,
+    };
+}
+
+function compareVersions(a, b) {
+    const left = String(a || "").split(/[.-]/);
+    const right = String(b || "").split(/[.-]/);
+    const len = Math.max(left.length, right.length);
+    for (let i = 0; i < len; i++) {
+        const x = left[i] || "0";
+        const y = right[i] || "0";
+        const nx = /^\d+$/.test(x) ? Number(x) : NaN;
+        const ny = /^\d+$/.test(y) ? Number(y) : NaN;
+        const cmp = Number.isNaN(nx) || Number.isNaN(ny)
+            ? x.localeCompare(y)
+            : nx - ny;
+        if (cmp !== 0) return cmp < 0 ? -1 : 1;
+    }
+    return 0;
+}
+
+function githubRepoFromSkillLock(lock) {
+    // If the global skills lock is missing but ~/.agents/skills/microsoft-foundry
+    // exists, fall back to the official Foundry Skills source. This keeps the
+    // status check read-only and useful for manually copied/older installs.
+    const source = String(lock?.source || SKILLS_SOURCE);
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source)) return source;
+    const sourceUrl = String(lock?.sourceUrl || "");
+    const m = sourceUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/i);
+    return m ? `${m[1]}/${m[2]}` : SKILLS_SOURCE;
+}
+
+function skillPathFromSkillLock(lock) {
+    return String(lock?.skillPath || SKILLS_REMOTE_SKILL_PATH);
+}
+
+function githubRawSkillUrls(lock) {
+    const repo = githubRepoFromSkillLock(lock);
+    const path = skillPathFromSkillLock(lock)
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/");
+    return ["main", "master"].map((ref) => `https://raw.githubusercontent.com/${repo}/${ref}/${path}`);
+}
+
+async function fetchText(url, timeoutMs) {
+    if (typeof fetch !== "function") return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, {
+            signal: controller.signal,
+            headers: { Accept: "text/plain" },
+        });
+        if (!res.ok) return null;
+        return await res.text();
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function checkRemoteFoundrySkill(lock, installedVersion) {
+    for (const url of githubRawSkillUrls(lock)) {
+        const text = await fetchText(url, SKILLS_REMOTE_CHECK_TIMEOUT_MS);
+        if (!text) continue;
+        const latestVersion = skillVersionFromText(text);
+        if (!latestVersion) {
+            return {
+                ok: false,
+                status: "unknown",
+                latestVersion: "",
+                summary: "Foundry Skills are installed, but the latest version metadata could not be read.",
+            };
+        }
+        if (!installedVersion) {
+            return {
+                ok: false,
+                status: "unknown",
+                latestVersion,
+                summary: "Foundry Skills are installed, but the installed version could not be read.",
+            };
+        }
+        if (compareVersions(installedVersion, latestVersion) < 0) {
+            return {
+                ok: true,
+                status: "outdated",
+                latestVersion,
+                summary: "A newer version of Foundry Skills is available.",
+            };
+        }
+        return {
+            ok: true,
+            status: "latest",
+            latestVersion,
+            summary: `The latest Foundry Skills are already installed (version ${latestVersion}).`,
+        };
+    }
+    return {
+        ok: false,
+        status: "unknown",
+        latestVersion: "",
+        summary: "Unable to access GitHub to verify whether Foundry Skills are up to date.",
+    };
+}
+
+async function checkFoundrySkillStatus() {
+    const prereqs = await checkSkillPrereqs();
+    const installed = readInstalledFoundrySkill();
+    const base = {
+        skill: SKILLS_SKILL,
+        source: SKILLS_SOURCE,
+        scope: "user",
+        installPath: installed.installPath,
+        installed: installed.installed,
+        installedVersion: installed.installedVersion,
+        lockPresent: !!installed.lock,
+        skillPath: skillPathFromSkillLock(installed.lock),
+        lockUpdatedAt: installed.lockUpdatedAt,
+        prereqs,
+        checkMethod: "github-skill-metadata",
+    };
+    if (!installed.installed) {
+        return {
+            ...base,
+            ok: true,
+            status: "missing",
+            latestVersion: "",
+            summary: "Foundry Skills are not installed yet.",
+        };
+    }
+    const latest = await checkRemoteFoundrySkill(installed.lock, installed.installedVersion);
+    return { ...base, ...latest };
 }
 
 // Installing the Foundry skill runs `npx skills add …`, which needs both git
@@ -249,7 +449,7 @@ function commandAvailable(cmd) {
             // Single command string (no args array) so `shell: true` doesn't trip
             // Node's DEP0190 warning. `cmd` is a hardcoded literal, never user input.
             child = spawn(`${cmd} --version`, {
-                cwd: EXT_DIR,
+                cwd: skillsCwd(),
                 shell: true,
                 windowsHide: true,
                 env: process.env,
@@ -921,6 +1121,12 @@ function createRequestHandler(instanceId) {
                 hasAgent,
                 initialized: hasAzure || hasAgent,
             });
+        }
+
+        // Report installed/latest status for the user-scoped Foundry skill.
+        if (method === "GET" && path === "/api/skills/status") {
+            const status = await checkFoundrySkillStatus();
+            return sendJson(res, 200, status);
         }
 
         // Report whether the prerequisites for the Foundry skill are available

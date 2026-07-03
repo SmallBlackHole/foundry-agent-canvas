@@ -30,6 +30,13 @@ const state = {
         framework: "Microsoft Agent Framework", // SDK/framework phrase in the prompt
         idea: "", // purpose phrase; empty => "single-purpose"
     },
+    skill: {
+        status: "idle", // idle | checking | missing | outdated | latest | unknown | installing | updating
+        installedVersion: "",
+        latestVersion: "",
+        summary: "",
+        prereqs: null,
+    },
     // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
     folds: { resources: true, deploy: true },
     // Hosted-agent region availability for the selected project.
@@ -64,8 +71,8 @@ async function postJSON(url, body) {
     return res.json();
 }
 
-// Run the non-LLM skills install via the backend and reflect status inline next
-// to the "Install latest Foundry Skills" bubble. No chat turn.
+// Check and run the non-LLM Foundry Skills install/update via the backend, then
+// reflect status inline next to the action. No chat turn.
 //
 // Installing shells out to `npx skills add …`, which needs git + npx (Node.js)
 // on PATH. We check these first and, when one is missing, show guidance instead
@@ -92,6 +99,121 @@ function missingPrereqLabels(p) {
     if (!p || !p.git) missing.push("Git");
     if (!p || !p.npx) missing.push("Node.js (npx)");
     return missing;
+}
+
+const SKILL_STATUS_LABELS = {
+    latest: "The latest Foundry Skills are already installed.",
+    outdated: "A newer version of Foundry Skills is available.",
+    missing: "",
+    unknown: "Could not check the Foundry Skills version.",
+};
+
+let skillStatusRequest = null;
+
+function normalizeSkillStatus(data) {
+    const known = new Set(["missing", "outdated", "latest", "unknown"]);
+    const status = known.has(data?.status) ? data.status : "unknown";
+    return {
+        status,
+        installedVersion: data?.installedVersion || "",
+        latestVersion: data?.latestVersion || "",
+        summary: data?.summary || SKILL_STATUS_LABELS[status] || "",
+        prereqs: data?.prereqs || null,
+    };
+}
+
+function skillVersionSuffix(s) {
+    if (s.installedVersion && s.latestVersion && s.installedVersion !== s.latestVersion) {
+        return ` Installed ${s.installedVersion}; latest ${s.latestVersion}.`;
+    }
+    return "";
+}
+
+function latestSkillSummary(s) {
+    const version = s.latestVersion || s.installedVersion;
+    return version
+        ? `The latest Foundry Skills are already installed (version ${version}).`
+        : SKILL_STATUS_LABELS.latest;
+}
+
+function setSkillState(next) {
+    state.skill = { ...state.skill, ...next };
+    renderSkillInstallState();
+}
+
+function renderSkillInstallState() {
+    const btn = document.getElementById("prepPrereqs");
+    const status = document.getElementById("skillStatus");
+    if (!btn || !status) return;
+
+    const s = state.skill;
+    btn.hidden = false;
+    btn.disabled = false;
+    btn.dataset.busy = "0";
+    status.className = "init-skill-status";
+    status.textContent = "";
+
+    if (s.status === "checking") {
+        btn.hidden = true;
+        status.className = "init-skill-status is-loading";
+        status.textContent = "Checking Foundry Skills...";
+        return;
+    }
+    if (s.status === "latest") {
+        btn.textContent = "Install Foundry Skills";
+        btn.hidden = true;
+        status.className = "init-skill-status is-ok";
+        status.textContent = s.summary || latestSkillSummary(s);
+        return;
+    }
+    if (s.status === "outdated") {
+        btn.textContent = "Update Foundry Skills";
+        status.className = "init-skill-status is-warn";
+        status.textContent = (s.summary || SKILL_STATUS_LABELS.outdated) + skillVersionSuffix(s);
+        return;
+    }
+    if (s.status === "installing" || s.status === "updating") {
+        const updating = s.status === "updating";
+        btn.textContent = updating ? "Updating..." : "Installing...";
+        btn.disabled = true;
+        btn.dataset.busy = "1";
+        status.className = "init-skill-status is-loading";
+        status.textContent = updating ? "Updating Foundry Skills..." : "Installing Foundry Skills...";
+        return;
+    }
+    if (s.status === "unknown") {
+        btn.textContent = s.installedVersion ? "Update Foundry Skills" : "Install Foundry Skills";
+        status.className = "init-skill-status is-err";
+        status.textContent = s.summary || SKILL_STATUS_LABELS.unknown;
+        return;
+    }
+
+    btn.textContent = "Install Foundry Skills";
+}
+
+async function loadSkillStatus(force = false) {
+    if (skillStatusRequest) return skillStatusRequest;
+    if (!force && state.skill.status !== "idle") {
+        renderSkillInstallState();
+        return null;
+    }
+    setSkillState({ status: "checking", summary: "" });
+    skillStatusRequest = (async () => {
+        try {
+            const data = await getJSON("/api/skills/status");
+            state.skill = { ...state.skill, ...normalizeSkillStatus(data) };
+        } catch {
+            state.skill = {
+                ...state.skill,
+                status: "unknown",
+                summary: "Could not check the Foundry Skills version.",
+            };
+        } finally {
+            skillStatusRequest = null;
+            renderSkillInstallState();
+        }
+    })();
+    return skillStatusRequest;
 }
 
 // Build/refresh the inline guidance panel that lists each prerequisite with its
@@ -213,16 +335,9 @@ async function openPrereqDownload(e, tool, url) {
 
 async function installSkills() {
     const btn = document.getElementById("prepPrereqs");
-    const status = document.getElementById("skillStatus");
     if (btn?.dataset.busy === "1") return;
-    if (btn) {
-        btn.dataset.busy = "1";
-        btn.disabled = true;
-    }
-    if (status) {
-        status.className = "init-skill-status is-loading";
-        status.textContent = "Checking prerequisites…";
-    }
+    const installingStatus = state.skill.status === "outdated" ? "updating" : "installing";
+    setSkillState({ status: installingStatus, summary: "" });
     hidePrereqGuide();
     try {
         // 1) Prerequisites must be present before we shell out to npx: git + npx
@@ -236,20 +351,18 @@ async function installSkills() {
         }
         if (prereqs && !prereqsSatisfied(prereqs)) {
             const missing = missingPrereqLabels(prereqs);
-            if (status) {
-                status.className = "init-skill-status is-err";
-                status.textContent = "\u2717 Missing: " + missing.join(", ");
-            }
+            setSkillState({
+                status: "unknown",
+                summary: "Missing prerequisites: " + missing.join(", ") + ".",
+                prereqs,
+            });
             renderPrereqGuide(prereqs);
             toast("Complete " + missing.join(" & ") + " to continue");
             return;
         }
 
         // 2) Prereqs OK → run the install.
-        if (status) {
-            status.className = "init-skill-status is-loading";
-            status.textContent = "Installing…";
-        }
+        setSkillState({ status: installingStatus, prereqs });
         const res = await fetch("/api/skills/install", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -259,36 +372,37 @@ async function installSkills() {
         const data = await res.json();
         // Backend guard may still report missing prereqs (fail-open path above).
         if (!data.ok && data.prereqs && !prereqsSatisfied(data.prereqs)) {
-            if (status) {
-                status.className = "init-skill-status is-err";
-                status.textContent = "\u2717 " + (data.summary || "Missing prerequisites");
-            }
+            setSkillState({
+                status: "unknown",
+                summary: data.summary || "Missing prerequisites.",
+                prereqs: data.prereqs,
+            });
             renderPrereqGuide(data.prereqs);
             toast("Complete the missing prerequisites to continue");
             return;
         }
         const ok = !!data.ok;
         const msg = data.summary || (ok ? "Done" : "Install failed");
-        if (status) {
-            status.className = "init-skill-status " + (ok ? "is-ok" : "is-err");
-            status.textContent = (ok ? "\u2713 " : "\u2717 ") + msg;
-        }
-        toast(ok ? "Foundry Skills ready \u2713" : "Skills install failed");
+        setSkillState(ok
+            ? {
+                status: "latest",
+                summary: "The latest Foundry Skills are already installed.",
+                installedVersion: data.installedVersion || state.skill.latestVersion || state.skill.installedVersion,
+            }
+            : {
+                status: "unknown",
+                summary: msg,
+            });
+        toast(ok ? "Foundry Skills are ready" : "Skills install failed");
     } catch (err) {
         const isNetwork = err instanceof TypeError || /failed to fetch/i.test(err.message || "");
         const msg = isNetwork
             ? "Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again."
             : "Could not install: " + err.message;
-        if (status) {
-            status.className = "init-skill-status is-err";
-            status.textContent = "\u2717 " + msg;
-        }
+        setSkillState({ status: "unknown", summary: msg });
         toast(msg);
     } finally {
-        if (btn) {
-            btn.dataset.busy = "0";
-            btn.disabled = false;
-        }
+        renderSkillInstallState();
     }
 }
 
@@ -583,6 +697,8 @@ function renderInit() {
     if (panel) panel.hidden = !state.init.open;
     if (!state.init.open) return;
 
+    renderSkillInstallState();
+    loadSkillStatus();
     syncInitPrompt();
 }
 function menuMsg(text, variant) {
@@ -2190,7 +2306,7 @@ async function init() {
             if (b.project && b.project.name) {
                 setProjectLabels(b.project.name);
                 state.project.endpoint = b.project.endpoint || "";
-            } else if (state.identity.signedIn) {
+            } else {
                 // Signed in but no project resolved in the selected
                 // subscription — show a neutral placeholder consistent with
                 // the (empty) project list rather than a stale default.
