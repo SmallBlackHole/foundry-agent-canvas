@@ -66,6 +66,151 @@ async function postJSON(url, body) {
 
 // Run the non-LLM skills install via the backend and reflect status inline next
 // to the "Install latest Foundry Skills" bubble. No chat turn.
+//
+// Installing shells out to `npx skills add …`, which needs git + npx (Node.js)
+// on PATH. We check these first and, when one is missing, show guidance instead
+// of firing the command (which would only surface a cryptic error).
+const PREREQ_INFO = {
+    git: {
+        label: "Git",
+        url: "https://git-scm.com/downloads",
+    },
+    npx: {
+        label: "Node.js",
+        url: "https://nodejs.org/en/download",
+    },
+};
+
+// Whether every prerequisite reported by the backend is satisfied.
+function prereqsSatisfied(p) {
+    return !!(p && p.git && p.npx);
+}
+
+// Missing prerequisites as friendly labels, in setup order.
+function missingPrereqLabels(p) {
+    const missing = [];
+    if (!p || !p.git) missing.push("Git");
+    if (!p || !p.npx) missing.push("Node.js (npx)");
+    return missing;
+}
+
+// Build/refresh the inline guidance panel that lists each prerequisite with its
+// detected status and, when missing, an install link.
+function renderPrereqGuide(prereqs) {
+    const guide = document.getElementById("prereqGuide");
+    if (!guide) return;
+    guide.innerHTML = "";
+
+    const keys = Object.keys(PREREQ_INFO);
+    const missing = keys.filter((k) => !prereqs || !prereqs[k]);
+
+    const head = document.createElement("div");
+    head.className = "prereq-head";
+    const icon = document.createElement("span");
+    icon.className = "prereq-head-icon";
+    icon.innerHTML =
+        '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8.982 1.566a1.13 1.13 0 0 0-1.964 0L.165 13.233c-.457.778.091 1.767.982 1.767h13.706c.89 0 1.438-.99.982-1.767L8.982 1.566ZM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5Zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg>';
+    const title = document.createElement("span");
+    title.className = "prereq-head-title";
+    title.textContent = missing.length
+        ? "Install prerequisites"
+        : "Prerequisites ready";
+    head.append(icon, title);
+    guide.appendChild(head);
+
+    const desc = document.createElement("p");
+    desc.className = "prereq-desc";
+    desc.textContent =
+        "Git and Node.js are required to install the Foundry skill.";
+    guide.appendChild(desc);
+
+    const list = document.createElement("ul");
+    list.className = "prereq-list";
+    for (const key of keys) {
+        const info = PREREQ_INFO[key];
+        const ok = !!(prereqs && prereqs[key]);
+        const li = document.createElement("li");
+        li.className = "prereq-item " + (ok ? "is-ok" : "is-missing");
+
+        const badge = document.createElement("span");
+        badge.className = "prereq-badge";
+        badge.textContent = ok ? "\u2713" : "\u2717";
+
+        const main = document.createElement("div");
+        main.className = "prereq-main";
+        const name = document.createElement("div");
+        name.className = "prereq-name";
+        name.textContent = info.label;
+        main.append(name);
+
+        li.append(badge, main);
+
+        if (!ok) {
+            const link = document.createElement("a");
+            link.className = "prereq-link";
+            link.href = info.url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.textContent = "Install";
+            link.setAttribute("aria-label", "Install " + info.label);
+            // Route through the backend — the sandboxed canvas iframe usually
+            // swallows target="_blank" (see openPrereqDownload).
+            link.addEventListener("click", (e) => openPrereqDownload(e, key, info.url));
+            li.appendChild(link);
+        }
+        list.appendChild(li);
+    }
+    guide.appendChild(list);
+
+    const foot = document.createElement("div");
+    foot.className = "prereq-foot";
+    const recheck = document.createElement("button");
+    recheck.type = "button";
+    recheck.className = "prereq-recheck";
+    recheck.textContent = "Re-check & install";
+    recheck.addEventListener("click", () => installSkills());
+    const hint = document.createElement("span");
+    hint.className = "prereq-foot-hint";
+    hint.textContent = "After installing a tool, restart the Copilot app, then re-check.";
+    foot.append(recheck, hint);
+    guide.appendChild(foot);
+
+    guide.hidden = false;
+}
+
+function hidePrereqGuide() {
+    const guide = document.getElementById("prereqGuide");
+    if (guide) {
+        guide.hidden = true;
+        guide.innerHTML = "";
+    }
+}
+
+// The canvas renders in a sandboxed iframe that usually swallows
+// target="_blank", so external "Install <tool>" clicks are routed through the
+// backend, which opens the page in the user's default browser. Falls back to a
+// new tab, then to copying the URL, so the user is never stuck.
+async function openPrereqDownload(e, tool, url) {
+    e.preventDefault();
+    try {
+        const r = await postJSON("/api/skills/open-download", { tool });
+        if (r && r.ok) {
+            toast("Opening the download page…");
+            return;
+        }
+        throw new Error("backend open failed");
+    } catch {
+        const win = window.open(url, "_blank", "noopener");
+        if (win) return;
+        try {
+            await navigator.clipboard?.writeText(url);
+            toast("Couldn't open a browser — link copied, paste it to install.");
+        } catch {
+            toast("Open this URL to install: " + url);
+        }
+    }
+}
+
 async function installSkills() {
     const btn = document.getElementById("prepPrereqs");
     const status = document.getElementById("skillStatus");
@@ -76,9 +221,35 @@ async function installSkills() {
     }
     if (status) {
         status.className = "init-skill-status is-loading";
-        status.textContent = "Installing…";
+        status.textContent = "Checking prerequisites…";
     }
+    hidePrereqGuide();
     try {
+        // 1) Prerequisites must be present before we shell out to npx: git + npx
+        //    for the install. If the check itself fails (e.g. older backend), fail
+        //    open and let the install run — the backend guards the same condition.
+        let prereqs = null;
+        try {
+            prereqs = await getJSON("/api/skills/prereqs");
+        } catch {
+            prereqs = null;
+        }
+        if (prereqs && !prereqsSatisfied(prereqs)) {
+            const missing = missingPrereqLabels(prereqs);
+            if (status) {
+                status.className = "init-skill-status is-err";
+                status.textContent = "\u2717 Missing: " + missing.join(", ");
+            }
+            renderPrereqGuide(prereqs);
+            toast("Complete " + missing.join(" & ") + " to continue");
+            return;
+        }
+
+        // 2) Prereqs OK → run the install.
+        if (status) {
+            status.className = "init-skill-status is-loading";
+            status.textContent = "Installing…";
+        }
         const res = await fetch("/api/skills/install", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -86,6 +257,16 @@ async function installSkills() {
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
+        // Backend guard may still report missing prereqs (fail-open path above).
+        if (!data.ok && data.prereqs && !prereqsSatisfied(data.prereqs)) {
+            if (status) {
+                status.className = "init-skill-status is-err";
+                status.textContent = "\u2717 " + (data.summary || "Missing prerequisites");
+            }
+            renderPrereqGuide(data.prereqs);
+            toast("Complete the missing prerequisites to continue");
+            return;
+        }
         const ok = !!data.ok;
         const msg = data.summary || (ok ? "Done" : "Install failed");
         if (status) {

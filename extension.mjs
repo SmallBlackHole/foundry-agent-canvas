@@ -235,6 +235,117 @@ function summarizeSkillOutput(raw, code) {
     return lastErr || lines[0] || `npx exited with code ${code}`;
 }
 
+// Installing the Foundry skill runs `npx skills add …`, which needs both git
+// (to fetch the skill repo) and npx (bundled with Node.js) available on PATH.
+// Probe each by running `<cmd> --version` through the shell — this mirrors how
+// the install itself resolves the command (npx.cmd on Windows, npx on *nix) so
+// the check can't disagree with the real install.
+const PREREQ_PROBE_TIMEOUT_MS = 8_000;
+
+function commandAvailable(cmd) {
+    return new Promise((resolve) => {
+        let child;
+        try {
+            // Single command string (no args array) so `shell: true` doesn't trip
+            // Node's DEP0190 warning. `cmd` is a hardcoded literal, never user input.
+            child = spawn(`${cmd} --version`, {
+                cwd: EXT_DIR,
+                shell: true,
+                windowsHide: true,
+                env: process.env,
+            });
+        } catch {
+            resolve(false);
+            return;
+        }
+        let settled = false;
+        const done = (v) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            try {
+                child.kill();
+            } catch {
+                /* ignore */
+            }
+            resolve(v);
+        };
+        const timer = setTimeout(() => done(false), PREREQ_PROBE_TIMEOUT_MS);
+        // Drain output so the child can exit; we only care about the exit code.
+        child.stdout?.on("data", () => {});
+        child.stderr?.on("data", () => {});
+        child.on("error", () => done(false));
+        child.on("close", (code) => done(code === 0));
+    });
+}
+
+// Report which skill-install prerequisites are present. git + npx are what the
+// `npx skills add …` install itself needs on PATH.
+async function checkSkillPrereqs() {
+    const [git, npx] = await Promise.all([
+        commandAvailable("git"),
+        commandAvailable("npx"),
+    ]);
+    return { git, npx };
+}
+
+// Whether every skill prerequisite is satisfied.
+function prereqsSatisfied(p) {
+    return !!(p && p.git && p.npx);
+}
+
+// Human-readable list of the missing prerequisites, in setup order.
+function missingPrereqs(p) {
+    const missing = [];
+    if (!p.git) missing.push("git");
+    if (!p.npx) missing.push("npx");
+    return missing;
+}
+
+// Official download pages for each prerequisite. Hardcoded allowlist — the
+// open-download endpoint maps a tool key to one of these and never opens a URL
+// supplied by the client, so shelling out to the OS opener stays injection-safe.
+const PREREQ_DOWNLOAD_URLS = {
+    git: "https://git-scm.com/downloads",
+    npx: "https://nodejs.org/en/download",
+};
+
+// Open a URL in the user's default browser. The canvas renders inside a
+// sandboxed iframe that usually swallows target="_blank", so external "Install
+// <tool>" links are routed here instead. `url` is always one of the constants
+// above (no shell-unsafe characters), so the platform openers are safe.
+function openExternalUrl(url) {
+    return new Promise((resolve) => {
+        let child;
+        try {
+            if (process.platform === "win32") {
+                // `start` is a cmd builtin; the empty "" is its window-title arg.
+                child = spawn("cmd", ["/c", "start", "", url], { windowsHide: true });
+            } else if (process.platform === "darwin") {
+                child = spawn("open", [url]);
+            } else {
+                child = spawn("xdg-open", [url]);
+            }
+        } catch (err) {
+            resolve({ ok: false, error: String(err?.message ?? err) });
+            return;
+        }
+        let settled = false;
+        const done = (r) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(r);
+        };
+        // The opener detaches immediately; a clean spawn means it launched. Don't
+        // block on the child (xdg-open/open may linger). Fall back after a beat.
+        const timer = setTimeout(() => done({ ok: true, url }), 500);
+        child.on("spawn", () => done({ ok: true, url }));
+        child.on("error", (err) => done({ ok: false, error: String(err?.message ?? err) }));
+        child.unref?.();
+    });
+}
+
 
 // Default selected Foundry project (data-plane endpoint). Empty by default;
 // overridable per instance via the canvas open() input or resolved at runtime
@@ -812,9 +923,26 @@ function createRequestHandler(instanceId) {
             });
         }
 
+        // Report whether the prerequisites for the Foundry skill are available
+        // (git + npx), so the canvas can guide the user before it shells out to
+        // `npx skills add …`.
+        if (method === "GET" && path === "/api/skills/prereqs") {
+            const prereqs = await checkSkillPrereqs();
+            return sendJson(res, 200, { ok: prereqsSatisfied(prereqs), ...prereqs });
+        }
+
         // Install/upgrade the microsoft-foundry skill directly (no chat turn).
         if (method === "POST" && path === "/api/skills/install") {
             try {
+                // Guard: never shell out to npx when a prerequisite is missing —
+                // return actionable guidance instead of a cryptic command error.
+                const prereqs = await checkSkillPrereqs();
+                if (!prereqsSatisfied(prereqs)) {
+                    const missing = missingPrereqs(prereqs);
+                    const summary = `Missing prerequisite${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}. Complete ${missing.join(" and ")}, then try again.`;
+                    await session.log(`Skills install blocked — missing prerequisites: ${missing.join(", ")}`, { level: "info" });
+                    return sendJson(res, 200, { ok: false, code: -1, missing, prereqs, summary });
+                }
                 const result = await installFoundrySkill();
                 if (!result.ok) {
                     await session.log(`Skills install failed: ${result.summary}`, { level: "error" });
@@ -823,6 +951,31 @@ function createRequestHandler(instanceId) {
             } catch (err) {
                 await session.log(`Skills install error: ${err?.message ?? err}`, { level: "error" });
                 return sendJson(res, 500, { ok: false, code: -1, summary: String(err?.message ?? err) });
+            }
+        }
+
+        // Open a prerequisite's official download page in the user's default
+        // browser. The canvas iframe usually blocks target="_blank", so the
+        // "Install <tool>" links POST here. Accepts only a known tool key
+        // (git|npx) — never a client-supplied URL.
+        if (method === "POST" && path === "/api/skills/open-download") {
+            try {
+                const raw = await readBody(req);
+                let tool = "";
+                try {
+                    tool = String(JSON.parse(raw || "{}").tool || "");
+                } catch {
+                    tool = "";
+                }
+                const url = PREREQ_DOWNLOAD_URLS[tool];
+                if (!url) return sendJson(res, 400, { ok: false, error: "unknown tool" });
+                const result = await openExternalUrl(url);
+                if (!result.ok) {
+                    await session.log(`Open download page failed (${tool}): ${result.error}`, { level: "error" });
+                }
+                return sendJson(res, result.ok ? 200 : 500, { ...result, url });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }
         }
 
