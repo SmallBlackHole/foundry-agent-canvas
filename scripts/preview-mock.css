@@ -1,0 +1,72 @@
+/* Dev-only preview controls. Served only by scripts/preview.mjs. */
+.preview-mock {
+    position: fixed; right: 14px; bottom: 14px; z-index: 80;
+    width: min(312px, calc(100vw - 28px));
+    border-radius: 10px;
+    background: #161b22;
+    color: #e6edf3;
+    box-shadow: 0 14px 36px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.06);
+    padding: 10px;
+}
+.preview-mock-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.preview-mock-title {
+    display: flex; align-items: center; gap: 10px;
+    min-width: 0;
+    font-size: 14px; line-height: 18px; font-weight: 700;
+}
+.preview-mock-icon {
+    display: inline-flex; color: #7ee787; flex: 0 0 auto;
+}
+.preview-mock-toggle {
+    display: inline-grid; place-items: center;
+    width: 26px; height: 26px; flex: 0 0 auto;
+    border: 1px solid #30363d; border-radius: 6px;
+    background: #0d1117; color: #8b949e;
+    cursor: pointer;
+}
+.preview-mock-toggle:hover {
+    color: #e6edf3; border-color: #57606a;
+}
+.preview-mock-toggle svg {
+    transition: transform .12s ease;
+}
+.preview-mock.is-collapsed .preview-mock-toggle svg {
+    transform: rotate(180deg);
+}
+.preview-mock-body {
+    display: flex; flex-direction: column; gap: 8px;
+    padding-top: 10px;
+}
+.preview-mock.is-collapsed .preview-mock-body {
+    display: none;
+}
+.preview-mock-section {
+    display: flex; flex-direction: column; gap: 6px;
+}
+.preview-mock-label {
+    color: #8b949e; font-size: 12px; line-height: 16px;
+}
+.preview-mock-check {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; line-height: 18px; font-weight: 500;
+}
+.preview-mock-check input {
+    width: 16px; height: 16px; flex: 0 0 auto;
+    accent-color: #2f81f7;
+}
+.preview-mock-select {
+    width: 100%;
+    border: 1px solid #30363d; border-radius: 8px;
+    background: #0d1117; color: #e6edf3;
+    font: inherit; font-size: 13px; line-height: 18px;
+    padding: 5px 8px;
+}
+.preview-mock-summary {
+    color: #7ee787; font-size: 12px; line-height: 16px;
+    word-break: break-word;
+}
+.preview-mock-hint {
+    color: #8b949e; font-size: 12px; line-height: 16px;
+}

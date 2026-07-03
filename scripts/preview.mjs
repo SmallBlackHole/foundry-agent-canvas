@@ -26,6 +26,8 @@ import {
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");
 const PROTOCOL_REF = join(ROOT, "references", "responses-vs-invocations.md");
+const PREVIEW_MOCK_JS = join(ROOT, "scripts", "preview-mock.js");
+const PREVIEW_MOCK_CSS = join(ROOT, "scripts", "preview-mock.css");
 
 const HOST = valueFor("--host") || process.env.HOST || "127.0.0.1";
 const PORT = Number(valueFor("--port") || process.env.PORT || 0);
@@ -75,6 +77,36 @@ const state = {
     bootstrapped: true,
     model: { name: "gpt-5", color: "#10a37f" },
 };
+
+function mockBool(url, key, fallback = true) {
+    const raw = url.searchParams.get(key);
+    if (raw == null) return fallback;
+    return raw !== "false";
+}
+
+function mockIdentity(url) {
+    if (!mockBool(url, "signedIn", true)) {
+        return {
+            signedIn: false,
+            account: "",
+            tenantId: "",
+            subscriptionId: "",
+            subscriptionName: "",
+        };
+    }
+    return identity;
+}
+
+function mockProjectState(url) {
+    if (!mockBool(url, "signedIn", true)) return { name: "", endpoint: "" };
+    return { name: selectedProject.name, endpoint: selectedProject.endpoint };
+}
+
+function mockSkillPrereqs(url) {
+    const git = mockBool(url, "git", true);
+    const npx = mockBool(url, "npx", true);
+    return { ok: git && npx, git, npx };
+}
 
 const previewDeployments = models
     .filter((m) => m.recommended)
@@ -183,11 +215,29 @@ function publicFile(pathname) {
 
 function serveStatic(req, res) {
     const url = new URL(req.url, `http://${HOST}`);
+    if (url.pathname === "/__preview-mock.js") {
+        res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+        res.end(readFileSync(PREVIEW_MOCK_JS));
+        return true;
+    }
+    if (url.pathname === "/__preview-mock.css") {
+        res.writeHead(200, { "Content-Type": "text/css; charset=utf-8" });
+        res.end(readFileSync(PREVIEW_MOCK_CSS));
+        return true;
+    }
     const file = publicFile(url.pathname);
     if (!file || !existsSync(file)) return false;
     const ext = extname(file);
     res.writeHead(200, { "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream" });
-    res.end(readFileSync(file));
+    if (ext === ".html" && (url.pathname === "/" || url.pathname === "/index.html")) {
+        const html = readFileSync(file, "utf8").replace(
+            '<script src="app.js"></script>',
+            '<link rel="stylesheet" href="/__preview-mock.css">\n        <script src="/__preview-mock.js"></script>\n        <script src="app.js"></script>',
+        );
+        res.end(html);
+    } else {
+        res.end(readFileSync(file));
+    }
     return true;
 }
 
@@ -218,7 +268,13 @@ async function handleApi(req, res, url) {
     const method = req.method || "GET";
 
     if (method === "GET" && path === "/api/state") {
-        return sendJson(res, 200, { ...state, deployPrompt: DEPLOY_PROMPT, inspectPrompt: INSPECT_PROMPT });
+        return sendJson(res, 200, {
+            ...state,
+            preview: true,
+            project: mockProjectState(url),
+            deployPrompt: DEPLOY_PROMPT,
+            inspectPrompt: INSPECT_PROMPT,
+        });
     }
 
     if (method === "GET" && path === "/api/project") {
@@ -260,24 +316,38 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/identity") {
-        return sendJson(res, 200, { ok: true, ...identity });
+        return sendJson(res, 200, { ok: true, ...mockIdentity(url) });
     }
 
     if (method === "GET" && path === "/api/bootstrap") {
+        const id = mockIdentity(url);
+        if (!id.signedIn) {
+            return sendJson(res, 200, {
+                ok: true,
+                identity: id,
+                project: null,
+                resolved: false,
+                subscriptionId: "",
+                preview: true,
+            });
+        }
         return sendJson(res, 200, {
             ok: true,
-            identity,
+            identity: id,
             project: { name: selectedProject.name, endpoint: selectedProject.endpoint },
             resolved: true,
-            subscriptionId: identity.subscriptionId,
+            subscriptionId: id.subscriptionId,
+            preview: true,
         });
     }
 
     if (method === "GET" && path === "/api/subscriptions") {
+        if (!mockIdentity(url).signedIn) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
         return sendJson(res, 200, { ok: true, items: subscriptions });
     }
 
     if (method === "GET" && path === "/api/projects") {
+        if (!mockIdentity(url).signedIn) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
         return sendJson(res, 200, { ok: true, items: projects });
     }
 
@@ -303,6 +373,9 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "POST" && path === "/api/signin") {
+        if (!mockBool(url, "az", true)) {
+            return sendJson(res, 200, { ok: false, reason: "az_missing" });
+        }
         return sendJson(res, 200, { ok: true, sessionId: "preview-signin", mode: "preview" });
     }
 
@@ -338,7 +411,64 @@ async function handleApi(req, res, url) {
         return sendJson(res, 200, projectInit());
     }
 
+    if (method === "GET" && path === "/api/skills/status") {
+        const scenario = url.searchParams.get("skillStatus") || "missing";
+        const prereqs = mockSkillPrereqs(url);
+        const scenarios = {
+            missing: {
+                ok: true,
+                status: "missing",
+                installed: false,
+                installedVersion: "",
+                latestVersion: "",
+                summary: "Foundry Skills are not installed yet.",
+            },
+            outdated: {
+                ok: true,
+                status: "outdated",
+                installed: true,
+                installedVersion: "1.1.29",
+                latestVersion: "1.1.30",
+                summary: "A newer version of Foundry Skills is available.",
+            },
+            latest: {
+                ok: true,
+                status: "latest",
+                installed: true,
+                installedVersion: "1.1.30",
+                latestVersion: "1.1.30",
+                summary: "The latest Foundry Skills are already installed (version 1.1.30).",
+            },
+            unknown: {
+                ok: false,
+                status: "unknown",
+                installed: true,
+                installedVersion: "1.1.30",
+                latestVersion: "",
+                summary: "Unable to access GitHub to verify whether Foundry Skills are up to date.",
+            },
+        };
+        return sendJson(res, 200, { prereqs, ...(scenarios[scenario] || scenarios.missing) });
+    }
+
+    if (method === "GET" && path === "/api/skills/prereqs") {
+        return sendJson(res, 200, mockSkillPrereqs(url));
+    }
+
     if (method === "POST" && path === "/api/skills/install") {
+        const prereqs = mockSkillPrereqs(url);
+        if (!prereqs.ok) {
+            const missing = [];
+            if (!prereqs.git) missing.push("git");
+            if (!prereqs.npx) missing.push("npx");
+            return sendJson(res, 200, {
+                ok: false,
+                code: -1,
+                missing,
+                prereqs,
+                summary: `Missing prerequisite${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`,
+            });
+        }
         return sendJson(res, 200, { ok: true, code: 0, summary: "Preview mode: command skipped" });
     }
 
