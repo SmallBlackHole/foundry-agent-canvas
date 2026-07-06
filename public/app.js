@@ -2172,7 +2172,7 @@ async function init() {
                     signedIn: !!b.identity.signedIn,
                     account: b.identity.account || "",
                     tenantId: b.identity.tenantId || "",
-                    subscriptionId: b.identity.subscriptionId || "",
+                    subscriptionId: b.identity.subscriptionId || b.subscriptionId || "",
                     subscriptionName: b.identity.subscriptionName || "",
                 };
             }

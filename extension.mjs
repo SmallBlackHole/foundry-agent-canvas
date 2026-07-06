@@ -497,6 +497,7 @@ async function bootstrapInstance(entry) {
             const subId = identity.subscriptionId || getDefaultSubscriptionId();
             if (subId) {
                 entry.state.subscriptionId = subId;
+                identity.subscriptionId = subId;
                 const proj = await listProjects(subId);
                 if (proj.ok && proj.data.length) {
                     const first = proj.data[0];
