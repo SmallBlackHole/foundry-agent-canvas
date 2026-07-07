@@ -236,7 +236,31 @@
                                 <div class="row-title">Skills</div>
                                 <div class="row-sub">Define behaviors through structured instructions</div>
                             </div>
-                            <button class="add-btn" data-soon="Skills" type="button" aria-label="Add skill">+</button>
+                            <div class="skill-select">
+                                <button class="add-btn" id="skillAdd" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Add skill">+</button>
+                                <div class="model-menu" id="skillMenu" role="menu" hidden>
+                                    <div class="menu-section">
+                                        <div class="menu-head">
+                                            <div class="menu-label">Skills in <span id="skillMenuProject">your project</span></div>
+                                            <button class="menu-refresh" id="skillRefresh" type="button" aria-label="Refresh skills" title="Refresh">
+                                                <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 6V3L8 7l4 4V8a4 4 0 1 1-4 4H6a6 6 0 1 0 6-6Z"/></svg>
+                                            </button>
+                                        </div>
+                                        <div id="skillList"></div>
+                                    </div>
+                                    <div class="menu-sep"></div>
+                                    <div class="menu-section">
+                                        <button class="menu-deploy" id="createSkillLink" type="button">
+                                            <span class="menu-deploy-plus">+</span>
+                                            <span class="menu-deploy-text">
+                                                <span class="menu-deploy-title">Create new skill</span>
+                                                <span class="menu-deploy-sub">Open in Foundry Portal</span>
+                                            </span>
+                                            <svg viewBox="0 0 16 16" width="14" height="14" class="chev-right"><path fill="currentColor" d="M9 2h5v5h-1.5V4.06L7.28 9.28l-1.06-1.06L11.44 3H9V2ZM3.5 4.5H7V3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V9h-1.5v3.5h-8v-8Z"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

@@ -298,6 +298,39 @@ export async function listToolboxes(endpoint) {
     }
 }
 
+// ─── Skills ─────────────────────────────────────────────────────────────────
+// Skills are project-scoped structured instructions. The data-plane API uses
+// its own preview feature header, similar to toolboxes.
+
+export async function listSkills(endpoint) {
+    try {
+        const json = await cached(`skills:${endpoint}`, async () => {
+            const token = await getToken();
+            const url = `${normalizeEndpoint(endpoint)}/skills?api-version=v1`;
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json",
+                    "Foundry-Features": "Skills=V1Preview",
+                },
+            });
+            if (!res.ok) {
+                const err = new Error(`HTTP ${res.status}`);
+                err.status = res.status;
+                throw err;
+            }
+            return res.json();
+        });
+        const data = (json?.data || []).map((s) => ({
+            name: s.name,
+            defaultVersion: s.default_version || "",
+        }));
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, reason: reasonFor(err) };
+    }
+}
+
 // ─── RAI policies (guardrails) ──────────────────────────────────────────────
 // Guardrails are scoped to the AI Services *account*, not the project. We
 // resolve the account name + resource group from the project list, then call

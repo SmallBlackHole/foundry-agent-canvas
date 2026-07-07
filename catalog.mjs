@@ -13,6 +13,10 @@ export const selectToolPrompt = (name) =>
 export const selectToolboxPrompt = (name) =>
     `Use the existing "${name}" Foundry Toolbox in my Foundry agent`;
 
+// Selecting a skill that already exists in the project.
+export const selectSkillPrompt = (name) =>
+    `Use the "${name}" skill in my Foundry agent`;
+
 // Selecting a guardrail (RAI policy) that already exists on the account.
 export const selectGuardrailPrompt = (name) =>
     `Use the "${name}" guardrail in my Foundry agent`;

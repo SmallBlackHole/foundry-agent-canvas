@@ -257,6 +257,7 @@ body {
 /* ---------------- Model dropdown ---------------- */
 .model-select { position: relative; }
 .tool-select { position: relative; }
+.skill-select { position: relative; }
 .guardrail-select { position: relative; }
 .menu-item .menu-ticon {
     width: 18px; height: 18px; border-radius: 5px; flex: 0 0 auto;

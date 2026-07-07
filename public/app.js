@@ -16,6 +16,7 @@ const state = {
     connectionsState: { status: "idle", items: [], source: null, reason: null },
     toolboxesState: { status: "idle", items: [], reason: null },
     guardrailsState: { status: "idle", items: [], reason: null },
+    skillsState: { status: "idle", items: [], reason: null },
     canvasDisconnected: false,
     // Project picker state.
     identity: { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" },
@@ -332,12 +333,14 @@ function renderBuild() {
     const pmSubValue = node.querySelector("#pmSubValue");
     if (pmSubValue && state.identity.subscriptionName) pmSubValue.textContent = state.identity.subscriptionName;
 
-    // Set portal links for "Deploy new model" / "Add or update toolbox" / "Create new guardrail".
+    // Set portal links for "Deploy new model" / "Add or update toolbox" / "Create new skill" / "Create new guardrail".
     const modelLink = node.querySelector("#deployNewModelLink");
     const toolLink = node.querySelector("#addToolboxLink");
+    const skillLink = node.querySelector("#createSkillLink");
     const guardrailLink = node.querySelector("#createGuardrailLink");
     if (modelLink) modelLink.addEventListener("click", () => { closeModelMenu(); openPortalPage("build/models/deployments"); });
     if (toolLink) toolLink.addEventListener("click", () => { closeToolMenu(); openPortalPage("build/toolboxes"); });
+    if (skillLink) skillLink.addEventListener("click", () => { closeSkillMenu(); openPortalPage("build/tools"); });
     if (guardrailLink) guardrailLink.addEventListener("click", () => { closeGuardrailMenu(); openPortalPage("build/guardrails/list"); });
 
     root.replaceChildren(node);
@@ -345,6 +348,7 @@ function renderBuild() {
     // Populate the dropdown lists from whatever live state we already have.
     renderDeployList();
     renderToolboxList();
+    renderSkillList();
     renderGuardrailList();
     renderInit();
     renderFolds();
@@ -861,6 +865,44 @@ function renderGuardrailList() {
     }
 }
 
+function renderSkillList() {
+    const host = document.getElementById("skillList");
+    if (!host) return;
+    const st = state.skillsState;
+    host.replaceChildren();
+
+    if (st.status === "loading") return host.appendChild(menuMsg("Loading skills…", "loading"));
+    if (st.status === "error") {
+        return host.appendChild(
+            menuError(dataLoadError("skills", st.reason), dataLoadRetry(st.reason, () => loadSkills(true)), dataLoadRetryText(st.reason)),
+        );
+    }
+    if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No skills in this project", "empty"));
+
+    for (const s of st.items) {
+        const item = document.createElement("button");
+        item.className = "menu-item";
+        item.type = "button";
+        item.setAttribute("role", "menuitem");
+
+        const dot = document.createElement("span");
+        dot.className = "model-dot";
+        dot.style.background = "#8250df";
+        item.appendChild(dot);
+
+        const name = document.createElement("span");
+        name.className = "item-name";
+        name.textContent = s.name;
+        item.appendChild(name);
+
+        item.addEventListener("click", () => {
+            closeSkillMenu();
+            sendToChat(withProjectContext(s.prompt));
+        });
+        host.appendChild(item);
+    }
+}
+
 // Lazily fetch a toolbox's tools the first time it's expanded; cached per row.
 async function loadToolboxTools(t) {
     if (t.toolsStatus === "ready" || t.toolsStatus === "loading") return;
@@ -966,6 +1008,28 @@ async function loadGuardrails(force) {
     renderGuardrailList();
 }
 
+async function loadSkills(force) {
+    const st = state.skillsState;
+    if (!force && (st.status === "loading" || st.status === "ready")) return;
+    st.status = "loading";
+    renderSkillList();
+    try {
+        const data = await getJSON("/api/skills");
+        st.reason = data.reason || null;
+        if (data.ok === false) {
+            st.items = [];
+            st.status = "error";
+        } else {
+            st.items = Array.isArray(data.items) ? data.items : [];
+            st.status = "ready";
+        }
+    } catch (err) {
+        st.status = "error";
+        st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
+    }
+    renderSkillList();
+}
+
 function closeModelMenu() {
     const menu = document.getElementById("modelMenu");
     const btn = document.getElementById("modelAdd");
@@ -1019,13 +1083,30 @@ function toggleGuardrailMenu() {
     if (willOpen) loadGuardrails(false);
 }
 
+function closeSkillMenu() {
+    const menu = document.getElementById("skillMenu");
+    const btn = document.getElementById("skillAdd");
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function toggleSkillMenu() {
+    const menu = document.getElementById("skillMenu");
+    const btn = document.getElementById("skillAdd");
+    if (!menu) return;
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    if (btn) btn.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) loadSkills(false);
+}
+
 // ------------------------------------------------------- Project picker panel
 const NO_PROJECT_LABEL = "Select a project";
 
 function setProjectLabels(name) {
     const display = name || NO_PROJECT_LABEL;
     state.project = { ...state.project, name: name || "" };
-    for (const id of ["projectName", "menuProject", "toolMenuProject", "toolboxMenuProject", "guardrailMenuProject", "pmProjValue"]) {
+    for (const id of ["projectName", "menuProject", "toolMenuProject", "toolboxMenuProject", "skillMenuProject", "guardrailMenuProject", "pmProjValue"]) {
         const el = document.getElementById(id);
         if (el) el.textContent = display;
     }
@@ -1354,9 +1435,11 @@ function resetSelectors() {
     state.deploymentsState = { status: "idle", items: [], source: null, reason: null };
     state.toolboxesState = { status: "idle", items: [], reason: null };
     state.guardrailsState = { status: "idle", items: [], reason: null };
+    state.skillsState = { status: "idle", items: [], reason: null };
     renderDeployList();
     renderToolboxList();
     renderGuardrailList();
+    renderSkillList();
 }
 
 // ---- Subscriptions ----
@@ -2014,6 +2097,14 @@ root.addEventListener("click", (e) => {
         loadGuardrails(true);
         return;
     }
+    if (e.target.closest("#skillAdd")) {
+        toggleSkillMenu();
+        return;
+    }
+    if (e.target.closest("#skillRefresh")) {
+        loadSkills(true);
+        return;
+    }
     if (e.target.closest("#projectSwitch")) {
         toggleProjectMenu();
         return;
@@ -2151,6 +2242,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
     if (!e.target.closest(".model-select")) closeModelMenu();
     if (!e.target.closest(".tool-select")) closeToolMenu();
+    if (!e.target.closest(".skill-select")) closeSkillMenu();
     if (!e.target.closest(".guardrail-select")) closeGuardrailMenu();
     if (!e.target.closest(".project-switch")) closeProjectMenu();
 });

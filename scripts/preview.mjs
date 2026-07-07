@@ -17,6 +17,7 @@ import {
     providerColor,
     selectModelPrompt,
     selectToolboxPrompt,
+    selectSkillPrompt,
     toolConnections,
 } from "../catalog.mjs";
 
@@ -125,6 +126,12 @@ const previewToolboxTools = {
         { name: "Azure AI Search", type: "built-in" },
     ],
 };
+
+const previewSkills = [
+    { id: "greeting-skill", name: "Greeting Skill", prompt: selectSkillPrompt("Greeting Skill") },
+    { id: "summarization-skill", name: "Summarization Skill", prompt: selectSkillPrompt("Summarization Skill") },
+    { id: "code-review-skill", name: "Code Review Skill", prompt: selectSkillPrompt("Code Review Skill") },
+];
 
 const workIqVariants = [
     { entityId: "microsoft-copilot-chat-frontier", title: "Work IQ Copilot" },
@@ -285,6 +292,10 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/toolboxes") {
         return sendJson(res, 200, { ok: true, items: previewToolboxes });
+    }
+
+    if (method === "GET" && path === "/api/skills") {
+        return sendJson(res, 200, { ok: true, items: previewSkills });
     }
 
     if (method === "GET" && path === "/api/toolbox/tools") {

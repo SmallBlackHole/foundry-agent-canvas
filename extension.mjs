@@ -26,11 +26,12 @@ import {
     selectModelPrompt,
     selectToolPrompt,
     selectToolboxPrompt,
+    selectSkillPrompt,
     selectGuardrailPrompt,
     providerColor,
     toolIconFor,
 } from "./catalog.mjs";
-import { listDeployments, listConnections, listToolboxes, listToolboxTools, listGuardrails, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject, resolveProjectLocation, isHostedAgentRegionSupported, HOSTED_AGENT_REGIONS, HOSTED_AGENT_REGIONS_DOC } from "./foundry.mjs";
+import { listDeployments, listConnections, listToolboxes, listToolboxTools, listGuardrails, listSkills, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject, resolveProjectLocation, isHostedAgentRegionSupported, HOSTED_AGENT_REGIONS, HOSTED_AGENT_REGIONS_DOC } from "./foundry.mjs";
 import {
     getIdentity,
     getDefaultSubscriptionId,
@@ -472,6 +473,14 @@ function enrichGuardrail(g) {
     };
 }
 
+function enrichSkill(s) {
+    return {
+        id: slug(s.name),
+        name: s.name,
+        prompt: selectSkillPrompt(s.name),
+    };
+}
+
 // Resolve a sensible default selection (az default subscription + its first
 // Foundry project). Falls back to an empty selection on any failure (signed
 // out / no projects). Lazy — called from /api/bootstrap, never from open(), so
@@ -699,6 +708,16 @@ function createRequestHandler(instanceId) {
             const r = await listGuardrails(ep, sub);
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichGuardrail) });
+            }
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        // Skills in the selected project.
+        if (method === "GET" && path === "/api/skills") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            const r = await listSkills(ep);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, items: r.data.map(enrichSkill) });
             }
             return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
         }
