@@ -29,6 +29,24 @@ const PREVIEW_MOCK_CSS = join(ROOT, "scripts", "preview-mock.css");
 
 const HOST = valueFor("--host") || process.env.HOST || "127.0.0.1";
 const PORT = Number(valueFor("--port") || process.env.PORT || 0);
+// Repro/verify knobs:
+//   --kill-after <ms> / PREVIEW_KILL_AFTER_MS
+//       After N ms, drop every SSE client and stop the server from listening.
+//       Simulates the backing loopback server's port going away (in the real
+//       extension this now only happens on a process restart / extensions_reload,
+//       since the eager teardown was removed). The still-open iframe then shows
+//       "Canvas disconnected — reload" and a raw Reload lands on "127.0.0.1
+//       refused to connect" — lets you verify the client's reconnect/recovery.
+//   --sse-heartbeat <ms> / PREVIEW_SSE_HEARTBEAT_MS (default 20000; 0 disables)
+//       Heartbeat cadence for /events. Set 0 to let an idle SSE be dropped. This
+//       is the preview-side counterpart of the extension's
+//       FOUNDRY_CANVAS_SSE_HEARTBEAT_MS (named per-context, same behavior).
+const KILL_AFTER_MS = Number(valueFor("--kill-after") || process.env.PREVIEW_KILL_AFTER_MS || 0);
+const SSE_HEARTBEAT_MS = (() => {
+    const raw = valueFor("--sse-heartbeat") || process.env.PREVIEW_SSE_HEARTBEAT_MS;
+    const n = Number(raw);
+    return raw && Number.isFinite(n) && n >= 0 ? n : 20_000;
+})();
 
 const CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -477,7 +495,21 @@ async function handle(req, res) {
         });
         res.write(":ok\n\n");
         sseClients.add(res);
-        req.on("close", () => sseClients.delete(res));
+        let heartbeat = null;
+        if (SSE_HEARTBEAT_MS > 0) {
+            heartbeat = setInterval(() => {
+                try {
+                    res.write(`: hb ${Date.now()}\n\n`);
+                } catch {
+                    /* connection went away between ticks */
+                }
+            }, SSE_HEARTBEAT_MS);
+            heartbeat.unref?.();
+        }
+        req.on("close", () => {
+            if (heartbeat) clearInterval(heartbeat);
+            sseClients.delete(res);
+        });
         return;
     }
 
@@ -500,6 +532,28 @@ server.listen(PORT, HOST, () => {
     const port = typeof address === "object" && address ? address.port : PORT;
     console.log(`Foundry Agent Canvas preview: http://${HOST}:${port}/`);
     console.log("Preview mode stubs Copilot chat, Azure sign-in, Foundry writes, and Agent Inspector startup.");
+    if (SSE_HEARTBEAT_MS === 0) {
+        console.log("[preview] SSE heartbeat DISABLED (--sse-heartbeat 0) — idle /events may be dropped.");
+    }
+    if (KILL_AFTER_MS > 0) {
+        console.log(`[preview] REPRO: tearing down the server in ${KILL_AFTER_MS}ms to simulate the canvas backend going away.`);
+        console.log("[preview]        Expect the iframe to show 'Canvas disconnected — reload'; Reload then hits 'can't reach this page'.");
+        const kill = setTimeout(() => {
+            console.log("[preview] REPRO: dropping SSE clients and closing the server now. The iframe's port is now dead.");
+            for (const client of sseClients) {
+                try {
+                    client.end();
+                } catch {
+                    /* ignore */
+                }
+            }
+            sseClients.clear();
+            // Stop accepting connections so reloads/fetches get ECONNREFUSED,
+            // matching a torn-down loopback canvas server.
+            server.close();
+        }, KILL_AFTER_MS);
+        kill.unref?.();
+    }
 });
 
 function shutdown() {

@@ -59,8 +59,52 @@ function toast(msg) {
 async function getJSON(url) {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    state.canvasDisconnected = false;
+    // A successful fetch is definitive proof the backing server is alive — treat
+    // it like an SSE reconnect so it also cancels any pending disconnect timer
+    // and recovers stale error panels, not just clears the flag.
+    markReconnected();
     return res.json();
+}
+
+// ─── Canvas connection health ──────────────────────────────────────────────
+// The iframe's backing loopback server can briefly go away (webview suspend, or
+// a genuine extension/process restart that changes the port). The SSE stream
+// and every successful fetch are our liveness signals. A single dropped SSE
+// frame is normal and EventSource auto-reconnects, so we don't flip to the
+// "disconnected" UI on the first error — only after reconnection keeps failing
+// for a grace window. Any success (SSE `open` or a JSON fetch) cancels a pending
+// timer and, if the disconnected UI was showing, repaints so stale panels heal.
+const DISCONNECT_GRACE_MS = 8000;
+let disconnectTimer = null;
+
+function markReconnected() {
+    if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+    }
+    const wasDisconnected = state.canvasDisconnected;
+    state.canvasDisconnected = false;
+    if (wasDisconnected) {
+        // Lists that errored out while the server was gone are showing a stale
+        // "Canvas disconnected" panel. Reset them to idle so they refetch when
+        // their dropdown next opens, then repaint.
+        for (const key of ["deploymentsState", "connectionsState", "toolboxesState", "guardrailsState", "skillsState"]) {
+            if (state[key] && state[key].status === "error") {
+                state[key].status = "idle";
+                state[key].reason = null;
+            }
+        }
+        render(state.page);
+    }
+}
+
+function scheduleDisconnect() {
+    if (state.canvasDisconnected || disconnectTimer) return;
+    disconnectTimer = setTimeout(() => {
+        disconnectTimer = null;
+        state.canvasDisconnected = true;
+        render(state.page);
+    }, DISCONNECT_GRACE_MS);
 }
 
 async function postJSON(url, body) {
@@ -2328,12 +2372,12 @@ async function init() {
         /* fail open — leave Deploy enabled */
     }
 
-    // Optional: let an agent-invoked navigate() action reflect in the open iframe.
+    // Optional: let an agent-invoked navigate() action reflect in the open
+    // iframe. The stream also doubles as a liveness canary — see the
+    // markReconnected / scheduleDisconnect helpers at module scope.
     try {
         const es = new EventSource("/events");
-        es.addEventListener("open", () => {
-            state.canvasDisconnected = false;
-        });
+        es.addEventListener("open", () => markReconnected());
         es.addEventListener("message", (ev) => {
             try {
                 const msg = JSON.parse(ev.data);
@@ -2345,7 +2389,9 @@ async function init() {
             }
         });
         es.addEventListener("error", () => {
-            state.canvasDisconnected = true;
+            // EventSource retries on its own; only surface the disconnected UI if
+            // it can't get back within the grace window.
+            scheduleDisconnect();
         });
     } catch {
         /* SSE unsupported — non-fatal */

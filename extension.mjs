@@ -387,11 +387,18 @@ const CONTENT_TYPES = {
     ".svg": "image/svg+xml",
 };
 
-// One local server per canvas instance. Closing the canvas can be transient
-// during host hide/show cycles, so defer teardown and only close after the
-// iframe's SSE connection is gone.
-const SERVER_CLOSE_GRACE_MS = 5 * 60_000;
-const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set, closeTimer }
+// One local server per canvas instance, kept alive for the life of the
+// extension process (no `onClose` teardown — see the `open` handler for why).
+const numFromEnv = (name, fallback) => {
+    const n = Number(process.env[name]);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+// Heartbeat cadence for /events. Keeps the SSE connection from being
+// idle-dropped so the iframe doesn't flicker to a "disconnected" state. Set to
+// 0 to disable (mainly for repro). Env override mirrors the preview's
+// --sse-heartbeat / PREVIEW_SSE_HEARTBEAT_MS knob.
+const SSE_HEARTBEAT_MS = numFromEnv("FOUNDRY_CANVAS_SSE_HEARTBEAT_MS", 20_000);
+const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set }
 
 function defaultState() {
     return {
@@ -960,7 +967,25 @@ function createRequestHandler(instanceId) {
             res.write(":ok\n\n");
             if (entry) {
                 entry.sseClients.add(res);
-                req.on("close", () => entry.sseClients.delete(res));
+                // Heartbeat keeps the (possibly hidden) connection from being
+                // idle-dropped, so `sseClients` stays an honest signal of whether
+                // a panel still references this server. `:` lines are SSE comments
+                // the client ignores.
+                let heartbeat = null;
+                if (SSE_HEARTBEAT_MS > 0) {
+                    heartbeat = setInterval(() => {
+                        try {
+                            res.write(`: hb ${Date.now()}\n\n`);
+                        } catch {
+                            /* connection went away between ticks */
+                        }
+                    }, SSE_HEARTBEAT_MS);
+                    heartbeat.unref?.();
+                }
+                req.on("close", () => {
+                    if (heartbeat) clearInterval(heartbeat);
+                    entry.sseClients.delete(res);
+                });
             }
             return;
         }
@@ -1077,29 +1102,7 @@ async function startServer(instanceId) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    return { server, url: `http://127.0.0.1:${port}/`, state: defaultState(), sseClients: new Set(), closeTimer: null };
-}
-
-function scheduleServerClose(instanceId, entry) {
-    if (entry.closeTimer) return;
-    entry.closeTimer = setTimeout(() => {
-        entry.closeTimer = null;
-        if (servers.get(instanceId) !== entry) return;
-        if (entry.sseClients.size > 0) {
-            scheduleServerClose(instanceId, entry);
-            return;
-        }
-        servers.delete(instanceId);
-        for (const client of entry.sseClients) {
-            try {
-                client.end();
-            } catch {
-                /* ignore */
-            }
-        }
-        entry.server.close();
-    }, SERVER_CLOSE_GRACE_MS);
-    entry.closeTimer.unref?.();
+    return { server, url: `http://127.0.0.1:${port}/`, state: defaultState(), sseClients: new Set() };
 }
 
 const session = await joinSession({
@@ -1194,11 +1197,9 @@ const session = await joinSession({
                 },
             ],
             open: async (ctx) => {
+                // Reuse the existing server for this instance if present; the SDK
+                // may re-invoke open() on reconnect/rehydrate with the same id.
                 let entry = servers.get(ctx.instanceId);
-                if (entry?.closeTimer) {
-                    clearTimeout(entry.closeTimer);
-                    entry.closeTimer = null;
-                }
                 if (!entry) {
                     entry = await startServer(ctx.instanceId);
                     servers.set(ctx.instanceId, entry);
@@ -1206,10 +1207,13 @@ const session = await joinSession({
                 applyInput(entry.state, ctx.input);
                 return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
             },
-            onClose: async (ctx) => {
-                const entry = servers.get(ctx.instanceId);
-                if (entry) scheduleServerClose(ctx.instanceId, entry);
-            },
+            // No onClose teardown. The host reloads the iframe against the URL it
+            // cached *without* re-invoking open(), so freeing the port on hide/show
+            // would strand the panel on a dead URL ("Canvas disconnected — reload"
+            // → 127.0.0.1 refused). Loopback servers are cheap; they're freed when
+            // the process exits. A new port only appears on a real process restart,
+            // which the runtime (re-invokes open()) and the iframe's reconnect logic
+            // already handle.
         }),
     ],
 });
