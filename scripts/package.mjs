@@ -52,6 +52,7 @@ if (existsSync(ZIP_PATH)) rmSync(ZIP_PATH);
 if (process.platform === "win32") {
     execFileSync("powershell", [
         "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
         "-Command",
         `Compress-Archive -Path '${PKG_DIR}\\*' -DestinationPath '${ZIP_PATH}' -Force`,
     ], { stdio: "inherit" });
