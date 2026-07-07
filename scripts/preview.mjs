@@ -14,13 +14,10 @@ import { fileURLToPath } from "node:url";
 import {
     DEPLOY_PROMPT,
     INSPECT_PROMPT,
-    models,
     providerColor,
-    providerIcon,
     selectModelPrompt,
     selectToolboxPrompt,
     toolConnections,
-    tools,
 } from "../catalog.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -70,7 +67,7 @@ let selectedProject = projects[0];
 const state = {
     page: "build",
     agentName: "Preview Agent",
-    project: { name: selectedProject.name, endpoint: selectedProject.endpoint },
+    project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
     projectEndpoint: selectedProject.endpoint,
     projectLocation: selectedProject.location,
     subscriptionId: identity.subscriptionId,
@@ -98,22 +95,20 @@ function mockIdentity(url) {
 }
 
 function mockProjectState(url) {
-    if (!mockBool(url, "signedIn", true)) return { name: "", endpoint: "" };
-    return { name: selectedProject.name, endpoint: selectedProject.endpoint };
+    if (!mockBool(url, "signedIn", true)) return { name: "", endpoint: "", rg: "", account: "" };
+    return { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account };
 }
 
-const previewDeployments = models
-    .filter((m) => m.recommended)
-    .slice(0, 3)
-    .map((m) => ({
-        id: m.id,
-        name: m.name,
-        provider: m.provider,
-        version: "preview",
-        color: providerColor(m.provider),
-        iconSrc: providerIcon(m.provider),
-        prompt: selectModelPrompt(m.name),
-    }));
+const previewDeployments = [
+    { id: "gpt-5.5", name: "gpt-5.5", provider: "OpenAI" },
+    { id: "gpt-5.4", name: "gpt-5.4", provider: "OpenAI" },
+    { id: "gpt-5", name: "gpt-5", provider: "OpenAI" },
+].map((m) => ({
+    ...m,
+    version: "preview",
+    color: providerColor(m.provider),
+    prompt: selectModelPrompt(m.name),
+}));
 
 const previewToolboxes = [
     { id: "starter-toolbox", name: "Starter Toolbox", version: "1", prompt: selectToolboxPrompt("Starter Toolbox") },
@@ -328,7 +323,7 @@ async function handleApi(req, res, url) {
         return sendJson(res, 200, {
             ok: true,
             identity: id,
-            project: { name: selectedProject.name, endpoint: selectedProject.endpoint },
+            project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
             resolved: true,
             subscriptionId: id.subscriptionId,
             preview: true,
@@ -384,9 +379,6 @@ async function handleApi(req, res, url) {
     if (method === "POST" && path === "/api/signout") {
         return sendJson(res, 200, { ok: true });
     }
-
-    if (method === "GET" && path === "/api/tools") return sendJson(res, 200, { tools });
-    if (method === "GET" && path === "/api/models") return sendJson(res, 200, { models });
 
     if (method === "POST" && path === "/api/send") {
         const body = JSON.parse((await readBody(req)) || "{}");

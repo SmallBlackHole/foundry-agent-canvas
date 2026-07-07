@@ -6,7 +6,7 @@
 const state = {
     page: "build",
     agentName: "",
-    project: { name: "" },
+    project: { name: "", rg: "", account: "" },
     model: { name: "", color: "#10a37f" },
     deployPrompt: "deploy it as a Foundry hosted agent",
     inspectPrompt: "start the Foundry agent locally so I can inspect it",
@@ -21,7 +21,6 @@ const state = {
     subsState: { status: "idle", items: [], reason: null },
     projState: { status: "idle", items: [], reason: null, sub: null },
     signin: { sessionId: null, timer: null, starting: false },
-    cache: { tools: null, models: null },
     // "Initialize agent code" block (ephemeral UI state).
     init: {
         open: false,
@@ -266,6 +265,47 @@ function withProjectContext(prompt) {
     return `${prompt}\n\nUse my selected Foundry ${parts.join(" ")}.`;
 }
 
+// Build a Foundry Portal URL for the selected project. Returns "" when the
+// subscription or project info is unavailable.
+function portalUrl(path) {
+    const subId = state.identity?.subscriptionId;
+    let rg = state.project?.rg;
+    let account = state.project?.account;
+    const project = state.project?.name;
+    if (!subId || !project) return "";
+    // Backfill rg/account from the loaded project list if not yet in state.
+    if ((!rg || !account) && state.projState?.items?.length) {
+        const match = state.projState.items.find((p) => p.name === project);
+        if (match) {
+            rg = rg || match.rg || "";
+            account = account || match.account || "";
+        }
+    }
+    // Derive account from the endpoint hostname as a last resort.
+    if (!account && state.project?.endpoint) {
+        try { account = new URL(state.project.endpoint).hostname.split(".")[0] || ""; } catch {}
+    }
+    if (!rg || !account) return "";
+    // The portal encodes the subscription GUID as url-safe base64 (no padding).
+    const bytes = new Uint8Array(subId.replace(/-/g, "").match(/.{2}/g).map((b) => parseInt(b, 16)));
+    const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `https://ai.azure.com/nextgen/r/${b64},${rg},,${account},${project}/${path}`;
+}
+
+function refreshPortalLinks() {
+    // No-op — portal links now use window.open at click time, always reading
+    // the latest state. Kept as a call site placeholder.
+}
+
+function openPortalPage(path) {
+    const url = portalUrl(path);
+    if (url) {
+        window.open(url, "_blank");
+    } else {
+        toast("Select a project first");
+    }
+}
+
 function clone(id) {
     return document.getElementById(id).content.firstElementChild.cloneNode(true);
 }
@@ -290,6 +330,12 @@ function renderBuild() {
     if (pmProjValue && state.project?.name) pmProjValue.textContent = state.project.name;
     const pmSubValue = node.querySelector("#pmSubValue");
     if (pmSubValue && state.identity.subscriptionName) pmSubValue.textContent = state.identity.subscriptionName;
+
+    // Set portal links for "Deploy new model" / "Add or update toolbox".
+    const modelLink = node.querySelector("#deployNewModelLink");
+    const toolLink = node.querySelector("#addToolboxLink");
+    if (modelLink) modelLink.addEventListener("click", () => { closeModelMenu(); openPortalPage("build/models/deployments"); });
+    if (toolLink) toolLink.addEventListener("click", () => { closeToolMenu(); openPortalPage("build/toolboxes"); });
 
     root.replaceChildren(node);
 
@@ -1342,6 +1388,8 @@ async function selectProject(p) {
             endpoint: p.endpoint,
             name: p.name,
             location: p.location || "",
+            rg: p.rg || "",
+            account: p.account || "",
             subscriptionId: state.identity.subscriptionId,
             subscriptionName: state.identity.subscriptionName,
         });
@@ -1350,8 +1398,11 @@ async function selectProject(p) {
     }
     setProjectLabels(p.name);
     state.project.endpoint = p.endpoint || "";
+    state.project.rg = p.rg || "";
+    state.project.account = p.account || "";
     closeProjectMenu();
     resetSelectors();
+    refreshPortalLinks();
     toast("Project: " + p.name);
     // Re-evaluate hosted-agent region support for the newly selected project.
     loadRegionSupport();
@@ -1410,83 +1461,6 @@ function toggleAccordion(which) {
         if (which === "sub") loadSubscriptions(false);
         if (which === "proj") loadProjects(false);
     }
-}
-
-// ------------------------------------------------------------- Catalog views
-function tileLabel(item, kind) {
-    if (kind === "tools") return item.icon || item.name.slice(0, 2).toUpperCase();
-    return (item.provider || item.name).trim().charAt(0).toUpperCase();
-}
-
-function makeCard(item, kind, featured) {
-    const card = document.createElement("div");
-    card.className = "tcard" + (featured ? " is-featured" : "");
-
-    const top = document.createElement("div");
-    top.className = "tcard-top";
-
-    if (item.iconSrc) {
-        const img = document.createElement("img");
-        img.className = "tile tile-img " + (kind === "models" ? "is-round" : "is-square");
-        img.src = item.iconSrc;
-        img.alt = (item.provider || item.name) + " icon";
-        img.width = 36;
-        img.height = 36;
-        img.loading = "lazy";
-        top.appendChild(img);
-    } else {
-        const tile = document.createElement("span");
-        tile.className = "tile";
-        tile.style.background = item.color || "#57606a";
-        tile.textContent = tileLabel(item, kind);
-        top.appendChild(tile);
-    }
-
-    const meta = document.createElement("div");
-    const name = document.createElement("div");
-    name.className = "tcard-name";
-    name.textContent = item.name;
-    const sub = document.createElement("div");
-    sub.className = "tcard-meta";
-    sub.textContent = kind === "tools" ? item.category : item.provider;
-    meta.append(name, sub);
-    top.appendChild(meta);
-    card.appendChild(top);
-
-    const blurb = document.createElement("p");
-    blurb.className = "tcard-blurb";
-    blurb.textContent = item.blurb || "";
-    card.appendChild(blurb);
-
-    const actions = document.createElement("div");
-    actions.className = "tcard-actions";
-    const add = document.createElement("button");
-    add.className = "add-pill";
-    add.type = "button";
-    add.textContent = kind === "tools" ? "Add tool" : "Add model";
-    if (kind === "tools") {
-        // Tools are added into a Foundry Toolbox. Let the developer pick which
-        // toolbox to add into (or create a new one). The add itself is performed
-        // directly against the Foundry data-plane API (see openToolboxPicker),
-        // falling back to a chat prompt only when a connection is required.
-        add.setAttribute("aria-haspopup", "menu");
-        add.addEventListener("click", (e) => {
-            e.stopPropagation();
-            // Work IQ is a family of Microsoft 365 MCP sub-tools — let the
-            // developer pick which ones before choosing a toolbox.
-            if (item.id === "workiq") {
-                openWorkIQDialog(add, item);
-                return;
-            }
-            openToolboxPicker(add, item);
-        });
-    } else {
-        add.addEventListener("click", () => sendToChat(withProjectContext(item.prompt)));
-    }
-    actions.appendChild(add);
-    card.appendChild(actions);
-
-    return card;
 }
 
 // Client-side prompt builders for adding a catalog tool into a toolbox. These
@@ -1873,49 +1847,10 @@ async function apiCreateToolboxWithWorkIQTools(toolItem, variantIds, titles) {
     }
 }
 
-async function renderCatalog(kind) {
-    const node = clone("tpl-catalog");
-    const isTools = kind === "tools";
-
-    node.querySelector("#catalogTitle").textContent = isTools ? "Add a tool" : "Add a model";
-    node.querySelector("#catalogSub").textContent = isTools
-        ? "Connect your Foundry agent to external systems and actions."
-        : "Choose a model to power your Foundry agent.";
-    node.querySelector("#recoLabel").textContent = isTools
-        ? "Microsoft Foundry built-in tools"
-        : "Most popular";
-    node.querySelector("#moreLabel").textContent = isTools ? "More tools" : "More models";
-
-    root.replaceChildren(node);
-
-    let list = state.cache[kind];
-    if (!list) {
-        try {
-            const data = await getJSON(isTools ? "/api/tools" : "/api/models");
-            list = isTools ? data.tools : data.models;
-            state.cache[kind] = list;
-        } catch (err) {
-            toast("Failed to load: " + err.message);
-            return;
-        }
-    }
-
-    const recoGrid = node.querySelector("#recoGrid");
-    const moreGrid = node.querySelector("#moreGrid");
-    recoGrid.replaceChildren();
-    moreGrid.replaceChildren();
-
-    for (const item of list) {
-        if (item.recommended) recoGrid.appendChild(makeCard(item, kind, !!item.featured));
-        else moreGrid.appendChild(makeCard(item, kind, false));
-    }
-}
-
 // ------------------------------------------------------------------- Router
 function render(page) {
     state.page = page;
-    if (page === "tools" || page === "models") renderCatalog(page);
-    else renderBuild();
+    renderBuild();
 }
 
 // ----------------------------------------------------------- Event handling
@@ -2179,6 +2114,8 @@ async function init() {
             if (b.project && b.project.name) {
                 setProjectLabels(b.project.name);
                 state.project.endpoint = b.project.endpoint || "";
+                state.project.rg = b.project.rg || "";
+                state.project.account = b.project.account || "";
             } else {
                 // Signed in but no project resolved in the selected
                 // subscription — show a neutral placeholder consistent with

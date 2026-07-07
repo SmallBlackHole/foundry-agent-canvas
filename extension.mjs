@@ -18,8 +18,6 @@ import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/exte
 import { createInspectorServer } from "./inspector-backend/index.mjs";
 import { installSkillFromGitHub } from "./skill-install.mjs";
 import {
-    tools,
-    models,
     deployments,
     toolConnections,
     project,
@@ -28,7 +26,6 @@ import {
     selectModelPrompt,
     selectToolPrompt,
     selectToolboxPrompt,
-    providerIcon,
     providerColor,
     toolIconFor,
 } from "./catalog.mjs";
@@ -379,7 +376,7 @@ async function checkFoundrySkillStatus() {
 // from the signed-in user's project. Never hardcode a real project here.
 const PROJECT_ENDPOINT = "";
 
-const PAGES = ["build", "tools", "models"];
+const PAGES = ["build"];
 
 const CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -398,7 +395,7 @@ function defaultState() {
     return {
         page: "build",
         agentName: "",
-        project: { ...project },
+        project: { ...project, rg: "", account: "" },
         projectEndpoint: PROJECT_ENDPOINT,
         projectLocation: "",
         subscriptionId: "",
@@ -419,8 +416,7 @@ function applyInput(state, input) {
         state.project = { ...state.project, name: input.projectName.trim() };
     }
     if (typeof input.model === "string" && input.model.trim()) {
-        const match = models.find((m) => m.name.toLowerCase() === input.model.trim().toLowerCase());
-        state.model = { name: input.model.trim(), color: match ? match.color : "#57606a" };
+        state.model = { name: input.model.trim(), color: "#10a37f" };
     }
     return state;
 }
@@ -437,7 +433,6 @@ function enrichDeployment(d) {
         provider: d.provider,
         version: d.version,
         color: providerColor(d.provider),
-        iconSrc: providerIcon(d.provider),
         prompt: selectModelPrompt(d.name),
     };
 }
@@ -483,9 +478,33 @@ async function bootstrapInstance(entry) {
             if (saved.projectEndpoint) {
                 entry.state.projectEndpoint = saved.projectEndpoint;
                 entry.state.projectLocation = saved.projectLocation || "";
+                let rg = saved.projectRg || "";
+                let account = saved.projectAccount || "";
+                const projName = saved.projectName || getProject(saved.projectEndpoint).projectName || "";
+                // Backfill rg/account from the project list if not persisted
+                // (e.g. selection saved before portal-link support was added).
+                if (!account && saved.projectEndpoint) {
+                    account = getProject(saved.projectEndpoint).resourceName || "";
+                }
+                if ((!rg || !account) && saved.subscriptionId) {
+                    const proj = await listProjects(saved.subscriptionId);
+                    if (proj.ok) {
+                        const ep = saved.projectEndpoint.replace(/\/+$/, "");
+                        const match = (proj.data || []).find((p) => p.endpoint.replace(/\/+$/, "") === ep);
+                        if (match) {
+                            rg = match.rg || rg;
+                            account = match.account || account;
+                        }
+                    }
+                }
+                if ((rg && !saved.projectRg) || (account && !saved.projectAccount)) {
+                    saveSelection({ ...saved, projectRg: rg, projectAccount: account });
+                }
                 entry.state.project = {
                     ...entry.state.project,
-                    name: saved.projectName || getProject(saved.projectEndpoint).projectName || "",
+                    name: projName,
+                    rg,
+                    account,
                 };
                 resolved = true;
             } else {
@@ -503,7 +522,7 @@ async function bootstrapInstance(entry) {
                     const first = proj.data[0];
                     entry.state.projectEndpoint = first.endpoint;
                     entry.state.projectLocation = first.location || "";
-                    entry.state.project = { ...entry.state.project, name: first.name };
+                    entry.state.project = { ...entry.state.project, name: first.name, rg: first.rg || "", account: first.account || "" };
                     resolved = true;
                 } else {
                     // Signed in, but the selected subscription has no Foundry
@@ -524,7 +543,7 @@ async function bootstrapInstance(entry) {
         identity,
         subscriptionId: entry.state.subscriptionId,
         resolved,
-        project: { name: p.projectName || entry.state.project?.name || "", endpoint: p.endpoint },
+        project: { name: p.projectName || entry.state.project?.name || "", endpoint: p.endpoint, rg: entry.state.project?.rg || "", account: entry.state.project?.account || "" },
     };
 }
 
@@ -605,15 +624,6 @@ function createRequestHandler(instanceId) {
         if (method === "GET" && (path === "/" || path === "/index.html")) return serveStatic(res, "index.html");
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css");
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js");
-
-        // Model provider icons (path-traversal-safe: name must be a bare slug).
-        if (method === "GET" && path.startsWith("/model-icons/")) {
-            const name = path.slice("/model-icons/".length);
-            if (/^[a-z0-9-]+\.svg$/.test(name)) return serveStatic(res, join("model-icons", name));
-            res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-            res.end("Not found");
-            return;
-        }
 
         // Tool icons (path-traversal-safe: name must be a bare slug).
         if (method === "GET" && path.startsWith("/tool-icons/")) {
@@ -819,10 +829,12 @@ function createRequestHandler(instanceId) {
                 const name = (typeof body.name === "string" && body.name.trim()) || p.projectName || "project";
                 const subscriptionId = typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
                 const location = typeof body.location === "string" ? body.location.trim() : "";
+                const rg = typeof body.rg === "string" ? body.rg.trim() : "";
+                const account = typeof body.account === "string" ? body.account.trim() : "";
                 if (entry) {
                     entry.state.projectEndpoint = ep;
                     entry.state.projectLocation = location;
-                    entry.state.project = { ...entry.state.project, name };
+                    entry.state.project = { ...entry.state.project, name, rg, account };
                     if (subscriptionId) entry.state.subscriptionId = subscriptionId;
                 }
                 // Persist the full subscription + project selection.
@@ -832,6 +844,8 @@ function createRequestHandler(instanceId) {
                     projectEndpoint: p.endpoint,
                     projectName: name,
                     projectLocation: location,
+                    projectRg: rg,
+                    projectAccount: account,
                 });
                 return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint });
             } catch (err) {
@@ -893,9 +907,6 @@ function createRequestHandler(instanceId) {
             return sendJson(res, 200, r);
         }
 
-        // Catalogs (recommended + mocked), prompts already attached.
-        if (method === "GET" && path === "/api/tools") return sendJson(res, 200, { tools });
-        if (method === "GET" && path === "/api/models") return sendJson(res, 200, { models });
 
         // Server-Sent Events so an agent-invoked navigate() reflects live.
         if (method === "GET" && path === "/events") {
@@ -1074,7 +1085,7 @@ const session = await joinSession({
             actions: [
                 {
                     name: "navigate",
-                    description: "Switch the open canvas to the build, tools, or models view.",
+                    description: "Switch the open canvas to the build view.",
                     inputSchema: {
                         type: "object",
                         properties: { page: { type: "string", enum: PAGES } },

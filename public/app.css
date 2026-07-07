@@ -389,51 +389,6 @@ body {
 }
 .btn-deploy.is-blocked:hover { filter: grayscale(0.35); }
 
-/* ---------------- Catalog ---------------- */
-.catalog { max-width: 1100px; margin: 0 auto; padding: 20px; }
-.catalog-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-.back { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-.back:hover { background: var(--bg-subtle); }
-.catalog-title { margin: 0; font-size: var(--text-title-medium, 20px); font-weight: 700; }
-.catalog-sub { margin: 2px 0 0; color: var(--muted); }
-
-.reco { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 22px; }
-.reco-label, .more-label { font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.reco-label::before { content: "★"; color: #d4a017; }
-
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-/* Recommended built-in tools sit in a fixed 3-up grid so the 6 non-featured
-   cards form exactly two rows under the full-width WorkIQ hero. */
-.reco .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 560px) { .reco .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-
-.tcard {
-    border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--bg);
-    display: flex; flex-direction: column; gap: 10px;
-}
-.tcard.is-featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; grid-column: 1 / -1; }
-.tcard-top { display: flex; align-items: center; gap: 10px; }
-.tile {
-    width: 36px; height: 36px; border-radius: 9px; flex: 0 0 auto; color: #fff;
-    display: grid; place-items: center; font-weight: 700; font-size: 12px;
-}
-.tile-img {
-    background: #fff; border: 1px solid var(--border);
-    object-fit: contain; color: transparent;
-}
-.tile-img.is-round { border-radius: 50%; padding: 0; }
-.tile-img.is-square { border-radius: 9px; padding: 4px; }
-.tcard-name { font-weight: 600; }
-.tcard-meta { color: var(--muted); font-size: 12px; }
-.tcard-blurb { color: var(--muted); flex: 1; }
-.tcard-actions { display: flex; justify-content: flex-end; }
-.add-pill {
-    border: 1px solid var(--accent); background: var(--bg); color: var(--accent);
-    font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 8px; cursor: pointer;
-}
-.add-pill:hover { background: var(--accent); color: var(--color-white, #fff); }
-.tcard.is-featured .tcard-blurb { color: var(--text); }
-
 /* ---------------- Toast ---------------- */
 .toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px);

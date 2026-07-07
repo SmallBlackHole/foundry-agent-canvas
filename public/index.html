@@ -180,13 +180,13 @@
                                     </div>
                                     <div class="menu-sep"></div>
                                     <div class="menu-section">
-                                        <button class="menu-deploy" data-nav="models" type="button">
+                                        <button class="menu-deploy" id="deployNewModelLink" type="button">
                                             <span class="menu-deploy-plus">+</span>
                                             <span class="menu-deploy-text">
                                                 <span class="menu-deploy-title">Deploy new model</span>
-                                                <span class="menu-deploy-sub">Browse the model catalog</span>
+                                                <span class="menu-deploy-sub">Open in Foundry Portal</span>
                                             </span>
-                                            <svg viewBox="0 0 24 24" width="16" height="16" class="chev-right"><path fill="currentColor" d="M9 6 7.6 7.4 12.2 12l-4.6 4.6L9 18l6-6-6-6Z"/></svg>
+                                            <svg viewBox="0 0 16 16" width="14" height="14" class="chev-right"><path fill="currentColor" d="M9 2h5v5h-1.5V4.06L7.28 9.28l-1.06-1.06L11.44 3H9V2ZM3.5 4.5H7V3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V9h-1.5v3.5h-8v-8Z"/></svg>
                                         </button>
                                     </div>
                                 </div>
@@ -215,13 +215,13 @@
                                     </div>
                                     <div class="menu-sep"></div>
                                     <div class="menu-section">
-                                        <button class="menu-deploy" data-nav="tools" type="button">
+                                        <button class="menu-deploy" id="addToolboxLink" type="button">
                                             <span class="menu-deploy-plus">+</span>
                                             <span class="menu-deploy-text">
                                                 <span class="menu-deploy-title">Add or update toolbox</span>
-                                                <span class="menu-deploy-sub">Browse the tool catalog</span>
+                                                <span class="menu-deploy-sub">Open in Foundry Portal</span>
                                             </span>
-                                            <svg viewBox="0 0 24 24" width="16" height="16" class="chev-right"><path fill="currentColor" d="M9 6 7.6 7.4 12.2 12l-4.6 4.6L9 18l6-6-6-6Z"/></svg>
+                                            <svg viewBox="0 0 16 16" width="14" height="14" class="chev-right"><path fill="currentColor" d="M9 2h5v5h-1.5V4.06L7.28 9.28l-1.06-1.06L11.44 3H9V2ZM3.5 4.5H7V3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8a1.5 1.5 0 0 0 1.5-1.5V9h-1.5v3.5h-8v-8Z"/></svg>
                                         </button>
                                     </div>
                                 </div>
@@ -284,27 +284,6 @@
                     </div>
                     </div>
                 </section>
-            </section>
-        </template>
-
-        <template id="tpl-catalog">
-            <section class="catalog">
-                <div class="catalog-head">
-                    <button class="back" data-nav="build" type="button">
-                        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m15 5-1.4-1.4L7.2 10l6.4 6.4L15 15l-5-5 5-5Z"/></svg>
-                        Back
-                    </button>
-                    <div>
-                        <h2 class="catalog-title" id="catalogTitle"></h2>
-                        <p class="catalog-sub" id="catalogSub"></p>
-                    </div>
-                </div>
-                <div class="reco" id="recoSection">
-                    <div class="reco-label" id="recoLabel"></div>
-                    <div class="grid" id="recoGrid"></div>
-                </div>
-                <div class="more-label" id="moreLabel"></div>
-                <div class="grid" id="moreGrid"></div>
             </section>
         </template>
 
