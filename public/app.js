@@ -1189,6 +1189,42 @@ function remindProjectSelection(e) {
     return false;
 }
 
+function showFoundrySkillsInstall() {
+    closeModelMenu();
+    closeToolMenu();
+    closeSkillMenu();
+    closeGuardrailMenu();
+    closeProjectMenu();
+    state.init.open = true;
+    renderInit();
+    const btn = document.getElementById("prepPrereqs");
+    if (btn && !btn.hidden) {
+        btn.focus();
+        btn.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+}
+
+async function remindFoundrySkillsInstall(e) {
+    const status = state.skill.status;
+    if (status === "idle" || status === "checking") {
+        if (e) e.stopPropagation();
+        await loadSkillStatus(false);
+    }
+    if (state.skill.status === "missing") {
+        if (e) e.stopPropagation();
+        toast("Install Foundry Skills first");
+        showFoundrySkillsInstall();
+        return false;
+    }
+    if (state.skill.status === "installing" || state.skill.status === "updating") {
+        if (e) e.stopPropagation();
+        toast("Foundry Skills are still installing");
+        showFoundrySkillsInstall();
+        return false;
+    }
+    return true;
+}
+
 function closeProjectMenu() {
     const menu = document.getElementById("projectMenu");
     const btn = document.getElementById("projectSwitch");
@@ -2098,7 +2134,7 @@ function render(page) {
 
 // ----------------------------------------------------------- Event handling
 // Delegated clicks within the main area.
-root.addEventListener("click", (e) => {
+root.addEventListener("click", async (e) => {
     const nav = e.target.closest("[data-nav]");
     if (nav) {
         render(nav.getAttribute("data-nav"));
@@ -2121,6 +2157,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#initStart")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) sendToChat(withProjectContext(text));
@@ -2153,6 +2190,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#modelAdd")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleModelMenu();
         return;
     }
@@ -2162,6 +2200,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#toolAdd")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleToolMenu();
         return;
     }
@@ -2171,6 +2210,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#guardrailAdd")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleGuardrailMenu();
         return;
     }
@@ -2180,6 +2220,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#skillAdd")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleSkillMenu();
         return;
     }
@@ -2219,6 +2260,7 @@ root.addEventListener("click", (e) => {
     }
     if (e.target.closest("#deployBtn")) {
         if (!remindProjectSelection(e)) return;
+        if (!(await remindFoundrySkillsInstall(e))) return;
         if (state.hostedRegion.supported === false) {
             const loc = prettyRegion(state.hostedRegion.location);
             toast(
