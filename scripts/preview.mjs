@@ -18,6 +18,7 @@ import {
     selectModelPrompt,
     selectToolboxPrompt,
     selectSkillPrompt,
+    selectGuardrailPrompt,
     toolConnections,
 } from "../catalog.mjs";
 
@@ -100,8 +101,28 @@ function mockBool(url, key, fallback = true) {
     return raw !== "false";
 }
 
+function mockSignedIn(url) {
+    return mockBool(url, "signedIn", true);
+}
+
+function mockProjectSelected(url) {
+    return mockSignedIn(url) && mockBool(url, "project", true);
+}
+
+function mockAzureCli(url) {
+    return mockBool(url, "az", true);
+}
+
+function mockAzd(url) {
+    return mockBool(url, "azd", true);
+}
+
+function emptyProject() {
+    return { name: "", endpoint: "", rg: "", account: "" };
+}
+
 function mockIdentity(url) {
-    if (!mockBool(url, "signedIn", true)) {
+    if (!mockSignedIn(url)) {
         return {
             signedIn: false,
             account: "",
@@ -114,8 +135,14 @@ function mockIdentity(url) {
 }
 
 function mockProjectState(url) {
-    if (!mockBool(url, "signedIn", true)) return { name: "", endpoint: "", rg: "", account: "" };
+    if (!mockProjectSelected(url)) return emptyProject();
     return { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account };
+}
+
+function projectScopedUnavailable(url) {
+    if (!mockSignedIn(url)) return "not_signed_in";
+    if (!mockProjectSelected(url)) return "no_project";
+    return "";
 }
 
 const previewDeployments = [
@@ -149,6 +176,11 @@ const previewSkills = [
     { id: "greeting-skill", name: "Greeting Skill", prompt: selectSkillPrompt("Greeting Skill") },
     { id: "summarization-skill", name: "Summarization Skill", prompt: selectSkillPrompt("Summarization Skill") },
     { id: "code-review-skill", name: "Code Review Skill", prompt: selectSkillPrompt("Code Review Skill") },
+];
+
+const previewGuardrails = [
+    { id: "content-safety", name: "Content Safety", prompt: selectGuardrailPrompt("Content Safety") },
+    { id: "financial-advice-policy", name: "Financial Advice Policy", prompt: selectGuardrailPrompt("Financial Advice Policy") },
 ];
 
 const workIqVariants = [
@@ -292,6 +324,9 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/project") {
+        if (!mockProjectSelected(url)) {
+            return sendJson(res, 200, { ok: true, name: "", endpoint: "", resourceName: "" });
+        }
         return sendJson(res, 200, {
             ok: true,
             name: selectedProject.name,
@@ -301,27 +336,45 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/deployments") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, source: "preview", reason, items: [] });
         return sendJson(res, 200, { ok: true, source: "preview", items: previewDeployments });
     }
 
     if (method === "GET" && path === "/api/connections") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, source: "preview", reason, items: [] });
         return sendJson(res, 200, { ok: true, source: "preview", items: toolConnections });
     }
 
     if (method === "GET" && path === "/api/toolboxes") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
         return sendJson(res, 200, { ok: true, items: previewToolboxes });
     }
 
     if (method === "GET" && path === "/api/skills") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
         return sendJson(res, 200, { ok: true, items: previewSkills });
     }
 
+    if (method === "GET" && path === "/api/guardrails") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
+        return sendJson(res, 200, { ok: true, items: previewGuardrails });
+    }
+
     if (method === "GET" && path === "/api/toolbox/tools") {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
         const name = url.searchParams.get("name") || "";
         return sendJson(res, 200, { ok: true, items: previewToolboxTools[name] || [] });
     }
 
     if (method === "POST" && (path === "/api/toolbox/add-tool" || path === "/api/toolbox/create-with-tool")) {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason });
         return stubNeedsCopilot(res, { reason: "needs_connection" });
     }
 
@@ -330,6 +383,8 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "POST" && (path === "/api/workiq/add-tools" || path === "/api/workiq/create-with-tools")) {
+        const reason = projectScopedUnavailable(url);
+        if (reason) return sendJson(res, 200, { ok: false, reason });
         return stubNeedsCopilot(res, { reason: "needs_connection" });
     }
 
@@ -339,7 +394,7 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/bootstrap") {
         const id = mockIdentity(url);
-        if (!id.signedIn) {
+        if (!id.signedIn || !mockProjectSelected(url)) {
             return sendJson(res, 200, {
                 ok: true,
                 identity: id,
@@ -360,12 +415,12 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/subscriptions") {
-        if (!mockIdentity(url).signedIn) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
+        if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
         return sendJson(res, 200, { ok: true, items: subscriptions });
     }
 
     if (method === "GET" && path === "/api/projects") {
-        if (!mockIdentity(url).signedIn) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
+        if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
         return sendJson(res, 200, { ok: true, items: projects });
     }
 
@@ -381,6 +436,15 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/region-support") {
+        if (!mockProjectSelected(url)) {
+            return sendJson(res, 200, {
+                ok: true,
+                docsUrl: hostedAgentRegionsDoc,
+                location: "",
+                regions: hostedAgentRegions,
+                supported: null,
+            });
+        }
         return sendJson(res, 200, {
             ok: true,
             docsUrl: hostedAgentRegionsDoc,
@@ -391,10 +455,11 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "POST" && path === "/api/signin") {
-        if (!mockBool(url, "az", true)) {
-            return sendJson(res, 200, { ok: false, reason: "az_missing" });
-        }
-        return sendJson(res, 200, { ok: true, sessionId: "preview-signin", mode: "preview" });
+        return sendJson(res, 200, {
+            ok: true,
+            sessionId: "preview-signin",
+            mode: mockAzureCli(url) ? "preview" : "preview-no-az",
+        });
     }
 
     if (method === "GET" && path === "/api/signin/status") {
@@ -423,7 +488,11 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/project-init") {
-        return sendJson(res, 200, projectInit());
+        return sendJson(res, 200, {
+            ...projectInit(),
+            azureCliAvailable: mockAzureCli(url),
+            azdAvailable: mockAzd(url),
+        });
     }
 
     if (method === "GET" && path === "/api/skills/status") {
@@ -474,6 +543,12 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/inspect/start") {
+        if (!mockAzd(url)) {
+            return sendJson(res, 200, {
+                ok: false,
+                error: "Azure Developer CLI (azd) is not available. Install azd, then try Inspect locally again.",
+            });
+        }
         return sendJson(res, 200, {
             ok: false,
             error: "Preview mode does not start the Agent Inspector. Open the canvas in Copilot for this flow.",

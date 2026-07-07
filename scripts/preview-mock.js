@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const MOCK_PARAM_KEYS = ["skillStatus", "git", "npx"];
+    const MOCK_PARAM_KEYS = ["skillStatus", "signedIn", "project", "az", "azd"];
     const STATUS_OPTIONS = [
         ["missing", "not installed"],
         ["outdated", "outdated"],
@@ -38,16 +38,21 @@
 
     function config() {
         const params = new URLSearchParams(window.location.search);
+        const signedIn = boolValue(params, "signedIn");
         return {
             skillStatus: params.get("skillStatus") || "missing",
-            git: boolValue(params, "git"),
-            npx: boolValue(params, "npx"),
+            signedIn,
+            project: signedIn && boolValue(params, "project"),
+            az: boolValue(params, "az"),
+            azd: boolValue(params, "azd"),
         };
     }
 
     function setParam(key, value) {
         const params = new URLSearchParams(window.location.search);
         params.set(key, String(value));
+        if (key === "signedIn" && value === false) params.set("project", "false");
+        if (key === "project" && value === true) params.set("signedIn", "true");
         window.location.search = params.toString();
     }
 
@@ -139,17 +144,23 @@
 
         const summary = document.createElement("div");
         summary.className = "preview-mock-summary";
-        summary.textContent = `skillStatus=${cfg.skillStatus}, git=${cfg.git}, npx=${cfg.npx}`;
+        summary.textContent =
+            `skillStatus=${cfg.skillStatus}, signedIn=${cfg.signedIn}, ` +
+            `project=${cfg.project}, az=${cfg.az}, azd=${cfg.azd}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
         hint.textContent = "Changing a control reloads the page.";
 
         body.append(
+            section("Session", [
+                checkbox("signedIn", "Signed in", cfg.signedIn),
+                checkbox("project", "Foundry project selected", cfg.project),
+            ]),
             section("Foundry Skills", [statusSelect]),
-            section("Skill install prereqs", [
-                checkbox("git", "git available", cfg.git),
-                checkbox("npx", "npx available", cfg.npx),
+            section("Local tools", [
+                checkbox("az", "Azure CLI available", cfg.az),
+                checkbox("azd", "Azure Developer CLI available", cfg.azd),
             ]),
             summary,
             hint,

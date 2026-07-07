@@ -1,7 +1,7 @@
 /* Dev-only preview controls. Served only by scripts/preview.mjs. */
 .preview-mock {
     position: fixed; right: 14px; bottom: 14px; z-index: 80;
-    width: min(312px, calc(100vw - 28px));
+    width: min(344px, calc(100vw - 28px));
     border-radius: 10px;
     background: #161b22;
     color: #e6edf3;

@@ -656,7 +656,8 @@ function menuError(text, onRetry, retryText = "Retry") {
 // Subtle note shown when we fall back to sample data (e.g. not signed in).
 function sampleNote(reason) {
     const map = {
-        not_signed_in: "Showing sample data \u2014 run az login to see live data",
+        not_signed_in: "Showing sample data \u2014 sign in to see live data",
+        no_project: "Showing sample data \u2014 select a Foundry project to see live data",
         unauthorized: "Showing sample data \u2014 no access to this project",
         not_found: "Showing sample data \u2014 project not found",
         fetch_failed: "Showing sample data \u2014 couldn\u2019t reach Foundry",
@@ -675,6 +676,7 @@ function dataLoadError(label, reason) {
     if (isCanvasDisconnectedReason(reason)) return "Canvas disconnected \u2014 reload";
     const map = {
         not_signed_in: `Sign in to load ${label}`,
+        no_project: `Select a Foundry project to load ${label}`,
         unauthorized: `No access to load ${label}`,
         not_found: "Project not found",
         fetch_failed: "Couldn\u2019t reach Foundry",
@@ -1160,6 +1162,33 @@ function setProjectLabels(name) {
     if (dot) dot.classList.toggle("is-unset", !name);
 }
 
+function hasSelectedProject() {
+    return !!String(state.project?.name || "").trim();
+}
+
+function remindProjectSelection(e) {
+    if (hasSelectedProject()) return true;
+    if (e) e.stopPropagation();
+    toast("Select a Foundry project first");
+    closeModelMenu();
+    closeToolMenu();
+    closeSkillMenu();
+    closeGuardrailMenu();
+    const menu = document.getElementById("projectMenu");
+    const btn = document.getElementById("projectSwitch");
+    if (menu && menu.hidden) {
+        menu.hidden = false;
+        if (btn) btn.setAttribute("aria-expanded", "true");
+        renderIdentity();
+        if (state.identity.signedIn) {
+            loadSubscriptions(false);
+            loadProjects(false);
+        }
+    }
+    if (btn) btn.focus();
+    return false;
+}
+
 function closeProjectMenu() {
     const menu = document.getElementById("projectMenu");
     const btn = document.getElementById("projectSwitch");
@@ -1441,6 +1470,10 @@ async function doSignOut() {
     state.identity = { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" };
     state.subsState = { status: "idle", items: [], reason: null };
     state.projState = { status: "idle", items: [], reason: null, sub: null };
+    setProjectLabels("");
+    state.project.endpoint = "";
+    state.project.rg = "";
+    state.project.account = "";
     renderIdentity();
     renderSubList();
     renderProjList();
@@ -2087,6 +2120,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#initStart")) {
+        if (!remindProjectSelection(e)) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) sendToChat(withProjectContext(text));
@@ -2118,6 +2152,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#modelAdd")) {
+        if (!remindProjectSelection(e)) return;
         toggleModelMenu();
         return;
     }
@@ -2126,6 +2161,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#toolAdd")) {
+        if (!remindProjectSelection(e)) return;
         toggleToolMenu();
         return;
     }
@@ -2134,6 +2170,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#guardrailAdd")) {
+        if (!remindProjectSelection(e)) return;
         toggleGuardrailMenu();
         return;
     }
@@ -2142,6 +2179,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#skillAdd")) {
+        if (!remindProjectSelection(e)) return;
         toggleSkillMenu();
         return;
     }
@@ -2180,6 +2218,7 @@ root.addEventListener("click", (e) => {
         return;
     }
     if (e.target.closest("#deployBtn")) {
+        if (!remindProjectSelection(e)) return;
         if (state.hostedRegion.supported === false) {
             const loc = prettyRegion(state.hostedRegion.location);
             toast(
