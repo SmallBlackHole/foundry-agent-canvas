@@ -298,6 +298,46 @@ export async function listToolboxes(endpoint) {
     }
 }
 
+// ─── RAI policies (guardrails) ──────────────────────────────────────────────
+// Guardrails are scoped to the AI Services *account*, not the project. We
+// resolve the account name + resource group from the project list, then call
+// the ARM API to list all raiPolicies. Pagination is supported via nextLink.
+const RAI_API_VERSION = "2024-10-01";
+const _accountInfoCache = new Map();
+
+async function resolveAccountInfo(endpoint, subscriptionId) {
+    const ep = normalizeEndpoint(endpoint);
+    if (_accountInfoCache.has(ep)) return _accountInfoCache.get(ep);
+    if (!subscriptionId) return null;
+    const r = await listProjects(subscriptionId);
+    if (!r.ok) return null;
+    const match = (r.data || []).find((p) => normalizeEndpoint(p.endpoint) === ep);
+    if (!match || !match.account || !match.rg) return null;
+    const info = { account: match.account, rg: match.rg };
+    _accountInfoCache.set(ep, info);
+    return info;
+}
+
+export async function listGuardrails(endpoint, subscriptionId) {
+    try {
+        const acct = await resolveAccountInfo(endpoint, subscriptionId);
+        if (!acct) return { ok: false, reason: "not_found" };
+        const data = await cached(`rai:${endpoint}`, async () => {
+            const all = [];
+            let nextUrl = `/subscriptions/${subscriptionId}/resourceGroups/${acct.rg}/providers/Microsoft.CognitiveServices/accounts/${acct.account}/raiPolicies?api-version=${RAI_API_VERSION}`;
+            while (nextUrl) {
+                const json = await armFetch(nextUrl);
+                if (json?.value) all.push(...json.value);
+                nextUrl = json?.nextLink || null;
+            }
+            return all;
+        });
+        return { ok: true, data: data.map((p) => ({ name: p.name })) };
+    } catch (err) {
+        return { ok: false, reason: reasonFor(err) };
+    }
+}
+
 // Tools configured in a single toolbox's default (or given) version. Read from
 // the toolbox version detail (no MCP/consent needed). Cached. Returns
 // { ok:true, data:[{ name, type }] } or { ok:false, reason }. Lazy — called when

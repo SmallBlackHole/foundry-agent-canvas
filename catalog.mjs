@@ -13,6 +13,10 @@ export const selectToolPrompt = (name) =>
 export const selectToolboxPrompt = (name) =>
     `Use the existing "${name}" Foundry Toolbox in my Foundry agent`;
 
+// Selecting a guardrail (RAI policy) that already exists on the account.
+export const selectGuardrailPrompt = (name) =>
+    `Use the "${name}" guardrail in my Foundry agent`;
+
 export const DEPLOY_PROMPT = "deploy it as a Foundry hosted agent";
 export const INSPECT_PROMPT =
     "start the Foundry agent locally so I can inspect it. " +

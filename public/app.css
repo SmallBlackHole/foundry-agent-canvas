@@ -257,6 +257,7 @@ body {
 /* ---------------- Model dropdown ---------------- */
 .model-select { position: relative; }
 .tool-select { position: relative; }
+.guardrail-select { position: relative; }
 .menu-item .menu-ticon {
     width: 18px; height: 18px; border-radius: 5px; flex: 0 0 auto;
     object-fit: contain; background: #fff; border: 1px solid var(--border); padding: 1px;
@@ -270,7 +271,7 @@ body {
 .menu-section { padding: 4px; }
 /* Cap the row lists so long tool/model/toolbox lists scroll instead of
    overflowing the panel; the header + footer stay fixed. */
-#deployList, #toolboxList, #toolList { max-height: 260px; overflow-y: auto; }
+#deployList, #toolboxList, #toolList, #guardrailList { max-height: 260px; overflow-y: auto; }
 .menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .menu-label {
     font-size: 11px; font-weight: 600; color: var(--muted);

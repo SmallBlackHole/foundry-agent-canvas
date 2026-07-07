@@ -26,10 +26,11 @@ import {
     selectModelPrompt,
     selectToolPrompt,
     selectToolboxPrompt,
+    selectGuardrailPrompt,
     providerColor,
     toolIconFor,
 } from "./catalog.mjs";
-import { listDeployments, listConnections, listToolboxes, listToolboxTools, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject, resolveProjectLocation, isHostedAgentRegionSupported, HOSTED_AGENT_REGIONS, HOSTED_AGENT_REGIONS_DOC } from "./foundry.mjs";
+import { listDeployments, listConnections, listToolboxes, listToolboxTools, listGuardrails, addToolToToolbox, createToolboxWithTool, listWorkIQVariants, addWorkIQToolsToToolbox, createToolboxWithWorkIQTools, getProject, resolveProjectLocation, isHostedAgentRegionSupported, HOSTED_AGENT_REGIONS, HOSTED_AGENT_REGIONS_DOC } from "./foundry.mjs";
 import {
     getIdentity,
     getDefaultSubscriptionId,
@@ -460,6 +461,17 @@ function enrichToolbox(t) {
     };
 }
 
+const GUARDRAIL_COLORS = { default: "#57606a", custom: "#0969da" };
+function enrichGuardrail(g) {
+    const isDefault = g.name.startsWith("Microsoft.");
+    return {
+        id: slug(g.name),
+        name: g.name,
+        color: isDefault ? GUARDRAIL_COLORS.default : GUARDRAIL_COLORS.custom,
+        prompt: selectGuardrailPrompt(g.name),
+    };
+}
+
 // Resolve a sensible default selection (az default subscription + its first
 // Foundry project). Falls back to an empty selection on any failure (signed
 // out / no projects). Lazy — called from /api/bootstrap, never from open(), so
@@ -676,6 +688,17 @@ function createRequestHandler(instanceId) {
             const r = await listToolboxes(ep);
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichToolbox) });
+            }
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        // RAI policies (guardrails) on the account backing the selected project.
+        if (method === "GET" && path === "/api/guardrails") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || PROJECT_ENDPOINT;
+            const sub = entry ? entry.state.subscriptionId : "";
+            const r = await listGuardrails(ep, sub);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, items: r.data.map(enrichGuardrail) });
             }
             return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
         }
