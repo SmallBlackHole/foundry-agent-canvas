@@ -1,7 +1,7 @@
 // Extension: foundry-agent-builder
 // A canvas that reproduces the Foundry "Build agent" design. It lists the
-// components a developer keeps adding (Models, Skills, Tools, Knowledge,
-// Connected agents, Memory) plus a Deploy-to-Foundry entry. Add/Deploy
+// components a developer keeps adding (Models, Skills, Tools) plus a
+// Deploy-to-Foundry entry. Add/Deploy
 // affordances in the iframe "prompt to chat" by POSTing to /api/send, which
 // forwards the text to the chat via session.send().
 //
@@ -1111,7 +1111,7 @@ const session = await joinSession({
             id: "agent-builder",
             displayName: "Foundry Agent Canvas",
             description:
-                "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, knowledge, then deploy it as a Foundry hosted agent.",
+                "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, then deploy it as a Foundry hosted agent.",
             inputSchema: {
                 type: "object",
                 properties: {

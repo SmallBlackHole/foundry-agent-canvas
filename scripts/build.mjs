@@ -2,7 +2,7 @@
 // (catalog.mjs, foundry.mjs, inspector-backend/index.mjs) and their npm
 // dependencies (@azure/identity, ws) into a single ESM file under dist/.
 //
-// `@github/copilot-sdk/extension` is provided by the Copilot CLI host at
+// `@github/copilot-sdk/extension` is provided by the Copilot App host at
 // runtime, not an npm package we ship, so it must stay external. Node
 // builtins are external automatically under platform: "node".
 

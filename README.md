@@ -1,13 +1,13 @@
 # Foundry Agent Canvas
 
-A GitHub Copilot CLI **canvas extension** that reproduces the Microsoft Foundry
+A GitHub Copilot App **canvas extension** that reproduces the Microsoft Foundry
 "Build agent" experience in a side panel. Pick models, tools, and toolboxes from
 your live Foundry project; initialize, inspect, and deploy a hosted agent — each
 affordance sends a ready-to-edit prompt to chat.
 
 ## Features
 
-- **Build view** — add models, tools, skills, knowledge, connected agents, memory.
+- **Build view** — add models, tools, skills, guardrails.
 - **Live project data** — model deployments, tool connections, and Foundry
   Toolboxes are read from your selected project (read-only).
 - **Project picker** — sign in, pick subscription + project; the selection
@@ -16,12 +16,12 @@ affordance sends a ready-to-edit prompt to chat.
   (or create a new one).
 - **Local Agent Inspector** — static inspector UI proxied to a locally running
   agent on port 8088.
-- **Prompt-to-chat** — every action posts a prompt to the chat session; no
-  mutating API calls are made by the canvas itself.
+- **Prompt-to-chat** — actions post a prompt to the chat session for Copilot
+  to execute.
 
 ## Requirements
 
-- GitHub Copilot CLI with canvas extension support
+- GitHub Copilot App with canvas extension support
 - Node.js 18+
 - Azure CLI (`az login`) for live project/model/toolbox data
 - (Optional) `azd` to run/deploy hosted agents
@@ -55,7 +55,3 @@ state is written to `.selection.json` (gitignored — never committed).
 
 No secrets are stored in the repo. `.env` and `.selection.json` are gitignored.
 The bundled `inspector-ui/` assets are prebuilt vendor files.
-
-## License
-
-MIT
