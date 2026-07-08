@@ -29,8 +29,7 @@ import {
     signInCancel,
     signOut,
 } from "./foundry.mjs";
-import { saveSelection, clearSelection } from "./selection.mjs";
-import { servers, defaultState, bootstrapInstance } from "./state.mjs";
+import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
 import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
