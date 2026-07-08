@@ -9,6 +9,7 @@ import { PAGES, servers, defaultState, applyInput } from "./src/state.mjs";
 import { pushNavigate, pushSetProtocol, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
+import { setSelectionWorkspace } from "./src/selection.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
@@ -141,3 +142,4 @@ const session = await joinSession({
 });
 
 setInspectorSession(session);
+setSelectionWorkspace(session.workspacePath || workspaceRoot());

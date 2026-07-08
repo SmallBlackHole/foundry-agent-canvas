@@ -1,10 +1,6 @@
 # Dependencies — install with `npm install`, never commit.
 node_modules/
 
-# Local UI selection persistence (subscription/project picker) — machine-specific,
-# never commit.
-.selection.json
-
 # Local env / secrets
 .env
 
