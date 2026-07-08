@@ -20,7 +20,7 @@ import {
     selectSkillPrompt,
     selectGuardrailPrompt,
     toolConnections,
-} from "../catalog.mjs";
+} from "../src/catalog.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");

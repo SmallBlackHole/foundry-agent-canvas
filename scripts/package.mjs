@@ -25,6 +25,7 @@ mkdirSync(PKG_DIR, { recursive: true });
 cpSync(join(DIST_DIR, "extension.mjs"), join(PKG_DIR, "extension.mjs"));
 cpSync(join(ROOT, "public"), join(PKG_DIR, "public"), { recursive: true });
 cpSync(join(ROOT, "inspector-ui"), join(PKG_DIR, "inspector-ui"), { recursive: true });
+cpSync(join(ROOT, "references"), join(PKG_DIR, "references"), { recursive: true });
 cpSync(join(ROOT, "README.md"), join(PKG_DIR, "README.md"));
 
 // Trimmed package.json: no devDependencies/scripts, no dependencies (they're

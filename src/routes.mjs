@@ -1,0 +1,450 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+import { deployments, toolConnections, DEPLOY_PROMPT, INSPECT_PROMPT } from "./catalog.mjs";
+import {
+    listDeployments,
+    listConnections,
+    listToolboxes,
+    listToolboxTools,
+    listGuardrails,
+    listSkills,
+    addToolToToolbox,
+    createToolboxWithTool,
+    listWorkIQVariants,
+    addWorkIQToolsToToolbox,
+    createToolboxWithWorkIQTools,
+    getProject,
+    resolveProjectLocation,
+    isHostedAgentRegionSupported,
+    HOSTED_AGENT_REGIONS,
+    HOSTED_AGENT_REGIONS_DOC,
+} from "./foundry.mjs";
+import {
+    getIdentity,
+    listSubscriptions,
+    listProjects,
+    signInStart,
+    signInStatus,
+    signInCancel,
+    signOut,
+} from "./foundry.mjs";
+import { saveSelection, clearSelection } from "./selection.mjs";
+import { servers, defaultState, bootstrapInstance } from "./state.mjs";
+import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./enrichers.mjs";
+import { sendJson, serveStatic, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
+import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
+import { ensureInspectorProxy, AGENT_PORT } from "./inspector.mjs";
+
+export function createRequestHandler(instanceId, { session, publicDir, extDir, inspectorUiDir, workspaceRootFn }) {
+    return async (req, res) => {
+        const entry = servers.get(instanceId);
+        const url = new URL(req.url, "http://127.0.0.1");
+        const path = url.pathname;
+        const method = req.method || "GET";
+
+        // Static assets.
+        if (method === "GET" && (path === "/" || path === "/index.html")) return serveStatic(res, "index.html", publicDir);
+        if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
+        if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
+
+        // Tool icons (path-traversal-safe: name must be a bare slug).
+        if (method === "GET" && path.startsWith("/tool-icons/")) {
+            const name = path.slice("/tool-icons/".length);
+            if (/^[a-z0-9-]+\.svg$/.test(name)) return serveStatic(res, join("tool-icons", name), publicDir);
+            res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+            res.end("Not found");
+            return;
+        }
+
+        // Per-instance view state for the SPA.
+        if (method === "GET" && path === "/api/state") {
+            const state = entry ? entry.state : defaultState();
+            return sendJson(res, 200, { ...state, deployPrompt: DEPLOY_PROMPT, inspectPrompt: INSPECT_PROMPT });
+        }
+
+        // Live project identity (parsed from the endpoint; no network).
+        if (method === "GET" && path === "/api/project") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const p = getProject(ep);
+            const name = p.projectName || (entry ? entry.state.project?.name : "") || "";
+            return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint, resourceName: p.resourceName });
+        }
+
+        // Live model deployments in the selected project (mock fallback).
+        if (method === "GET" && path === "/api/deployments") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const r = await listDeployments(ep);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, source: "live", items: r.data.map(enrichDeployment) });
+            }
+            return sendJson(res, 200, { ok: true, source: "mock", reason: r.reason, items: deployments });
+        }
+
+        // Live tool connections in the selected project (mock fallback).
+        if (method === "GET" && path === "/api/connections") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const r = await listConnections(ep);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, source: "live", items: r.data.map(enrichConnection) });
+            }
+            return sendJson(res, 200, { ok: true, source: "mock", reason: r.reason, items: toolConnections });
+        }
+
+        if (method === "GET" && path === "/api/toolboxes") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const r = await listToolboxes(ep);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, items: r.data.map(enrichToolbox) });
+            }
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "GET" && path === "/api/guardrails") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const sub = entry ? entry.state.subscriptionId : "";
+            const r = await listGuardrails(ep, sub);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, items: r.data.map(enrichGuardrail) });
+            }
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "GET" && path === "/api/skills") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const r = await listSkills(ep);
+            if (r.ok) {
+                return sendJson(res, 200, { ok: true, items: r.data.map(enrichSkill) });
+            }
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "GET" && path === "/api/toolbox/tools") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const name = url.searchParams.get("name") || "";
+            const version = url.searchParams.get("version") || "";
+            const r = await listToolboxTools(ep, name, version);
+            if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "POST" && path === "/api/toolbox/add-tool") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            try {
+                const { toolbox, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
+                if (!toolbox || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                const r = await addToolToToolbox(ep, toolbox, toolId, toolName || "");
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`add-tool failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "POST" && path === "/api/toolbox/create-with-tool") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            try {
+                const { name, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
+                if (!name || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                const r = await createToolboxWithTool(ep, name, toolId, toolName || "");
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`create-with-tool failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        // ── Work IQ sub-tool picker ─────────────────────────────────────────
+        if (method === "GET" && path === "/api/workiq/variants") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const r = await listWorkIQVariants(ep);
+            return sendJson(res, 200, r);
+        }
+
+        if (method === "POST" && path === "/api/workiq/add-tools") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const sub = entry ? entry.state.subscriptionId : "";
+            try {
+                const { toolbox, variantIds } = JSON.parse((await readBody(req)) || "{}");
+                if (!toolbox || !Array.isArray(variantIds) || !variantIds.length) {
+                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                }
+                const r = await addWorkIQToolsToToolbox(ep, sub, toolbox, variantIds);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`workiq add-tools failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "POST" && path === "/api/workiq/create-with-tools") {
+            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const sub = entry ? entry.state.subscriptionId : "";
+            try {
+                const { name, variantIds } = JSON.parse((await readBody(req)) || "{}");
+                if (!name || !Array.isArray(variantIds) || !variantIds.length) {
+                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
+                }
+                const r = await createToolboxWithWorkIQTools(ep, sub, name, variantIds);
+                return sendJson(res, 200, r);
+            } catch (err) {
+                await session.log(`workiq create-with-tools failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
+            }
+        }
+
+        // ── Project picker: identity / subscriptions / projects ──────────────
+        if (method === "GET" && path === "/api/identity") {
+            const identity = await getIdentity();
+            return sendJson(res, 200, { ok: true, ...identity });
+        }
+
+        if (method === "GET" && path === "/api/bootstrap") {
+            if (!entry) return sendJson(res, 200, { ok: false, reason: "no_instance" });
+            try {
+                const result = await bootstrapInstance(entry);
+                return sendJson(res, 200, { ok: true, ...result });
+            } catch (err) {
+                await session.log(`bootstrap failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 200, { ok: false, reason: "bootstrap_failed" });
+            }
+        }
+
+        if (method === "GET" && path === "/api/subscriptions") {
+            const r = await listSubscriptions();
+            if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "GET" && path === "/api/projects") {
+            const sub = url.searchParams.get("sub") || (entry ? entry.state.subscriptionId : "");
+            const r = await listProjects(sub);
+            if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
+            return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
+        }
+
+        if (method === "POST" && path === "/api/select-subscription") {
+            try {
+                const body = JSON.parse((await readBody(req)) || "{}");
+                const subscriptionId = typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
+                if (!subscriptionId) {
+                    return sendJson(res, 400, { ok: false, error: "Missing subscriptionId" });
+                }
+                if (entry) entry.state.subscriptionId = subscriptionId;
+                if (entry) entry.state.projectLocation = "";
+                saveSelection({
+                    subscriptionId,
+                    subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
+                    projectEndpoint: "",
+                    projectName: "",
+                    projectLocation: "",
+                });
+                return sendJson(res, 200, { ok: true });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "POST" && path === "/api/select-project") {
+            try {
+                const body = JSON.parse((await readBody(req)) || "{}");
+                const ep = typeof body.endpoint === "string" ? body.endpoint.trim() : "";
+                if (!ep) return sendJson(res, 400, { ok: false, error: "Missing endpoint" });
+                const p = getProject(ep);
+                const name = (typeof body.name === "string" && body.name.trim()) || p.projectName || "project";
+                const subscriptionId = typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
+                const location = typeof body.location === "string" ? body.location.trim() : "";
+                const rg = typeof body.rg === "string" ? body.rg.trim() : "";
+                const account = typeof body.account === "string" ? body.account.trim() : "";
+                if (entry) {
+                    entry.state.projectEndpoint = ep;
+                    entry.state.projectLocation = location;
+                    entry.state.project = { ...entry.state.project, name, rg, account };
+                    if (subscriptionId) entry.state.subscriptionId = subscriptionId;
+                }
+                saveSelection({
+                    subscriptionId: subscriptionId || (entry ? entry.state.subscriptionId : ""),
+                    subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
+                    projectEndpoint: p.endpoint,
+                    projectName: name,
+                    projectLocation: location,
+                    projectRg: rg,
+                    projectAccount: account,
+                });
+                return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint });
+            } catch (err) {
+                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "GET" && path === "/api/region-support") {
+            const docsUrl = HOSTED_AGENT_REGIONS_DOC;
+            const regions = HOSTED_AGENT_REGIONS;
+            const ep = entry ? entry.state.projectEndpoint : "";
+            if (!ep) {
+                return sendJson(res, 200, { ok: true, location: "", supported: null, regions, docsUrl });
+            }
+            let location = (entry && entry.state.projectLocation) || "";
+            if (!location) {
+                try {
+                    location = await resolveProjectLocation(ep, entry ? entry.state.subscriptionId : "");
+                    if (location && entry) entry.state.projectLocation = location;
+                } catch {
+                    location = "";
+                }
+            }
+            const supported = isHostedAgentRegionSupported(location);
+            return sendJson(res, 200, { ok: true, location, supported, regions, docsUrl });
+        }
+
+        // ── Sign in / out (device-code flow shown in the canvas) ─────────────
+        if (method === "POST" && path === "/api/signin") {
+            const r = await signInStart();
+            return sendJson(res, r.ok ? 200 : 200, r);
+        }
+
+        if (method === "GET" && path === "/api/signin/status") {
+            const sessionId = url.searchParams.get("sessionId") || "";
+            const r = await signInStatus(sessionId);
+            return sendJson(res, 200, r);
+        }
+
+        if (method === "POST" && path === "/api/signin/cancel") {
+            try {
+                const { sessionId } = JSON.parse((await readBody(req)) || "{}");
+                return sendJson(res, 200, signInCancel(sessionId || ""));
+            } catch {
+                return sendJson(res, 200, { ok: true });
+            }
+        }
+
+        if (method === "POST" && path === "/api/signout") {
+            const r = await signOut();
+            clearSelection();
+            if (entry) {
+                entry.state.subscriptionId = "";
+                entry.state.bootstrapped = false;
+            }
+            return sendJson(res, 200, r);
+        }
+
+        // Server-Sent Events so an agent-invoked navigate() reflects live.
+        if (method === "GET" && path === "/events") {
+            res.writeHead(200, {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+            });
+            res.write(":ok\n\n");
+            if (entry) {
+                entry.sseClients.add(res);
+                let heartbeat = null;
+                if (SSE_HEARTBEAT_MS > 0) {
+                    heartbeat = setInterval(() => {
+                        try {
+                            res.write(`: hb ${Date.now()}\n\n`);
+                        } catch {
+                            /* connection went away between ticks */
+                        }
+                    }, SSE_HEARTBEAT_MS);
+                    heartbeat.unref?.();
+                }
+                req.on("close", () => {
+                    if (heartbeat) clearInterval(heartbeat);
+                    entry.sseClients.delete(res);
+                });
+            }
+            return;
+        }
+
+        // "Prompt to chat": forward the text to the session as a user turn.
+        if (method === "POST" && path === "/api/send") {
+            try {
+                const raw = await readBody(req);
+                const { prompt } = JSON.parse(raw || "{}");
+                if (typeof prompt !== "string" || !prompt.trim()) {
+                    return sendJson(res, 400, { ok: false, error: "Missing prompt" });
+                }
+                await session.send({ prompt });
+                return sendJson(res, 200, { ok: true });
+            } catch (err) {
+                await session.log(`Failed to send prompt to chat: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "GET" && path === "/api/protocol-ref") {
+            return sendJson(res, 200, {
+                path: join(extDir, "references", "responses-vs-invocations.md"),
+            });
+        }
+
+        if (method === "GET" && path === "/api/project-init") {
+            const root = workspaceRootFn();
+            const hasAzure = existsSync(join(root, "azure.yaml")) || existsSync(join(root, "azure.yml"));
+            const hasAgent = existsSync(join(root, "agent.yaml")) || existsSync(join(root, "agent.yml"));
+            return sendJson(res, 200, {
+                ok: true,
+                hasAzure,
+                hasAgent,
+                initialized: hasAzure || hasAgent,
+            });
+        }
+
+        if (method === "GET" && path === "/api/skills/status") {
+            const status = await checkFoundrySkillStatus();
+            return sendJson(res, 200, status);
+        }
+
+        if (method === "POST" && path === "/api/skills/install") {
+            try {
+                const result = await installFoundrySkill();
+                if (!result.ok) {
+                    await session.log(`Skills install failed: ${result.summary}`, { level: "error" });
+                }
+                return sendJson(res, 200, result);
+            } catch (err) {
+                await session.log(`Skills install error: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, code: -1, summary: String(err?.message ?? err) });
+            }
+        }
+
+        if (method === "GET" && path === "/api/inspect/ready") {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 2000);
+                try {
+                    await fetch(`http://localhost:${AGENT_PORT}/agentdev/version`, {
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timeout);
+                    return sendJson(res, 200, { ready: true });
+                } catch {
+                    clearTimeout(timeout);
+                    return sendJson(res, 200, { ready: false });
+                }
+            } catch (err) {
+                return sendJson(res, 200, { ready: false });
+            }
+        }
+
+        if (method === "GET" && path === "/api/inspect/start") {
+            try {
+                const proxyUrl = await ensureInspectorProxy(inspectorUiDir);
+                if (!proxyUrl) {
+                    return sendJson(res, 200, {
+                        ok: false,
+                        error: "Inspector failed to start. Check the extension logs for details.",
+                    });
+                }
+                return sendJson(res, 200, { ok: true, url: proxyUrl });
+            } catch (err) {
+                await session.log(`Inspector start failed: ${err?.message ?? err}`, { level: "error" });
+                return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
+            }
+        }
+
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Not found");
+    };
+}
