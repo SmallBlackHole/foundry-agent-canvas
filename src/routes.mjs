@@ -31,7 +31,7 @@ import {
 } from "./foundry.mjs";
 import { saveSelection, clearSelection } from "./selection.mjs";
 import { servers, defaultState, bootstrapInstance } from "./state.mjs";
-import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./enrichers.mjs";
+import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
 import { ensureInspectorProxy, AGENT_PORT } from "./inspector.mjs";
