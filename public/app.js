@@ -504,39 +504,6 @@ function applyInitDefaults(info) {
 // Starter prompt the developer can edit before sending. The purpose, protocol,
 // framework, and deploy clause are driven by state.init so the bubble buttons
 // (and AI-invoked canvas actions) can rewrite them.
-const PROTOCOL_BLOG = "https://ankitbko.github.io/blog/2026/05/hosted-agents-part-1/";
-
-// The "Responses vs Invocations" button points the agent at one local reference
-// file (its absolute path comes from GET /api/protocol-ref) instead of inlining
-// the whole comparison into the chat prompt. The file is bundled with the
-// extension under references/responses-vs-invocations.md.
-async function protocolRefPath() {
-    try {
-        const res = await fetch("/api/protocol-ref", { headers: { Accept: "application/json" } });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        return typeof data.path === "string" ? data.path : "";
-    } catch {
-        return "";
-    }
-}
-
-// Build + send the protocol-comparison prompt, pointing the agent at the bundled
-// reference file rather than embedding its contents.
-async function decideProtocol() {
-    const path = await protocolRefPath();
-    const fileClause = path
-        ? `Read the reference file at:\n${path}\n(use your file-read tool for that one file only — do NOT fetch any URL or use web search).`
-        : `Use the reference distilled from ${PROTOCOL_BLOG} (do NOT fetch the URL or use web search).`;
-    sendToChat(
-        "Briefly compare the Responses and Invocations protocols for Microsoft Foundry hosted " +
-            "agents. " +
-            fileClause +
-            " Then reply with 3-5 short bullets plus a one-line recommendation for a single-purpose " +
-            "Python agent, and immediately call the Foundry Agent Canvas's \"setProtocol\" action " +
-            'once with "Responses" or "Invocations".',
-    );
-}
 
 function initPromptText() {
     const proto = state.init.protocol === "Invocations" ? "Invocations" : "Responses";
@@ -2182,10 +2149,6 @@ root.addEventListener("click", async (e) => {
                 '"Create a ___ Python hosted agent" (for example "meeting-notes-summarizing" or ' +
                 '"invoice-parsing").',
         );
-        return;
-    }
-    if (e.target.closest("#decideProtocol")) {
-        decideProtocol();
         return;
     }
     if (e.target.closest("#modelAdd")) {
