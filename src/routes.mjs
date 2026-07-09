@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { deployments, toolConnections, DEPLOY_PROMPT, INSPECT_PROMPT } from "./catalog.mjs";
+import { deployments, toolConnections, DEPLOY_PROMPT } from "./catalog.mjs";
 import {
     listDeployments,
     listConnections,
@@ -33,7 +33,8 @@ import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance
 import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
-import { ensureInspectorProxy, AGENT_PORT } from "./inspector.mjs";
+import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
+import { launchAgentTerminal } from "./agent-terminal.mjs";
 
 export function createRequestHandler(instanceId, { session, publicDir, extDir, inspectorUiDir, workspaceRootFn }) {
     return async (req, res) => {
@@ -59,7 +60,7 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
         // Per-instance view state for the SPA.
         if (method === "GET" && path === "/api/state") {
             const state = entry ? entry.state : defaultState();
-            return sendJson(res, 200, { ...state, deployPrompt: DEPLOY_PROMPT, inspectPrompt: INSPECT_PROMPT });
+            return sendJson(res, 200, { ...state, deployPrompt: DEPLOY_PROMPT });
         }
 
         // Live project identity (parsed from the endpoint; no network).
@@ -409,22 +410,8 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
         }
 
         if (method === "GET" && path === "/api/inspect/ready") {
-            try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 2000);
-                try {
-                    await fetch(`http://localhost:${AGENT_PORT}/agentdev/version`, {
-                        signal: controller.signal,
-                    });
-                    clearTimeout(timeout);
-                    return sendJson(res, 200, { ready: true });
-                } catch {
-                    clearTimeout(timeout);
-                    return sendJson(res, 200, { ready: false });
-                }
-            } catch (err) {
-                return sendJson(res, 200, { ready: false });
-            }
+            const ready = await isAgentReachable();
+            return sendJson(res, 200, { ready });
         }
 
         if (method === "GET" && path === "/api/inspect/start") {
@@ -436,7 +423,20 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
                         error: "Inspector failed to start. Check the extension logs for details.",
                     });
                 }
-                return sendJson(res, 200, { ok: true, url: proxyUrl });
+                // Launch (or reuse) the local agent in the integrated terminal so
+                // it becomes reachable for the inspector to connect to. If the
+                // terminal couldn't be launched there's nothing for the inspector
+                // to connect to, so fail now instead of letting the UI poll for
+                // an agent that will never come up.
+                const terminal = await launchAgentTerminal(session);
+                if (!terminal?.ok) {
+                    return sendJson(res, 200, {
+                        ok: false,
+                        error: terminal?.error || "Could not start the agent in the integrated terminal.",
+                        terminal,
+                    });
+                }
+                return sendJson(res, 200, { ok: true, url: proxyUrl, terminal });
             } catch (err) {
                 await session.log(`Inspector start failed: ${err?.message ?? err}`, { level: "error" });
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });

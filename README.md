@@ -2,8 +2,9 @@
 
 A GitHub Copilot App **canvas extension** that reproduces the Microsoft Foundry
 "Build agent" experience in a side panel. Pick models, tools, and toolboxes from
-your live Foundry project; initialize, inspect, and deploy a hosted agent — each
-affordance sends a ready-to-edit prompt to chat.
+your live Foundry project; initialize, inspect, and deploy a hosted agent. Most
+affordances send a ready-to-edit prompt to chat; **Inspect locally** runs the
+agent in the integrated terminal and embeds the Agent Inspector.
 
 ## Features
 
@@ -14,8 +15,11 @@ affordance sends a ready-to-edit prompt to chat.
   persists locally across reopens.
 - **Toolboxes** — list/add toolboxes; "Add tool" lets you pick a target toolbox
   (or create a new one).
-- **Local Agent Inspector** — static inspector UI proxied to a locally running
-  agent on port 8088.
+- **Local Agent Inspector** — **Inspect locally** launches the agent with
+  `azd ai agent run --no-inspector` in the integrated terminal (reusing an
+  already-running one) and embeds the inspector UI, proxied to the agent on
+  port 8088. Closing the last builder canvas closes that terminal, stopping the
+  agent and freeing the port.
 - **Prompt-to-chat** — actions post a prompt to the chat session for Copilot
   to execute.
 

@@ -13,7 +13,6 @@ import { fileURLToPath } from "node:url";
 
 import {
     DEPLOY_PROMPT,
-    INSPECT_PROMPT,
     providerColor,
     selectModelPrompt,
     selectToolboxPrompt,
@@ -319,7 +318,6 @@ async function handleApi(req, res, url) {
             preview: true,
             project: mockProjectState(url),
             deployPrompt: DEPLOY_PROMPT,
-            inspectPrompt: INSPECT_PROMPT,
         });
     }
 

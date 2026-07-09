@@ -4,6 +4,23 @@ export const AGENT_PORT = 8088;
 let inspectorProxyUrl = null;
 let inspectorProxyServer = null;
 
+// Single source of truth for "is the local agent up?" — used by the readiness
+// endpoint and by the terminal launcher. Any HTTP response (even non-2xx) means
+// something is listening on AGENT_PORT; a thrown error (e.g. connection refused
+// or timeout) means it is not up yet.
+export async function isAgentReachable(timeoutMs = 2000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        await fetch(`http://localhost:${AGENT_PORT}/agentdev/version`, { signal: controller.signal });
+        return true;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 let _session = null;
 
 export function setInspectorSession(s) {

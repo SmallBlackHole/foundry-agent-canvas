@@ -9,6 +9,7 @@ import { PAGES, servers, defaultState, applyInput } from "./src/state.mjs";
 import { pushNavigate, pushSetProtocol, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
+import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
@@ -135,6 +136,33 @@ const session = await joinSession({
                 }
                 applyInput(entry.state, ctx.input);
                 return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
+            },
+            onClose: async (ctx) => {
+                // Tear down the per-instance HTTP server for the canvas that
+                // closed (these were previously leaked — never removed here).
+                const entry = servers.get(ctx.instanceId);
+                if (entry) {
+                    for (const client of entry.sseClients) {
+                        try {
+                            client.end();
+                        } catch {
+                            /* ignore */
+                        }
+                    }
+                    entry.sseClients.clear();
+                    try {
+                        entry.server.close();
+                    } catch {
+                        /* ignore */
+                    }
+                    servers.delete(ctx.instanceId);
+                }
+                // The agent terminal is shared across builder instances, so only
+                // close it (stopping the local azd agent and freeing its port)
+                // once the last builder canvas is gone.
+                if (servers.size === 0) {
+                    await closeAgentTerminal(session);
+                }
             },
         }),
     ],

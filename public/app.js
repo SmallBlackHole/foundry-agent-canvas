@@ -9,7 +9,6 @@ const state = {
     project: { name: "", rg: "", account: "" },
     model: { name: "", color: "#10a37f" },
     deployPrompt: "deploy it as a Foundry hosted agent",
-    inspectPrompt: "start the Foundry agent locally so I can inspect it",
     // Live project data, lazily loaded when a dropdown first opens.
     // status: idle | loading | ready | error
     deploymentsState: { status: "idle", items: [], source: null, reason: null },
@@ -2249,11 +2248,6 @@ async function launchInspector(btn) {
     const waitingEl = document.getElementById("inspectorWaiting");
     if (!view || !frame) return;
 
-    // Ask the chat agent to start the Foundry agent locally so it is running
-    // and ready to be inspected. Fire-and-forget so it doesn't block opening
-    // the inspector view below.
-    sendToChat(state.inspectPrompt);
-
     const label = btn ? btn.innerHTML : "";
     if (btn) {
         btn.disabled = true;
@@ -2262,6 +2256,8 @@ async function launchInspector(btn) {
     statusEl.hidden = true;
 
     try {
+        // The extension launches (or reuses) the agent in the integrated
+        // terminal and returns the inspector proxy URL.
         const data = await getJSON("/api/inspect/start");
         if (data && data.ok && data.url) {
             // Show the inspector view immediately with a waiting overlay — the
@@ -2353,7 +2349,6 @@ async function init() {
         if (s.project) state.project = s.project;
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
-        if (s.inspectPrompt) state.inspectPrompt = s.inspectPrompt;
         render(s.page || "build");
     } catch {
         render("build");
