@@ -16,6 +16,10 @@ const USER_SKILL_FILE = join(USER_SKILL_DIR, "SKILL.md");
 const USER_SKILL_LOCK_FILE = join(USER_AGENTS_DIR, ".skill-lock.json");
 const SKILLS_REMOTE_SKILL_PATH = ".github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md";
 const SKILLS_REMOTE_CHECK_TIMEOUT_MS = 10_000;
+const SKILLS_CHECK_TTL_MS = 5 * 60_000;
+let ensureFoundrySkillPromise = null;
+let lastEnsureFoundrySkillResult = null;
+let lastEnsureFoundrySkillCompletedAt = 0;
 
 export async function installFoundrySkill() {
     const result = await installSkillFromGitHub({
@@ -214,4 +218,54 @@ export async function checkFoundrySkillStatus() {
     }
     const latest = await checkRemoteFoundrySkill(installed.lock, installed.installedVersion);
     return { ...base, ...latest };
+}
+
+async function ensureFoundrySkillOnce() {
+    const status = await checkFoundrySkillStatus();
+    if (status.status !== "missing" && status.status !== "outdated") {
+        return {
+            ...status,
+            action: "none",
+            changed: false,
+            ready: status.installed,
+        };
+    }
+
+    const action = status.status === "outdated" ? "update" : "install";
+    const result = await installFoundrySkill();
+    const ready = result.ok || status.installed;
+    return {
+        ...status,
+        ...result,
+        action,
+        changed: result.ok,
+        previousStatus: status.status,
+        status: result.ok ? "latest" : status.status,
+        installed: ready,
+        installedVersion: result.installedVersion || status.installedVersion,
+        latestVersion: status.latestVersion,
+        ready,
+    };
+}
+
+export function ensureFoundrySkill() {
+    const cacheAge = Date.now() - lastEnsureFoundrySkillCompletedAt;
+    if (lastEnsureFoundrySkillResult && cacheAge >= 0 && cacheAge < SKILLS_CHECK_TTL_MS) {
+        return Promise.resolve(lastEnsureFoundrySkillResult);
+    }
+    if (!ensureFoundrySkillPromise) {
+        ensureFoundrySkillPromise = ensureFoundrySkillOnce()
+            .then((result) => {
+                const cacheable = result.ok || (result.status === "unknown" && result.ready);
+                if (cacheable) {
+                    lastEnsureFoundrySkillResult = result;
+                    lastEnsureFoundrySkillCompletedAt = Date.now();
+                }
+                return result;
+            })
+            .finally(() => {
+                ensureFoundrySkillPromise = null;
+            });
+    }
+    return ensureFoundrySkillPromise;
 }

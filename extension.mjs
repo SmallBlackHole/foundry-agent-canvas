@@ -10,10 +10,12 @@ import { pushNavigate, pushSetProtocol, pushFrame } from "./src/server-utils.mjs
 import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
+import { ensureFoundrySkill } from "./src/skills.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
+const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
 const openInstances = new Set();
 
 function workspaceRoot() {
@@ -22,7 +24,49 @@ function workspaceRoot() {
     return process.cwd();
 }
 
+async function ensureFoundrySkillForCanvas(session) {
+    let failure = "";
+    let ready = false;
+    try {
+        const result = await ensureFoundrySkill();
+        ready = !!result.ready;
+        if (!result.ok && !(result.status === "unknown" && ready)) {
+            const operation = result.action === "none" ? "check" : result.action;
+            failure = `Foundry Skills automatic ${operation} failed: ${result.summary || "Unknown error"}`;
+        }
+    } catch (err) {
+        failure = `Foundry Skills automatic check failed: ${err?.message ?? err}`;
+    }
+    if (failure) {
+        try {
+            await session.log(failure, { level: "error" });
+        } catch {
+            /* logging must not surface an unhandled rejection */
+        }
+    }
+}
+
+async function waitForFoundrySkillSync(syncPromise) {
+    let timer = null;
+    try {
+        await Promise.race([
+            syncPromise,
+            new Promise((resolve) => {
+                timer = setTimeout(resolve, FOUNDRY_SKILL_PROMPT_WAIT_MS);
+                timer.unref?.();
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 async function startServer(instanceId, session) {
+    let foundrySkillSync = null;
+    const syncFoundrySkill = () => {
+        foundrySkillSync = ensureFoundrySkillForCanvas(session);
+        return foundrySkillSync;
+    };
     const server = createServer(
         createRequestHandler(instanceId, {
             session,
@@ -30,6 +74,8 @@ async function startServer(instanceId, session) {
             extDir: EXT_DIR,
             inspectorUiDir: INSPECTOR_UI_DIR,
             workspaceRootFn: workspaceRoot,
+            onCanvasOpen: syncFoundrySkill,
+            waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
         })
     );
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

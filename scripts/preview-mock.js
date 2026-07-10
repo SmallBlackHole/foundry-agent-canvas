@@ -1,13 +1,7 @@
 (function () {
     "use strict";
 
-    const MOCK_PARAM_KEYS = ["skillStatus", "signedIn", "project", "az", "azd"];
-    const STATUS_OPTIONS = [
-        ["missing", "not installed"],
-        ["outdated", "outdated"],
-        ["latest", "latest installed"],
-        ["unknown", "check failed"],
-    ];
+    const MOCK_PARAM_KEYS = ["signedIn", "project", "az", "azd"];
 
     const originalFetch = window.fetch.bind(window);
 
@@ -40,7 +34,6 @@
         const params = new URLSearchParams(window.location.search);
         const signedIn = boolValue(params, "signedIn");
         return {
-            skillStatus: params.get("skillStatus") || "missing",
             signedIn,
             project: signedIn && boolValue(params, "project"),
             az: boolValue(params, "az"),
@@ -131,22 +124,10 @@
         body.id = "previewMockBody";
         body.className = "preview-mock-body";
 
-        const statusSelect = document.createElement("select");
-        statusSelect.className = "preview-mock-select";
-        statusSelect.dataset.mockKey = "skillStatus";
-        for (const [value, label] of STATUS_OPTIONS) {
-            const option = document.createElement("option");
-            option.value = value;
-            option.textContent = label;
-            option.selected = cfg.skillStatus === value;
-            statusSelect.appendChild(option);
-        }
-
         const summary = document.createElement("div");
         summary.className = "preview-mock-summary";
         summary.textContent =
-            `skillStatus=${cfg.skillStatus}, signedIn=${cfg.signedIn}, ` +
-            `project=${cfg.project}, az=${cfg.az}, azd=${cfg.azd}`;
+            `signedIn=${cfg.signedIn}, project=${cfg.project}, az=${cfg.az}, azd=${cfg.azd}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
@@ -157,7 +138,6 @@
                 checkbox("signedIn", "Signed in", cfg.signedIn),
                 checkbox("project", "Foundry project selected", cfg.project),
             ]),
-            section("Foundry Skills", [statusSelect]),
             section("Local tools", [
                 checkbox("az", "Azure CLI available", cfg.az),
                 checkbox("azd", "Azure Developer CLI available", cfg.azd),

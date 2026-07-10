@@ -535,49 +535,6 @@ async function handleApi(req, res, url) {
         });
     }
 
-    if (method === "GET" && path === "/api/skills/status") {
-        const scenario = url.searchParams.get("skillStatus") || "missing";
-        const scenarios = {
-            missing: {
-                ok: true,
-                status: "missing",
-                installed: false,
-                installedVersion: "",
-                latestVersion: "",
-                summary: "Foundry Skills are not installed yet.",
-            },
-            outdated: {
-                ok: true,
-                status: "outdated",
-                installed: true,
-                installedVersion: "1.1.29",
-                latestVersion: "1.1.30",
-                summary: "A newer version of Foundry Skills is available.",
-            },
-            latest: {
-                ok: true,
-                status: "latest",
-                installed: true,
-                installedVersion: "1.1.30",
-                latestVersion: "1.1.30",
-                summary: "The latest Foundry Skills are already installed (version 1.1.30).",
-            },
-            unknown: {
-                ok: false,
-                status: "unknown",
-                installed: true,
-                installedVersion: "1.1.30",
-                latestVersion: "",
-                summary: "Unable to access GitHub to verify whether Foundry Skills are up to date.",
-            },
-        };
-        return sendJson(res, 200, scenarios[scenario] || scenarios.missing);
-    }
-
-    if (method === "POST" && path === "/api/skills/install") {
-        return sendJson(res, 200, { ok: true, code: 0, summary: "Preview mode: command skipped" });
-    }
-
     if (method === "GET" && path === "/api/inspect/ready") {
         return sendJson(res, 200, { ready: false });
     }

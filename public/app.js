@@ -26,19 +26,12 @@ const state = {
     // "Initialize agent code" block (ephemeral UI state).
     init: {
         open: false,
-        showPrereq: false,
         promptDirty: false, // true once the user edits the textarea by hand
         promptText: "",
         startOption: "inspireIdea",
         protocol: "Responses", // Responses | Invocations (drives the starter prompt)
         framework: "Microsoft Agent Framework", // SDK/framework phrase in the prompt
         idea: "", // purpose phrase; empty => "single-purpose"
-    },
-    skill: {
-        status: "idle", // idle | checking | missing | outdated | latest | unknown | installing | updating
-        installedVersion: "",
-        latestVersion: "",
-        summary: "",
     },
     // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
     folds: { resources: true, deploy: true },
@@ -117,176 +110,6 @@ async function postJSON(url, body) {
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     return res.json();
-}
-
-// Check and run the non-LLM Foundry Skills install/update via the backend, then
-// reflect status inline next to the action. No chat turn.
-
-const SKILL_STATUS_LABELS = {
-    latest: "The latest Foundry Skills are already installed.",
-    outdated: "A newer version of Foundry Skills is available.",
-    missing: "",
-    unknown: "Could not check the Foundry Skills version.",
-};
-
-let skillStatusRequest = null;
-
-function normalizeSkillStatus(data) {
-    const known = new Set(["missing", "outdated", "latest", "unknown"]);
-    const status = known.has(data?.status) ? data.status : "unknown";
-    return {
-        status,
-        installedVersion: data?.installedVersion || "",
-        latestVersion: data?.latestVersion || "",
-        summary: data?.summary || SKILL_STATUS_LABELS[status] || "",
-    };
-}
-
-function skillVersionSuffix(s) {
-    if (s.installedVersion && s.latestVersion && s.installedVersion !== s.latestVersion) {
-        return ` Installed ${s.installedVersion}; latest ${s.latestVersion}.`;
-    }
-    return "";
-}
-
-function latestSkillSummary(s) {
-    const version = s.latestVersion || s.installedVersion;
-    return version
-        ? `The latest Foundry Skills are already installed (version ${version}).`
-        : SKILL_STATUS_LABELS.latest;
-}
-
-function setSkillState(next) {
-    state.skill = { ...state.skill, ...next };
-    renderSkillInstallState();
-}
-
-function renderSkillInstallState() {
-    const btn = document.getElementById("prepPrereqs");
-    const status = document.getElementById("skillStatus");
-    const wrap = document.getElementById("initPrereq");
-    if (!btn || !status) return;
-
-    const s = state.skill;
-    const shouldShow =
-        state.init.showPrereq ||
-        ["checking", "outdated", "unknown", "installing", "updating"].includes(s.status);
-    if (wrap) wrap.hidden = !shouldShow;
-    btn.hidden = false;
-    btn.disabled = false;
-    btn.dataset.busy = "0";
-    status.className = "init-skill-status";
-    status.textContent = "";
-
-    if (!shouldShow && (s.status === "idle" || s.status === "missing" || s.status === "latest")) {
-        btn.hidden = true;
-        return;
-    }
-
-    if (s.status === "checking") {
-        btn.hidden = true;
-        status.className = "init-skill-status is-loading";
-        status.textContent = "Checking Foundry Skills...";
-        return;
-    }
-    if (s.status === "latest") {
-        btn.textContent = "Install Foundry Skills";
-        btn.hidden = true;
-        status.className = "init-skill-status is-ok";
-        status.textContent = s.summary || latestSkillSummary(s);
-        return;
-    }
-    if (s.status === "outdated") {
-        btn.textContent = "Update Foundry Skills";
-        status.className = "init-skill-status is-warn";
-        status.textContent = (s.summary || SKILL_STATUS_LABELS.outdated) + skillVersionSuffix(s);
-        return;
-    }
-    if (s.status === "installing" || s.status === "updating") {
-        const updating = s.status === "updating";
-        btn.textContent = updating ? "Updating..." : "Installing...";
-        btn.disabled = true;
-        btn.dataset.busy = "1";
-        status.className = "init-skill-status is-loading";
-        status.textContent = updating ? "Updating Foundry Skills..." : "Installing Foundry Skills...";
-        return;
-    }
-    if (s.status === "unknown") {
-        btn.textContent = s.installedVersion ? "Update Foundry Skills" : "Install Foundry Skills";
-        status.className = "init-skill-status is-err";
-        status.textContent = s.summary || SKILL_STATUS_LABELS.unknown;
-        return;
-    }
-
-    btn.textContent = "Install Foundry Skills";
-    if (s.status === "missing") {
-        status.className = "init-skill-status is-warn";
-        status.textContent = "Required before starting.";
-    }
-}
-
-async function loadSkillStatus(force = false) {
-    if (skillStatusRequest) return skillStatusRequest;
-    if (!force && state.skill.status !== "idle") {
-        renderSkillInstallState();
-        return null;
-    }
-    setSkillState({ status: "checking", summary: "" });
-    skillStatusRequest = (async () => {
-        try {
-            const data = await getJSON("/api/skills/status");
-            state.skill = { ...state.skill, ...normalizeSkillStatus(data) };
-        } catch {
-            state.skill = {
-                ...state.skill,
-                status: "unknown",
-                summary: "Could not check the Foundry Skills version.",
-            };
-        } finally {
-            skillStatusRequest = null;
-            renderSkillInstallState();
-        }
-    })();
-    return skillStatusRequest;
-}
-
-
-async function installSkills() {
-    const btn = document.getElementById("prepPrereqs");
-    if (btn?.dataset.busy === "1") return;
-    const installingStatus = state.skill.status === "outdated" ? "updating" : "installing";
-    setSkillState({ status: installingStatus, summary: "" });
-    try {
-        const res = await fetch("/api/skills/install", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-        });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        const ok = !!data.ok;
-        const msg = data.summary || (ok ? "Done" : "Install failed");
-        setSkillState(ok
-            ? {
-                status: "latest",
-                summary: "The latest Foundry Skills are already installed.",
-                installedVersion: data.installedVersion || state.skill.latestVersion || state.skill.installedVersion,
-            }
-            : {
-                status: "unknown",
-                summary: msg,
-            });
-        toast(ok ? "Foundry Skills are ready" : "Skills install failed");
-    } catch (err) {
-        const isNetwork = err instanceof TypeError || /failed to fetch/i.test(err.message || "");
-        const msg = isNetwork
-            ? "Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again."
-            : "Could not install: " + err.message;
-        setSkillState({ status: "unknown", summary: msg });
-        toast(msg);
-    } finally {
-        renderSkillInstallState();
-    }
 }
 
 async function sendToChat(prompt) {
@@ -632,8 +455,6 @@ function renderInit() {
     if (panel) panel.hidden = !state.init.open;
     if (!state.init.open) return;
 
-    renderSkillInstallState();
-    loadSkillStatus();
     syncInitPrompt();
     selectStartOption(state.init.startOption || "inspireIdea");
 }
@@ -1206,44 +1027,6 @@ function remindProjectSelection(e) {
     }
     if (btn) btn.focus();
     return false;
-}
-
-function showFoundrySkillsInstall() {
-    closeModelMenu();
-    closeToolMenu();
-    closeSkillMenu();
-    closeGuardrailMenu();
-    closeProjectMenu();
-    state.init.open = true;
-    state.init.showPrereq = true;
-    renderInit();
-    const btn = document.getElementById("prepPrereqs");
-    if (btn && !btn.hidden) {
-        btn.focus();
-        btn.scrollIntoView({ block: "center", behavior: "smooth" });
-    }
-}
-
-async function remindFoundrySkillsInstall(e) {
-    const status = state.skill.status;
-    if (status === "idle" || status === "checking") {
-        if (e) e.stopPropagation();
-        await loadSkillStatus(false);
-    }
-    if (state.skill.status === "missing") {
-        if (e) e.stopPropagation();
-        toast("Install Foundry Skills first");
-        state.init.showPrereq = true;
-        showFoundrySkillsInstall();
-        return false;
-    }
-    if (state.skill.status === "installing" || state.skill.status === "updating") {
-        if (e) e.stopPropagation();
-        toast("Foundry Skills are still installing");
-        showFoundrySkillsInstall();
-        return false;
-    }
-    return true;
 }
 
 function closeProjectMenu() {
@@ -2199,7 +1982,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#initStart")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) sendToChat(withProjectContext(text));
@@ -2210,10 +1992,6 @@ root.addEventListener("click", async (e) => {
         state.init.startOption = "inspireIdea";
         syncInitPrompt();
         selectStartOption(state.init.startOption);
-        return;
-    }
-    if (e.target.closest("#prepPrereqs")) {
-        installSkills();
         return;
     }
     if (e.target.closest("#inspireIdea")) {
@@ -2244,7 +2022,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#modelAdd")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleModelMenu();
         return;
     }
@@ -2254,7 +2031,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#toolAdd")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleToolMenu();
         return;
     }
@@ -2264,7 +2040,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#guardrailAdd")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleGuardrailMenu();
         return;
     }
@@ -2274,7 +2049,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#skillAdd")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         toggleSkillMenu();
         return;
     }
@@ -2319,7 +2093,6 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#deployBtn")) {
         if (!remindProjectSelection(e)) return;
-        if (!(await remindFoundrySkillsInstall(e))) return;
         if (state.hostedRegion.supported === false) {
             const loc = prettyRegion(state.hostedRegion.location);
             toast(

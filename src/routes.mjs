@@ -32,11 +32,13 @@ import {
 import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
 import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
-import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
 
-export function createRequestHandler(instanceId, { session, publicDir, extDir, inspectorUiDir, workspaceRootFn }) {
+export function createRequestHandler(
+    instanceId,
+    { session, publicDir, extDir, inspectorUiDir, workspaceRootFn, onCanvasOpen, waitForFoundrySkill }
+) {
     return async (req, res) => {
         const entry = servers.get(instanceId);
         const url = new URL(req.url, "http://127.0.0.1");
@@ -44,7 +46,10 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
         const method = req.method || "GET";
 
         // Static assets.
-        if (method === "GET" && (path === "/" || path === "/index.html")) return serveStatic(res, "index.html", publicDir);
+        if (method === "GET" && (path === "/" || path === "/index.html")) {
+            onCanvasOpen?.();
+            return serveStatic(res, "index.html", publicDir);
+        }
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
 
@@ -381,6 +386,7 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
                 if (typeof prompt !== "string" || !prompt.trim()) {
                     return sendJson(res, 400, { ok: false, error: "Missing prompt" });
                 }
+                await waitForFoundrySkill?.();
                 await session.send({ prompt });
                 return sendJson(res, 200, { ok: true });
             } catch (err) {
@@ -405,24 +411,6 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
                 hasAgent,
                 initialized: hasAzure || hasAgent,
             });
-        }
-
-        if (method === "GET" && path === "/api/skills/status") {
-            const status = await checkFoundrySkillStatus();
-            return sendJson(res, 200, status);
-        }
-
-        if (method === "POST" && path === "/api/skills/install") {
-            try {
-                const result = await installFoundrySkill();
-                if (!result.ok) {
-                    await session.log(`Skills install failed: ${result.summary}`, { level: "error" });
-                }
-                return sendJson(res, 200, result);
-            } catch (err) {
-                await session.log(`Skills install error: ${err?.message ?? err}`, { level: "error" });
-                return sendJson(res, 500, { ok: false, code: -1, summary: String(err?.message ?? err) });
-            }
         }
 
         if (method === "GET" && path === "/api/inspect/ready") {
