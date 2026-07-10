@@ -14,6 +14,7 @@ import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
+const openInstances = new Set();
 
 function workspaceRoot() {
     const up = join(EXT_DIR, "..", "..", "..");
@@ -130,37 +131,28 @@ const session = await joinSession({
             ],
             open: async (ctx) => {
                 let entry = servers.get(ctx.instanceId);
+                if (entry && !entry.server.listening) {
+                    servers.delete(ctx.instanceId);
+                    entry = null;
+                }
                 if (!entry) {
                     entry = await startServer(ctx.instanceId, session);
                     servers.set(ctx.instanceId, entry);
                 }
+                openInstances.add(ctx.instanceId);
                 applyInput(entry.state, ctx.input);
                 return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
-                // Tear down the per-instance HTTP server for the canvas that
-                // closed (these were previously leaked — never removed here).
-                const entry = servers.get(ctx.instanceId);
-                if (entry) {
-                    for (const client of entry.sseClients) {
-                        try {
-                            client.end();
-                        } catch {
-                            /* ignore */
-                        }
-                    }
-                    entry.sseClients.clear();
-                    try {
-                        entry.server.close();
-                    } catch {
-                        /* ignore */
-                    }
-                    servers.delete(ctx.instanceId);
-                }
+                // Keep the loopback server alive for this provider process. The
+                // host can later reload the cached URL for the same instance
+                // without invoking open(), so closing it here strands the iframe
+                // on a dead port. Process exit reclaims every retained server.
+                openInstances.delete(ctx.instanceId);
                 // The agent terminal is shared across builder instances, so only
                 // close it (stopping the local azd agent and freeing its port)
                 // once the last builder canvas is gone.
-                if (servers.size === 0) {
+                if (openInstances.size === 0) {
                     await closeAgentTerminal(session);
                 }
             },

@@ -43,6 +43,8 @@ export function clearSelection() {
 
 export const PAGES = ["build"];
 
+// Retained for the provider process lifetime because the host may reload a
+// cached canvas URL without invoking the provider's open handler again.
 export const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set }
 
 export function defaultState() {

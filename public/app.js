@@ -639,7 +639,6 @@ function isCanvasDisconnectedReason(reason) {
 }
 
 function dataLoadError(label, reason) {
-    if (isCanvasDisconnectedReason(reason)) return "Canvas disconnected \u2014 reload";
     const map = {
         not_signed_in: `Sign in to load ${label}`,
         no_project: `Select a Foundry project to load ${label}`,
@@ -651,12 +650,15 @@ function dataLoadError(label, reason) {
     return map[reason] || `Couldn\u2019t load ${label}`;
 }
 
-function dataLoadRetry(reason, loader) {
-    return isCanvasDisconnectedReason(reason) ? () => location.reload() : loader;
-}
-
-function dataLoadRetryText(reason) {
-    return isCanvasDisconnectedReason(reason) ? "Reload" : "Retry";
+function dataLoadErrorRow(label, reason, loader) {
+    // Never navigate the iframe while its loopback server is unavailable:
+    // reloading a dead URL replaces this recoverable page with the browser's
+    // connection-refused screen. EventSource keeps retrying in place, while a
+    // provider restart is rehydrated by the host with the new canvas URL.
+    if (isCanvasDisconnectedReason(reason)) {
+        return menuMsg("Reconnecting to canvas\u2026", "loading");
+    }
+    return menuError(dataLoadError(label, reason), loader);
 }
 
 // Section 1 of the model dropdown: models already deployed in the project.
@@ -668,9 +670,7 @@ function renderDeployList() {
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading deployments\u2026", "loading"));
     if (st.status === "error") {
-        return host.appendChild(
-            menuError(dataLoadError("deployments", st.reason), dataLoadRetry(st.reason, () => loadDeployments(true)), dataLoadRetryText(st.reason)),
-        );
+        return host.appendChild(dataLoadErrorRow("deployments", st.reason, () => loadDeployments(true)));
     }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No model deployments in this project", "empty"));
 
@@ -707,9 +707,7 @@ function renderToolList() {
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading connections\u2026", "loading"));
     if (st.status === "error") {
-        return host.appendChild(
-            menuError(dataLoadError("connections", st.reason), dataLoadRetry(st.reason, () => loadConnections(true)), dataLoadRetryText(st.reason)),
-        );
+        return host.appendChild(dataLoadErrorRow("connections", st.reason, () => loadConnections(true)));
     }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No tool connections in this project", "empty"));
 
@@ -757,9 +755,7 @@ function renderToolboxList() {
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading toolboxes\u2026", "loading"));
     if (st.status === "error") {
-        return host.appendChild(
-            menuError(dataLoadError("toolboxes", st.reason), dataLoadRetry(st.reason, () => loadToolboxes(true)), dataLoadRetryText(st.reason)),
-        );
+        return host.appendChild(dataLoadErrorRow("toolboxes", st.reason, () => loadToolboxes(true)));
     }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No toolboxes in this project", "empty"));
 
@@ -822,7 +818,11 @@ function renderToolboxList() {
             if (t.toolsStatus === "loading") {
                 tools.appendChild(menuMsg("Loading tools\u2026", "loading"));
             } else if (t.toolsStatus === "error") {
-                tools.appendChild(menuMsg("Couldn\u2019t load tools", "empty"));
+                tools.appendChild(
+                    state.canvasDisconnected
+                        ? menuMsg("Reconnecting to canvas\u2026", "loading")
+                        : menuMsg("Couldn\u2019t load tools", "empty"),
+                );
             } else if ((t.tools || []).length === 0) {
                 tools.appendChild(menuMsg("No tools in this toolbox", "empty"));
             } else {
@@ -847,9 +847,7 @@ function renderGuardrailList() {
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading guardrails…", "loading"));
     if (st.status === "error") {
-        return host.appendChild(
-            menuError(dataLoadError("guardrails", st.reason), dataLoadRetry(st.reason, () => loadGuardrails(true)), dataLoadRetryText(st.reason)),
-        );
+        return host.appendChild(dataLoadErrorRow("guardrails", st.reason, () => loadGuardrails(true)));
     }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No guardrails in this project", "empty"));
 
@@ -885,9 +883,7 @@ function renderSkillList() {
 
     if (st.status === "loading") return host.appendChild(menuMsg("Loading skills…", "loading"));
     if (st.status === "error") {
-        return host.appendChild(
-            menuError(dataLoadError("skills", st.reason), dataLoadRetry(st.reason, () => loadSkills(true)), dataLoadRetryText(st.reason)),
-        );
+        return host.appendChild(dataLoadErrorRow("skills", st.reason, () => loadSkills(true)));
     }
     if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No skills in this project", "empty"));
 

@@ -34,9 +34,8 @@ const PORT = Number(valueFor("--port") || process.env.PORT || 0);
 //       After N ms, drop every SSE client and stop the server from listening.
 //       Simulates the backing loopback server's port going away (in the real
 //       extension this now only happens on a process restart / extensions_reload,
-//       since the eager teardown was removed). The still-open iframe then shows
-//       "Canvas disconnected — reload" and a raw Reload lands on "127.0.0.1
-//       refused to connect" — lets you verify the client's reconnect/recovery.
+//       since the eager teardown was removed). The still-open iframe remains on
+//       its recoverable page and shows an in-place reconnecting state.
 //   --sse-heartbeat <ms> / PREVIEW_SSE_HEARTBEAT_MS (default 20000; 0 disables)
 //       Heartbeat cadence for /events. Set 0 to let an idle SSE be dropped. This
 //       is the preview-side counterpart of the extension's
@@ -610,7 +609,7 @@ server.listen(PORT, HOST, () => {
     }
     if (KILL_AFTER_MS > 0) {
         console.log(`[preview] REPRO: tearing down the server in ${KILL_AFTER_MS}ms to simulate the canvas backend going away.`);
-        console.log("[preview]        Expect the iframe to show 'Canvas disconnected — reload'; Reload then hits 'can't reach this page'.");
+        console.log("[preview]        Expect an in-place 'Reconnecting to canvas…' state with no dead-port reload.");
         const kill = setTimeout(() => {
             console.log("[preview] REPRO: dropping SSE clients and closing the server now. The iframe's port is now dead.");
             for (const client of sseClients) {
