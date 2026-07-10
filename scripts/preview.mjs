@@ -23,6 +23,7 @@ import {
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");
+const FLUENT_ICONS_DIR = join(ROOT, "node_modules", "@fluentui", "svg-icons", "icons");
 const PROTOCOL_REF = join(ROOT, "references", "responses-vs-invocations.md");
 const PREVIEW_MOCK_JS = join(ROOT, "scripts", "preview-mock.js");
 const PREVIEW_MOCK_CSS = join(ROOT, "scripts", "preview-mock.css");
@@ -66,7 +67,10 @@ const identity = {
     subscriptionName: "Preview Subscription",
 };
 
-const subscriptions = [{ id: identity.subscriptionId, name: identity.subscriptionName, isDefault: true }];
+const subscriptions = [
+    { id: identity.subscriptionId, name: identity.subscriptionName, isDefault: true },
+    { id: "preview-subscription-alt", name: "Preview Subscription Alt", isDefault: false },
+];
 
 const projects = [
     {
@@ -77,10 +81,22 @@ const projects = [
         name: "Preview Project",
         project: "Preview Project",
         rg: "preview-rg",
+        subscriptionId: identity.subscriptionId,
+    },
+    {
+        account: "preview-alt-foundry",
+        endpoint: "https://preview-alt.services.ai.azure.com/api/projects/preview-alt-project",
+        id: "/subscriptions/preview-alt/resourceGroups/preview/providers/Microsoft.CognitiveServices/accounts/preview-alt/projects/preview-alt-project",
+        location: "westus",
+        name: "Preview Alt Project",
+        project: "Preview Alt Project",
+        rg: "preview-alt-rg",
+        subscriptionId: "preview-subscription-alt",
     },
 ];
 
 let selectedProject = projects[0];
+let selectedSubscriptionId = identity.subscriptionId;
 
 const state = {
     page: "build",
@@ -88,7 +104,7 @@ const state = {
     project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
     projectEndpoint: selectedProject.endpoint,
     projectLocation: selectedProject.location,
-    subscriptionId: identity.subscriptionId,
+    subscriptionId: selectedSubscriptionId,
     bootstrapped: true,
     model: { name: "gpt-5", color: "#10a37f" },
 };
@@ -129,7 +145,8 @@ function mockIdentity(url) {
             subscriptionName: "",
         };
     }
-    return identity;
+    const sub = subscriptions.find((s) => s.id === selectedSubscriptionId) || subscriptions[0];
+    return { ...identity, subscriptionId: sub.id, subscriptionName: sub.name };
 }
 
 function mockProjectState(url) {
@@ -259,6 +276,18 @@ function publicFile(pathname) {
 
 function serveStatic(req, res) {
     const url = new URL(req.url, `http://${HOST}`);
+    if (url.pathname.startsWith("/fluent-icons/")) {
+        const name = url.pathname.slice("/fluent-icons/".length);
+        if (/^[a-z0-9_]+_(12|16|20)_regular\.svg$/.test(name)) {
+            const file = join(FLUENT_ICONS_DIR, name);
+            if (existsSync(file)) {
+                res.writeHead(200, { "Content-Type": "image/svg+xml" });
+                res.end(readFileSync(file));
+                return true;
+            }
+        }
+        return false;
+    }
     if (url.pathname === "/__preview-mock.js") {
         res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
         res.end(readFileSync(PREVIEW_MOCK_JS));
@@ -293,6 +322,8 @@ function projectInit() {
 
 function selectProject(project) {
     selectedProject = project || projects[0];
+    selectedSubscriptionId = selectedProject.subscriptionId || selectedSubscriptionId;
+    state.subscriptionId = selectedSubscriptionId;
     state.project = { name: selectedProject.name, endpoint: selectedProject.endpoint };
     state.projectEndpoint = selectedProject.endpoint;
     state.projectLocation = selectedProject.location || "";
@@ -418,10 +449,22 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/projects") {
         if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
-        return sendJson(res, 200, { ok: true, items: projects });
+        const sub = url.searchParams.get("sub") || selectedSubscriptionId;
+        return sendJson(res, 200, { ok: true, items: projects.filter((p) => !sub || p.subscriptionId === sub) });
     }
 
     if (method === "POST" && path === "/api/select-subscription") {
+        const body = JSON.parse((await readBody(req)) || "{}");
+        const next = subscriptions.find((s) => s.id === body.subscriptionId) || subscriptions[0];
+        selectedSubscriptionId = next.id;
+        state.subscriptionId = next.id;
+        const firstProject = projects.find((p) => p.subscriptionId === next.id) || null;
+        selectedProject = firstProject || projects[0];
+        state.project = firstProject
+            ? { name: firstProject.name, endpoint: firstProject.endpoint, rg: firstProject.rg, account: firstProject.account }
+            : emptyProject();
+        state.projectEndpoint = firstProject?.endpoint || "";
+        state.projectLocation = firstProject?.location || "";
         return sendJson(res, 200, { ok: true });
     }
 

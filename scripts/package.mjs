@@ -14,6 +14,29 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
 const PKG_DIR = join(DIST_DIR, "pkg");
 const ZIP_PATH = join(DIST_DIR, "foundry-agent-canvas.zip");
+const FLUENT_ICONS = [
+    "book_20_regular.svg",
+    "box_multiple_20_regular.svg",
+    "calendar_20_regular.svg",
+    "chat_multiple_20_regular.svg",
+    "checkmark_16_regular.svg",
+    "chevron_down_12_regular.svg",
+    "code_20_regular.svg",
+    "globe_search_20_regular.svg",
+    "more_horizontal_20_regular.svg",
+    "number_circle_1_16_regular.svg",
+    "number_circle_2_16_regular.svg",
+    "number_circle_3_16_regular.svg",
+    "open_16_regular.svg",
+    "person_16_regular.svg",
+    "plug_connected_16_regular.svg",
+    "rocket_20_regular.svg",
+    "send_16_regular.svg",
+    "shield_checkmark_20_regular.svg",
+    "sparkle_20_regular.svg",
+    "toolbox_20_regular.svg",
+    "wrench_screwdriver_20_regular.svg",
+];
 
 // 1. Build the bundle first.
 execFileSync(process.execPath, [join(ROOT, "scripts", "build.mjs")], { stdio: "inherit" });
@@ -27,6 +50,14 @@ cpSync(join(ROOT, "public"), join(PKG_DIR, "public"), { recursive: true });
 cpSync(join(ROOT, "inspector-ui"), join(PKG_DIR, "inspector-ui"), { recursive: true });
 cpSync(join(ROOT, "references"), join(PKG_DIR, "references"), { recursive: true });
 cpSync(join(ROOT, "README.md"), join(PKG_DIR, "README.md"));
+
+const fluentSrc = join(ROOT, "node_modules", "@fluentui", "svg-icons", "icons");
+const fluentDest = join(PKG_DIR, "public", "fluent-icons");
+rmSync(fluentDest, { recursive: true, force: true });
+mkdirSync(fluentDest, { recursive: true });
+for (const icon of FLUENT_ICONS) {
+    cpSync(join(fluentSrc, icon), join(fluentDest, icon));
+}
 
 // Trimmed package.json: no devDependencies/scripts, no dependencies (they're
 // inlined into extension.mjs by esbuild), just identity metadata.

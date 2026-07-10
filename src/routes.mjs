@@ -31,7 +31,7 @@ import {
 } from "./foundry.mjs";
 import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
 import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
-import { sendJson, serveStatic, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
+import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { checkFoundrySkillStatus, installFoundrySkill } from "./skills.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
@@ -52,6 +52,22 @@ export function createRequestHandler(instanceId, { session, publicDir, extDir, i
         if (method === "GET" && path.startsWith("/tool-icons/")) {
             const name = path.slice("/tool-icons/".length);
             if (/^[a-z0-9-]+\.svg$/.test(name)) return serveStatic(res, join("tool-icons", name), publicDir);
+            res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+            res.end("Not found");
+            return;
+        }
+
+        // Fluent UI SVG icons are sourced from @fluentui/svg-icons. Packaged
+        // builds copy the used subset into public/fluent-icons; source checkouts
+        // can serve them directly from node_modules after npm install.
+        if (method === "GET" && path.startsWith("/fluent-icons/")) {
+            const name = path.slice("/fluent-icons/".length);
+            if (/^[a-z0-9_]+_(12|16|20)_regular\.svg$/.test(name)) {
+                const packaged = join(publicDir, "fluent-icons", name);
+                if (existsSync(packaged)) return serveFile(res, packaged);
+                const installed = join(extDir, "node_modules", "@fluentui", "svg-icons", "icons", name);
+                if (existsSync(installed)) return serveFile(res, installed);
+            }
             res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
             res.end("Not found");
             return;

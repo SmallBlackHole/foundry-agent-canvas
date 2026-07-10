@@ -19,14 +19,17 @@ const state = {
     canvasDisconnected: false,
     // Project picker state.
     identity: { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" },
+    selectedSubscription: { id: "", name: "" },
     subsState: { status: "idle", items: [], reason: null },
     projState: { status: "idle", items: [], reason: null, sub: null },
     signin: { sessionId: null, timer: null, starting: false },
     // "Initialize agent code" block (ephemeral UI state).
     init: {
         open: false,
+        showPrereq: false,
         promptDirty: false, // true once the user edits the textarea by hand
         promptText: "",
+        startOption: "inspireIdea",
         protocol: "Responses", // Responses | Invocations (drives the starter prompt)
         framework: "Microsoft Agent Framework", // SDK/framework phrase in the prompt
         idea: "", // purpose phrase; empty => "single-purpose"
@@ -161,14 +164,24 @@ function setSkillState(next) {
 function renderSkillInstallState() {
     const btn = document.getElementById("prepPrereqs");
     const status = document.getElementById("skillStatus");
+    const wrap = document.getElementById("initPrereq");
     if (!btn || !status) return;
 
     const s = state.skill;
+    const shouldShow =
+        state.init.showPrereq ||
+        ["checking", "outdated", "unknown", "installing", "updating"].includes(s.status);
+    if (wrap) wrap.hidden = !shouldShow;
     btn.hidden = false;
     btn.disabled = false;
     btn.dataset.busy = "0";
     status.className = "init-skill-status";
     status.textContent = "";
+
+    if (!shouldShow && (s.status === "idle" || s.status === "missing" || s.status === "latest")) {
+        btn.hidden = true;
+        return;
+    }
 
     if (s.status === "checking") {
         btn.hidden = true;
@@ -206,6 +219,10 @@ function renderSkillInstallState() {
     }
 
     btn.textContent = "Install Foundry Skills";
+    if (s.status === "missing") {
+        status.className = "init-skill-status is-warn";
+        status.textContent = "Required before starting.";
+    }
 }
 
 async function loadSkillStatus(force = false) {
@@ -351,8 +368,19 @@ function openPortalPage(path) {
     }
 }
 
+function openFoundryHome() {
+    window.open("https://ai.azure.com", "_blank");
+}
+
 function clone(id) {
     return document.getElementById(id).content.firstElementChild.cloneNode(true);
+}
+
+function fluentIcon(name, className = "") {
+    const span = document.createElement("span");
+    span.className = ("fi fi-" + name + " " + className).trim();
+    span.setAttribute("aria-hidden", "true");
+    return span;
 }
 
 // --------------------------------------------------------------- Build view
@@ -374,7 +402,10 @@ function renderBuild() {
     const pmProjValue = node.querySelector("#pmProjValue");
     if (pmProjValue && state.project?.name) pmProjValue.textContent = state.project.name;
     const pmSubValue = node.querySelector("#pmSubValue");
-    if (pmSubValue && state.identity.subscriptionName) pmSubValue.textContent = state.identity.subscriptionName;
+    if (pmSubValue) {
+        const subName = selectedSubscriptionName();
+        if (subName) pmSubValue.textContent = subName;
+    }
 
     // Set portal links for "Deploy new model" / "Add or update toolbox" / "Create new skill" / "Create new guardrail".
     const modelLink = node.querySelector("#deployNewModelLink");
@@ -519,13 +550,23 @@ function initPromptText() {
     return text;
 }
 
-// Seed the textarea with the default prompt unless the user has edited it by
-// hand (promptDirty).
+const HELP_ME_DECIDE_PROMPT =
+    "Guide user through the process of creating an agent, deciding scenarios and technical stack such as coding languages, frameworks and protocols.";
+
+function setInitPreviewPrompt(text) {
+    state.init.promptText = text;
+    state.init.promptDirty = true;
+    const ta = document.getElementById("initPrompt");
+    if (ta) ta.value = text;
+}
+
+// Seed the textarea from durable state. When promptDirty is true, the value is
+// owned by state.init.promptText; do not read from a newly cloned empty textarea.
 function syncInitPrompt() {
     const ta = document.getElementById("initPrompt");
     if (!ta) return;
     if (state.init.promptDirty) {
-        state.init.promptText = ta.value;
+        ta.value = state.init.promptText || "";
         return;
     }
     const text = initPromptText();
@@ -556,6 +597,7 @@ function setInitIdea(idea) {
     const phrase = idea.trim();
     state.init.idea = phrase;
     state.init.open = true;
+    state.init.startOption = "inspireIdea";
 
     const ta = document.getElementById("initPrompt");
     const current = (ta ? ta.value : state.init.promptText) || initPromptText();
@@ -569,6 +611,13 @@ function setInitIdea(idea) {
     if (ta) ta.value = next;
     renderInit();
     toast("Idea added \u2713");
+}
+
+function selectStartOption(id) {
+    state.init.startOption = id;
+    for (const btn of document.querySelectorAll(".start-option")) {
+        btn.classList.toggle("is-selected", btn.id === id);
+    }
 }
 
 function renderInit() {
@@ -586,6 +635,7 @@ function renderInit() {
     renderSkillInstallState();
     loadSkillStatus();
     syncInitPrompt();
+    selectStartOption(state.init.startOption || "inspireIdea");
 }
 function menuMsg(text, variant) {
     const el = document.createElement("div");
@@ -680,14 +730,10 @@ function renderDeployList() {
         item.type = "button";
         item.setAttribute("role", "menuitem");
 
-        const dot = document.createElement("span");
-        dot.className = "model-dot";
-        dot.style.background = m.color || "#57606a";
-
         const name = document.createElement("span");
         name.className = "item-name";
         name.textContent = m.name;
-        item.append(dot, name);
+        item.appendChild(name);
 
         item.addEventListener("click", () => {
             closeModelMenu();
@@ -773,27 +819,25 @@ function renderToolboxList() {
         const chev = document.createElement("span");
         chev.className = "toolbox-chev" + (t.expanded ? " is-open" : "");
         chev.setAttribute("aria-hidden", "true");
-        chev.innerHTML =
-            '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M9 6 7.6 7.4 12.2 12l-4.6 4.6L9 18l6-6-6-6Z"/></svg>';
+        chev.appendChild(fluentIcon("chev"));
         item.appendChild(chev);
 
         const icon = document.createElement("span");
         icon.className = "toolbox-icon";
         icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML =
-            '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" ' +
-            'd="M21 8.5 12 13 3 8.5 12 4l9 4.5Zm-9 6.2 9-4.5v6L12 21l-9-4.8v-6l9 4.5Z"/></svg>';
+        icon.appendChild(fluentIcon("toolbox"));
         item.appendChild(icon);
 
         const name = document.createElement("span");
         name.className = "item-name";
-        name.textContent = t.name;
+        const count = Array.isArray(t.tools) && t.toolsStatus === "ready" ? ` (${t.tools.length})` : "";
+        name.textContent = t.name + count;
         item.appendChild(name);
 
         // "Use" selects the toolbox (prompt-to-chat); clicking elsewhere expands.
         const use = document.createElement("span");
         use.className = "toolbox-use";
-        use.textContent = "Use";
+        use.append(fluentIcon("plug"), document.createTextNode("Connect"));
         use.addEventListener("click", (e) => {
             e.stopPropagation();
             closeToolMenu();
@@ -829,7 +873,7 @@ function renderToolboxList() {
                 for (const tool of t.tools) {
                     const row = document.createElement("div");
                     row.className = "toolbox-tool";
-                    row.textContent = tool.name + (tool.type ? `  \u00b7 ${tool.type}` : "");
+                    row.textContent = tool.name;
                     tools.appendChild(row);
                 }
             }
@@ -857,10 +901,7 @@ function renderGuardrailList() {
         item.type = "button";
         item.setAttribute("role", "menuitem");
 
-        const dot = document.createElement("span");
-        dot.className = "model-dot";
-        dot.style.background = g.color || "#57606a";
-        item.appendChild(dot);
+        item.appendChild(fluentIcon("guardrails"));
 
         const name = document.createElement("span");
         name.className = "item-name";
@@ -893,10 +934,7 @@ function renderSkillList() {
         item.type = "button";
         item.setAttribute("role", "menuitem");
 
-        const dot = document.createElement("span");
-        dot.className = "model-dot";
-        dot.style.background = "#8250df";
-        item.appendChild(dot);
+        item.appendChild(fluentIcon("skills"));
 
         const name = document.createElement("span");
         name.className = "item-name";
@@ -1111,6 +1149,24 @@ function toggleSkillMenu() {
 // ------------------------------------------------------- Project picker panel
 const NO_PROJECT_LABEL = "Select a project";
 
+function selectedSubscriptionId() {
+    return state.selectedSubscription.id || state.identity.subscriptionId || "";
+}
+
+function selectedSubscriptionName() {
+    return state.selectedSubscription.name || state.identity.subscriptionName || "";
+}
+
+function setSelectedSubscription(id, name) {
+    const nextId = id || "";
+    const nextName = name || "";
+    state.selectedSubscription = { id: nextId, name: nextName };
+    state.identity.subscriptionId = nextId;
+    state.identity.subscriptionName = nextName;
+    const subValue = document.getElementById("pmSubValue");
+    if (subValue) subValue.textContent = nextName || "\u2014";
+}
+
 function setProjectLabels(name) {
     const display = name || NO_PROJECT_LABEL;
     state.project = { ...state.project, name: name || "" };
@@ -1142,6 +1198,7 @@ function remindProjectSelection(e) {
         menu.hidden = false;
         if (btn) btn.setAttribute("aria-expanded", "true");
         renderIdentity();
+        setAccordion("proj");
         if (state.identity.signedIn) {
             loadSubscriptions(false);
             loadProjects(false);
@@ -1158,6 +1215,7 @@ function showFoundrySkillsInstall() {
     closeGuardrailMenu();
     closeProjectMenu();
     state.init.open = true;
+    state.init.showPrereq = true;
     renderInit();
     const btn = document.getElementById("prepPrereqs");
     if (btn && !btn.hidden) {
@@ -1175,6 +1233,7 @@ async function remindFoundrySkillsInstall(e) {
     if (state.skill.status === "missing") {
         if (e) e.stopPropagation();
         toast("Install Foundry Skills first");
+        state.init.showPrereq = true;
         showFoundrySkillsInstall();
         return false;
     }
@@ -1203,8 +1262,6 @@ function closeProjectMenu() {
         projSearch.value = "";
         renderProjList();
     }
-    // Fold the sub/project lists so they don't stay expanded on reopen.
-    setAccordion(null);
 }
 
 function toggleProjectMenu() {
@@ -1216,6 +1273,7 @@ function toggleProjectMenu() {
     if (btn) btn.setAttribute("aria-expanded", String(willOpen));
     if (willOpen) {
         renderIdentity();
+        setAccordion("proj");
         // Preload lists if signed in.
         if (state.identity.signedIn) {
             loadSubscriptions(false);
@@ -1235,11 +1293,11 @@ function renderIdentity() {
     if (tenantEl) tenantEl.textContent = id.signedIn && id.tenantId ? "Tenant " + id.tenantId : "";
     if (avatarEl) avatarEl.textContent = (id.account || "?").trim().charAt(0) || "?";
     if (authBtn) {
-        authBtn.textContent = id.signedIn ? "Sign out" : "Sign in";
+        authBtn.textContent = id.signedIn ? "Sign Out" : "Sign In";
         authBtn.disabled = false;
     }
-    if (subValue && id.subscriptionName) {
-        subValue.textContent = id.subscriptionName;
+    if (subValue) {
+        subValue.textContent = selectedSubscriptionName() || "\u2014";
     }
 }
 
@@ -1253,6 +1311,10 @@ async function loadIdentity() {
                 tenantId: r.tenantId || "",
                 subscriptionId: r.subscriptionId || "",
                 subscriptionName: r.subscriptionName || "",
+            };
+            state.selectedSubscription = {
+                id: state.selectedSubscription.id || state.identity.subscriptionId,
+                name: state.selectedSubscription.name || state.identity.subscriptionName,
             };
         }
     } catch {
@@ -1417,6 +1479,7 @@ async function pollSignIn() {
                     subscriptionId: r.identity.subscriptionId || "",
                     subscriptionName: r.identity.subscriptionName || "",
                 };
+                setSelectedSubscription(state.identity.subscriptionId, state.identity.subscriptionName);
             }
             renderIdentity();
             toast("Signed in \u2713");
@@ -1466,6 +1529,7 @@ async function doSignOut() {
         /* ignore */
     }
     state.identity = { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" };
+    state.selectedSubscription = { id: "", name: "" };
     state.subsState = { status: "idle", items: [], reason: null };
     state.projState = { status: "idle", items: [], reason: null, sub: null };
     setProjectLabels("");
@@ -1492,11 +1556,9 @@ async function afterAuthChange() {
         const b = await getJSON("/api/bootstrap");
         if (b && b.ok) {
             if (b.subscriptionId) state.identity.subscriptionId = b.subscriptionId;
-            if (b.project && b.project.name) setProjectLabels(b.project.name);
             const sub = state.subsState.items.find((s) => s.id === b.subscriptionId);
-            const subValue = document.getElementById("pmSubValue");
-            if (sub) state.identity.subscriptionName = sub.name;
-            if (subValue && sub) subValue.textContent = sub.name;
+            setSelectedSubscription(b.subscriptionId || state.identity.subscriptionId, sub?.name || state.identity.subscriptionName);
+            if (b.project && b.project.name) setProjectLabels(b.project.name);
             resetSelectors();
             await loadProjects(true);
         }
@@ -1520,7 +1582,11 @@ function resetSelectors() {
 // ---- Subscriptions ----
 async function loadSubscriptions(force) {
     const st = state.subsState;
-    if (!force && (st.status === "loading" || st.status === "ready")) return;
+    if (!force && st.status === "loading") return;
+    if (!force && st.status === "ready") {
+        renderSubList();
+        return;
+    }
     st.status = "loading";
     renderSubList();
     try {
@@ -1528,10 +1594,12 @@ async function loadSubscriptions(force) {
         st.items = Array.isArray(data.items) ? data.items : [];
         st.reason = data.ok ? null : data.reason;
         st.status = data.ok ? "ready" : "error";
-        const def = st.items.find((s) => s.isDefault);
-        const subValue = document.getElementById("pmSubValue");
-        if (subValue && def && (!subValue.textContent || subValue.textContent === "\u2014")) {
-            subValue.textContent = def.name;
+        if (!selectedSubscriptionId()) {
+            const def = st.items.find((s) => s.isDefault);
+            if (def) setSelectedSubscription(def.id, def.name);
+        } else if (!selectedSubscriptionName()) {
+            const match = st.items.find((s) => s.id === selectedSubscriptionId());
+            if (match) setSelectedSubscription(match.id, match.name);
         }
     } catch (err) {
         st.status = "error";
@@ -1551,14 +1619,12 @@ function renderSubList() {
     if (st.status === "error") return host.appendChild(menuError("Couldn\u2019t load subscriptions", () => loadSubscriptions(true)));
     const items = st.items.filter((s) => !q || s.name.toLowerCase().includes(q) || s.id.includes(q));
     if (!items.length) return host.appendChild(menuMsg(st.items.length ? "No matches" : "No subscriptions", "empty"));
-    for (const s of items) host.appendChild(makePickRow(s.name, s.id, state.identity.subscriptionId === s.id, () => selectSubscription(s)));
+    const activeSub = selectedSubscriptionId();
+    for (const s of items) host.appendChild(makePickRow(s.name, s.id, activeSub === s.id, () => selectSubscription(s)));
 }
 
 async function selectSubscription(s) {
-    state.identity.subscriptionId = s.id;
-    state.identity.subscriptionName = s.name;
-    const subValue = document.getElementById("pmSubValue");
-    if (subValue) subValue.textContent = s.name;
+    setSelectedSubscription(s.id, s.name);
     renderSubList();
     try {
         await postJSON("/api/select-subscription", { subscriptionId: s.id, subscriptionName: s.name });
@@ -1573,14 +1639,18 @@ async function selectSubscription(s) {
 
 // ---- Projects ----
 async function loadProjects(force) {
-    const sub = state.identity.subscriptionId;
+    const sub = selectedSubscriptionId();
     const st = state.projState;
     if (!sub) {
         st.status = "error";
         st.reason = "no_subscription";
         return renderProjList();
     }
-    if (!force && st.sub === sub && (st.status === "loading" || st.status === "ready")) return;
+    if (!force && st.sub === sub && st.status === "loading") return;
+    if (!force && st.sub === sub && st.status === "ready") {
+        renderProjList();
+        return;
+    }
     st.status = "loading";
     st.sub = sub;
     renderProjList();
@@ -1631,8 +1701,8 @@ async function selectProject(p) {
             location: p.location || "",
             rg: p.rg || "",
             account: p.account || "",
-            subscriptionId: state.identity.subscriptionId,
-            subscriptionName: state.identity.subscriptionName,
+            subscriptionId: selectedSubscriptionId(),
+            subscriptionName: selectedSubscriptionName(),
         });
     } catch {
         /* ignore — still update locally */
@@ -1670,7 +1740,7 @@ function makePickRow(name, sub, active, onClick) {
     if (active) {
         const check = document.createElement("span");
         check.className = "item-check";
-        check.textContent = "\u2713";
+        check.appendChild(fluentIcon("check"));
         row.appendChild(check);
     }
     row.addEventListener("click", (e) => {
@@ -1858,9 +1928,7 @@ async function openToolboxPicker(anchorBtn, toolItem, handlers) {
         const icon = document.createElement("span");
         icon.className = "toolbox-icon";
         icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML =
-            '<svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" ' +
-            'd="M21 8.5 12 13 3 8.5 12 4l9 4.5Zm-9 6.2 9-4.5v6L12 21l-9-4.8v-6l9 4.5Z"/></svg>';
+        icon.appendChild(fluentIcon("toolbox"));
         row.appendChild(icon);
         const nm = document.createElement("span");
         nm.className = "item-name";
@@ -2103,13 +2171,25 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#initToggle")) {
-        state.init.open = !state.init.open;
+        const willOpen = !state.init.open;
+        state.init.open = willOpen;
+        if (willOpen) {
+            state.folds.resources = false;
+            state.folds.deploy = false;
+        }
         renderInit();
+        renderFolds();
         return;
     }
     if (e.target.closest("#resourcesToggle")) {
-        state.folds.resources = !state.folds.resources;
-        applyFold("resourcesBlock", state.folds.resources);
+        const willOpen = !state.folds.resources;
+        state.folds.resources = willOpen;
+        if (willOpen) {
+            state.init.open = false;
+            state.folds.deploy = true;
+        }
+        renderInit();
+        renderFolds();
         return;
     }
     if (e.target.closest("#deployToggle")) {
@@ -2127,7 +2207,9 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#initReset")) {
         state.init.promptDirty = false;
+        state.init.startOption = "inspireIdea";
         syncInitPrompt();
+        selectStartOption(state.init.startOption);
         return;
     }
     if (e.target.closest("#prepPrereqs")) {
@@ -2135,6 +2217,7 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#inspireIdea")) {
+        selectStartOption("inspireIdea");
         sendToChat(
             "Suggest one creative but practical single-purpose agent I could build as a Microsoft " +
                 "Foundry hosted agent. Answer from your own knowledge only — do NOT use web search, " +
@@ -2144,6 +2227,19 @@ root.addEventListener("click", async (e) => {
                 '"Create a ___ Python hosted agent" (for example "meeting-notes-summarizing" or ' +
                 '"invoice-parsing").',
         );
+        return;
+    }
+    if (e.target.closest("#decideIdea")) {
+        selectStartOption("decideIdea");
+        setInitPreviewPrompt(HELP_ME_DECIDE_PROMPT);
+        return;
+    }
+    if (e.target.closest("#helloWorldIdea")) {
+        selectStartOption("helloWorldIdea");
+        state.init.idea = "hello-world";
+        state.init.promptDirty = false;
+        syncInitPrompt();
+        toast("Hello world selected \u2713");
         return;
     }
     if (e.target.closest("#modelAdd")) {
@@ -2193,6 +2289,11 @@ root.addEventListener("click", async (e) => {
     if (e.target.closest("#pmAuthBtn")) {
         if (state.identity.signedIn) doSignOut();
         else startSignIn();
+        return;
+    }
+    if (e.target.closest("#createProjectLink")) {
+        closeProjectMenu();
+        openFoundryHome();
         return;
     }
     const acc = e.target.closest(".pm-acc");
@@ -2373,6 +2474,7 @@ async function init() {
                     subscriptionId: b.identity.subscriptionId || b.subscriptionId || "",
                     subscriptionName: b.identity.subscriptionName || "",
                 };
+                setSelectedSubscription(b.subscriptionId || state.identity.subscriptionId, state.identity.subscriptionName);
             }
             if (b.project && b.project.name) {
                 setProjectLabels(b.project.name);

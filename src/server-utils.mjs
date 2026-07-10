@@ -22,14 +22,20 @@ export function sendJson(res, status, body) {
 }
 
 export function serveStatic(res, fileName, publicDir) {
+    return serveFile(res, join(publicDir, fileName));
+}
+
+export function serveFile(res, filePath) {
     try {
-        const ext = fileName.slice(fileName.lastIndexOf("."));
-        const body = readFileSync(join(publicDir, fileName));
+        const ext = filePath.slice(filePath.lastIndexOf("."));
+        const body = readFileSync(filePath);
         res.writeHead(200, { "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream" });
         res.end(body);
+        return true;
     } catch {
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
         res.end("Not found");
+        return false;
     }
 }
 
