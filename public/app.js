@@ -29,9 +29,7 @@ const state = {
         promptDirty: false, // true once the user edits the textarea by hand
         promptText: "",
         startOption: "inspireIdea",
-        protocol: "Responses", // Responses | Invocations (drives the starter prompt)
-        framework: "Microsoft Agent Framework", // SDK/framework phrase in the prompt
-        idea: "", // purpose phrase; empty => "single-purpose"
+        idea: "",
     },
     // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
     folds: { resources: true, deploy: true },
@@ -354,27 +352,44 @@ function applyInitDefaults(info) {
 }
 
 // ----------------------------------------------------- Initialize agent code
-// Starter prompt the developer can edit before sending. The purpose, protocol,
-// framework, and deploy clause are driven by state.init so the bubble buttons
-// (and AI-invoked canvas actions) can rewrite them.
+// Starter prompt the developer can edit before sending. The purpose is driven
+// by state.init so the start options and canvas action can rewrite it.
+
+function sentenceCase(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 function initPromptText() {
-    const proto = state.init.protocol === "Invocations" ? "Invocations" : "Responses";
-    const fw = (state.init.framework || "Microsoft Agent Framework").trim();
-    const purpose = (state.init.idea || "").trim() || "single-purpose";
-    const text =
-        "Create a " +
-        purpose +
-        " Python hosted agent using the " +
-        proto +
-        " protocol and " +
-        fw +
-        ". Once it's done, run it locally to make sure it runs successfully.";
-    return text;
+    const purpose =
+        (state.init.idea || "").trim() ||
+        "perform one clearly defined task from the user's text input";
+    return (
+        sentenceCase(purpose) +
+        ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
+        "Once it's done, run it locally to make sure it runs successfully."
+    );
 }
 
 const HELP_ME_DECIDE_PROMPT =
     "Guide user through the process of creating an agent, deciding scenarios and technical stack such as coding languages, frameworks and protocols.";
+
+const INSPIRATION_IDEAS = Object.freeze([
+    "rehearse a difficult conversation by role-playing the other person, then give concise feedback on tone, clarity, and empathy",
+    "turn a rough presentation topic into a compelling slide-by-slide storyline with a clear opening, flow, and close",
+    "help a user compare two difficult choices by surfacing tradeoffs, assumptions, and a reasoned recommendation",
+    "run a realistic behavioral interview rehearsal and coach one answer at a time using the STAR structure",
+    "rewrite dense workplace text in plain language without changing its meaning, commitments, or important details",
+    "transform a frustrated customer's draft into a calm, empathetic response that clearly explains the next step",
+    "challenge a product idea from the perspectives of a customer, operator, skeptic, and investor to expose weak assumptions",
+    "explain one complex concept through a memorable analogy tailored to the learner's stated experience level",
+    "turn an unfocused meeting request into a concise agenda with one outcome, essential topics, and time boxes",
+    "critique a creative brief for ambiguity, contradictions, and missing decisions, then propose a sharper version",
+]);
+
+function randomInspirationIdea() {
+    const candidates = INSPIRATION_IDEAS.filter((idea) => idea !== state.init.idea);
+    return candidates[Math.floor(Math.random() * candidates.length)];
+}
 
 function setInitPreviewPrompt(text) {
     state.init.promptText = text;
@@ -406,27 +421,25 @@ function rebuildInitPrompt(message) {
     if (message) toast(message);
 }
 
-function setInitProtocol(protocol) {
-    if (protocol !== "Responses" && protocol !== "Invocations") return;
-    state.init.protocol = protocol;
-    rebuildInitPrompt(protocol + " protocol selected \u2713");
-}
-
-// "Inspire me an idea" / agent-driven setAgentIdea: swap ONLY the purpose
-// phrase in the current prompt, preserving the protocol, framework, and any
-// other manual edits exactly as they appear in the textarea.
+// "Inspire me" / agent-driven setAgentIdea: swap the opening idea while
+// preserving any manual edits after the standard Foundry instruction.
 function setInitIdea(idea) {
     if (!idea || !idea.trim()) return;
-    const phrase = idea.trim();
-    state.init.idea = phrase;
+    const purpose = idea.trim().replace(/[.!?]+$/, "");
+    state.init.idea = purpose;
     state.init.open = true;
     state.init.startOption = "inspireIdea";
 
     const ta = document.getElementById("initPrompt");
     const current = (ta ? ta.value : state.init.promptText) || initPromptText();
-    const re = /Create a .+? Python hosted agent/;
+    const re =
+        /^.+?\. Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
     const next = re.test(current)
-        ? current.replace(re, "Create a " + phrase + " Python hosted agent")
+        ? current.replace(
+              re,
+              sentenceCase(purpose) +
+                  ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol.",
+          )
         : initPromptText();
 
     state.init.promptText = next;
@@ -1995,16 +2008,7 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#inspireIdea")) {
-        selectStartOption("inspireIdea");
-        sendToChat(
-            "Suggest one creative but practical single-purpose agent I could build as a Microsoft " +
-                "Foundry hosted agent. Answer from your own knowledge only — do NOT use web search, " +
-                "web fetch, or any tools except the canvas action. Reply with ONE short sentence " +
-                "(no preamble, no lists, no extra explanation), then immediately call the Foundry " +
-                'Agent Canvas\'s "setAgentIdea" action once with a short 2-4 word phrase that fits ' +
-                '"Create a ___ Python hosted agent" (for example "meeting-notes-summarizing" or ' +
-                '"invoice-parsing").',
-        );
+        setInitIdea(randomInspirationIdea());
         return;
     }
     if (e.target.closest("#decideIdea")) {
@@ -2014,7 +2018,7 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#helloWorldIdea")) {
         selectStartOption("helloWorldIdea");
-        state.init.idea = "hello-world";
+        state.init.idea = "return a friendly hello-world greeting";
         state.init.promptDirty = false;
         syncInitPrompt();
         toast("Hello world selected \u2713");
@@ -2292,7 +2296,6 @@ async function init() {
             try {
                 const msg = JSON.parse(ev.data);
                 if (msg.type === "navigate" && msg.page) render(msg.page);
-                else if (msg.type === "setProtocol" && msg.protocol) setInitProtocol(msg.protocol);
                 else if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
             } catch {
                 /* ignore malformed frames */

@@ -65,17 +65,6 @@ export function pushNavigate(entry, page) {
     }
 }
 
-export function pushSetProtocol(entry, protocol) {
-    const frame = `data: ${JSON.stringify({ type: "setProtocol", protocol })}\n\n`;
-    for (const client of entry.sseClients) {
-        try {
-            client.write(frame);
-        } catch {
-            /* drop broken client */
-        }
-    }
-}
-
 export function pushFrame(entry, obj) {
     const frame = `data: ${JSON.stringify(obj)}\n\n`;
     for (const client of entry.sseClients) {

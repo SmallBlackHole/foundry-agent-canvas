@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 import { PAGES, servers, defaultState, applyInput } from "./src/state.mjs";
-import { pushNavigate, pushSetProtocol, pushFrame } from "./src/server-utils.mjs";
+import { pushNavigate, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
@@ -125,42 +125,17 @@ const session = await joinSession({
                     },
                 },
                 {
-                    name: "setProtocol",
-                    description:
-                        'Set the agent protocol in the builder\'s "Initialize agent code" starter prompt. ' +
-                        "Call this after the user picks between Responses and Invocations so the prompt updates to match.",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            protocol: {
-                                type: "string",
-                                enum: ["Responses", "Invocations"],
-                                description: "The hosted-agent protocol the user chose.",
-                            },
-                        },
-                        required: ["protocol"],
-                        additionalProperties: false,
-                    },
-                    handler: async (ctx) => {
-                        const entry = servers.get(ctx.instanceId);
-                        if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
-                        entry.state.initProtocol = ctx.input.protocol;
-                        pushSetProtocol(entry, ctx.input.protocol);
-                        return { ok: true, protocol: ctx.input.protocol };
-                    },
-                },
-                {
                     name: "setAgentIdea",
                     description:
-                        "Set the agent's purpose phrase in the builder's starter prompt. Pass a short phrase " +
-                        "(2-4 words) that fits the sentence 'Create a ___ Python hosted agent'.",
+                        "Set the idea shown at the beginning of the builder's starter prompt. Pass one concise " +
+                        "capability clause describing what the agent should do.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             idea: {
                                 type: "string",
                                 description:
-                                    "Short purpose phrase, e.g. 'meeting-notes-summarizing' or 'invoice-parsing'.",
+                                    "Concise purpose clause, e.g. 'summarize meeting notes into decisions and action items'.",
                             },
                         },
                         required: ["idea"],
