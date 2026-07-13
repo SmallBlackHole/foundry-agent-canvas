@@ -156,10 +156,15 @@
                         <div class="fold-panel resources-panel" id="resourcesPanel">
                             <div class="resource-list">
                                 <div class="model-select resource-select">
-                                    <button class="resource-trigger" id="modelAdd" type="button" aria-haspopup="menu" aria-expanded="false">
-                                        <span class="resource-label"><span class="fi fi-models" aria-hidden="true"></span><span>Models</span></span>
-                                        <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
-                                    </button>
+                                    <div class="resource-row">
+                                        <button class="resource-trigger" id="modelAdd" type="button" aria-haspopup="menu" aria-expanded="false">
+                                            <span class="resource-label"><span class="fi fi-models" aria-hidden="true"></span><span>Models</span></span>
+                                            <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
+                                        </button>
+                                        <button class="resource-refresh" id="deployRefresh" type="button" aria-label="Refresh models" title="Refresh models">
+                                            <span class="fi fi-refresh" aria-hidden="true"></span>
+                                        </button>
+                                    </div>
                                     <div class="model-menu resource-menu" id="modelMenu" role="menu" hidden>
                                         <div class="menu-section">
                                             <div class="menu-label">Deployed Models</div>
@@ -176,10 +181,15 @@
                                 </div>
 
                                 <div class="tool-select resource-select">
-                                    <button class="resource-trigger" id="toolAdd" type="button" aria-haspopup="menu" aria-expanded="false">
-                                        <span class="resource-label"><span class="fi fi-tools" aria-hidden="true"></span><span>Toolboxes</span></span>
-                                        <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
-                                    </button>
+                                    <div class="resource-row">
+                                        <button class="resource-trigger" id="toolAdd" type="button" aria-haspopup="menu" aria-expanded="false">
+                                            <span class="resource-label"><span class="fi fi-tools" aria-hidden="true"></span><span>Toolboxes</span></span>
+                                            <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
+                                        </button>
+                                        <button class="resource-refresh" id="toolboxRefresh" type="button" aria-label="Refresh toolboxes" title="Refresh toolboxes">
+                                            <span class="fi fi-refresh" aria-hidden="true"></span>
+                                        </button>
+                                    </div>
                                     <div class="model-menu tool-menu resource-menu" id="toolMenu" role="menu" hidden>
                                         <div class="menu-section">
                                             <div class="menu-label">Deployed Toolboxes</div>
@@ -196,10 +206,15 @@
                                 </div>
 
                                 <div class="skill-select resource-select">
-                                    <button class="resource-trigger" id="skillAdd" type="button" aria-haspopup="menu" aria-expanded="false">
-                                        <span class="resource-label"><span class="fi fi-skills" aria-hidden="true"></span><span>Skills</span></span>
-                                        <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
-                                    </button>
+                                    <div class="resource-row">
+                                        <button class="resource-trigger" id="skillAdd" type="button" aria-haspopup="menu" aria-expanded="false">
+                                            <span class="resource-label"><span class="fi fi-skills" aria-hidden="true"></span><span>Skills</span></span>
+                                            <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
+                                        </button>
+                                        <button class="resource-refresh" id="skillRefresh" type="button" aria-label="Refresh skills" title="Refresh skills">
+                                            <span class="fi fi-refresh" aria-hidden="true"></span>
+                                        </button>
+                                    </div>
                                     <div class="model-menu resource-menu" id="skillMenu" role="menu" hidden>
                                         <div class="menu-section">
                                             <div class="menu-label">Skills in <span id="skillMenuProject">your project</span></div>
@@ -216,10 +231,15 @@
                                 </div>
 
                                 <div class="guardrail-select resource-select">
-                                    <button class="resource-trigger" id="guardrailAdd" type="button" aria-haspopup="menu" aria-expanded="false">
-                                        <span class="resource-label"><span class="fi fi-guardrails" aria-hidden="true"></span><span>Guardrails</span></span>
-                                        <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
-                                    </button>
+                                    <div class="resource-row">
+                                        <button class="resource-trigger" id="guardrailAdd" type="button" aria-haspopup="menu" aria-expanded="false">
+                                            <span class="resource-label"><span class="fi fi-guardrails" aria-hidden="true"></span><span>Guardrails</span></span>
+                                            <span class="fi fi-chev resource-chev" aria-hidden="true"></span>
+                                        </button>
+                                        <button class="resource-refresh" id="guardrailRefresh" type="button" aria-label="Refresh guardrails" title="Refresh guardrails">
+                                            <span class="fi fi-refresh" aria-hidden="true"></span>
+                                        </button>
+                                    </div>
                                     <div class="model-menu resource-menu" id="guardrailMenu" role="menu" hidden>
                                         <div class="menu-section">
                                             <div class="menu-label">Guardrails in <span id="guardrailMenuProject">your project</span></div>

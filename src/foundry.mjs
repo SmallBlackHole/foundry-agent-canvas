@@ -184,9 +184,11 @@ async function armFetch(path, { method = "GET", body } = {}) {
     return res.json();
 }
 const _cache = new Map(); // key -> { exp, value }
-async function cached(key, producer) {
-    const hit = _cache.get(key);
-    if (hit && Date.now() < hit.exp) return hit.value;
+async function cached(key, producer, { force = false } = {}) {
+    if (!force) {
+        const hit = _cache.get(key);
+        if (hit && Date.now() < hit.exp) return hit.value;
+    }
     const value = await producer();
     _cache.set(key, { exp: Date.now() + TTL_MS, value });
     return value;
@@ -227,9 +229,9 @@ function isToolConnection(c) {
 
 // Returns { ok:true, data:[{ name, modelName, version, provider, sku }] }
 // or { ok:false, reason }.
-export async function listDeployments(endpoint) {
+export async function listDeployments(endpoint, { force = false } = {}) {
     try {
-        const json = await cached(`dep:${endpoint}`, () => apiGet(endpoint, "deployments"));
+        const json = await cached(`dep:${endpoint}`, () => apiGet(endpoint, "deployments"), { force });
         const data = (json?.value || [])
             .filter((d) => (d.type ? d.type === "ModelDeployment" : true))
             .map((d) => ({
@@ -269,7 +271,7 @@ export async function listConnections(endpoint) {
 // Foundry Toolboxes are a distinct data-plane resource from tool connections:
 // each toolbox bundles one or more tools behind a single MCP endpoint. The
 // toolboxes API uses its own api-version (v1) and preview feature header.
-export async function listToolboxes(endpoint) {
+export async function listToolboxes(endpoint, { force = false } = {}) {
     try {
         const json = await cached(`tbx:${endpoint}`, async () => {
             const token = await getToken();
@@ -287,7 +289,7 @@ export async function listToolboxes(endpoint) {
                 throw err;
             }
             return res.json();
-        });
+        }, { force });
         const data = (json?.data || []).map((t) => ({
             name: t.name,
             defaultVersion: t.default_version || "",
@@ -302,7 +304,7 @@ export async function listToolboxes(endpoint) {
 // Skills are project-scoped structured instructions. The data-plane API uses
 // its own preview feature header, similar to toolboxes.
 
-export async function listSkills(endpoint) {
+export async function listSkills(endpoint, { force = false } = {}) {
     try {
         const json = await cached(`skills:${endpoint}`, async () => {
             const token = await getToken();
@@ -320,7 +322,7 @@ export async function listSkills(endpoint) {
                 throw err;
             }
             return res.json();
-        });
+        }, { force });
         const data = (json?.data || []).map((s) => ({
             name: s.name,
             defaultVersion: s.default_version || "",
@@ -351,7 +353,7 @@ async function resolveAccountInfo(endpoint, subscriptionId) {
     return info;
 }
 
-export async function listGuardrails(endpoint, subscriptionId) {
+export async function listGuardrails(endpoint, subscriptionId, { force = false } = {}) {
     try {
         const acct = await resolveAccountInfo(endpoint, subscriptionId);
         if (!acct) return { ok: false, reason: "not_found" };
@@ -364,7 +366,7 @@ export async function listGuardrails(endpoint, subscriptionId) {
                 nextUrl = json?.nextLink || null;
             }
             return all;
-        });
+        }, { force });
         return { ok: true, data: data.map((p) => ({ name: p.name })) };
     } catch (err) {
         return { ok: false, reason: reasonFor(err) };

@@ -488,6 +488,7 @@ body {
 .fi-num-2 { --fi-url: url("/fluent-icons/number_circle_2_16_regular.svg"); }
 .fi-num-3 { --fi-url: url("/fluent-icons/number_circle_3_16_regular.svg"); }
 .fi-chev { --fi-url: url("/fluent-icons/chevron_down_12_regular.svg"); --fi-size: 12px; }
+.fi-refresh { --fi-url: url("/fluent-icons/arrow_clockwise_16_regular.svg"); --fi-size: 16px; }
 .fi-more { --fi-url: url("/fluent-icons/more_horizontal_20_regular.svg"); --fi-size: 20px; }
 .fi-sparkle { --fi-url: url("/fluent-icons/sparkle_20_regular.svg"); --fi-size: 20px; }
 .fi-chat { --fi-url: url("/fluent-icons/chat_multiple_20_regular.svg"); --fi-size: 20px; }
@@ -925,6 +926,10 @@ body {
     position: relative;
     width: 100%;
 }
+.resource-row {
+    position: relative;
+    width: 100%;
+}
 .resource-trigger {
     width: 100%;
     height: 32px;
@@ -943,7 +948,7 @@ body {
     line-height: 16px;
     font-weight: 600;
 }
-.resource-trigger:hover,
+.resource-row:hover .resource-trigger,
 .resource-trigger[aria-expanded="true"] {
     background: var(--fluent-subtle);
     color: var(--fluent-fg-2);
@@ -957,12 +962,41 @@ body {
     opacity: 0;
     transition: transform .15s ease, opacity .15s ease;
 }
-.resource-trigger:hover .resource-chev,
+.resource-row:hover .resource-chev,
+.resource-row:focus-within .resource-chev,
 .resource-trigger[aria-expanded="true"] .resource-chev {
     opacity: 1;
 }
 .resource-trigger[aria-expanded="true"] .resource-chev {
     transform: rotate(180deg);
+}
+.resource-refresh {
+    position: absolute;
+    top: 4px;
+    right: 24px;
+    z-index: 1;
+    width: 24px;
+    height: 24px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--fluent-radius);
+    background: transparent;
+    color: var(--fluent-fg-2);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, background-color .15s ease;
+}
+.resource-row:hover .resource-refresh,
+.resource-row:focus-within .resource-refresh,
+.resource-trigger[aria-expanded="true"] + .resource-refresh {
+    opacity: 1;
+    pointer-events: auto;
+}
+.resource-refresh:hover {
+    background: var(--colorNeutralBackground1Hover, var(--bg-subtle));
 }
 .resource-select .model-menu {
     position: static;

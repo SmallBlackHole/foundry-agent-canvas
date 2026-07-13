@@ -17,7 +17,10 @@ export const SSE_HEARTBEAT_MS = numFromEnv("FOUNDRY_CANVAS_SSE_HEARTBEAT_MS", 20
 
 export function sendJson(res, status, body) {
     const payload = JSON.stringify(body);
-    res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(status, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+    });
     res.end(payload);
 }
 

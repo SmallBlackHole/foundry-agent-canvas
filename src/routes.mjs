@@ -44,6 +44,7 @@ export function createRequestHandler(
         const url = new URL(req.url, "http://127.0.0.1");
         const path = url.pathname;
         const method = req.method || "GET";
+        const forceRefresh = url.searchParams.get("refresh") === "1";
 
         // Static assets.
         if (method === "GET" && (path === "/" || path === "/index.html")) {
@@ -95,7 +96,7 @@ export function createRequestHandler(
         // Live model deployments in the selected project (mock fallback).
         if (method === "GET" && path === "/api/deployments") {
             const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const r = await listDeployments(ep);
+            const r = await listDeployments(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, source: "live", items: r.data.map(enrichDeployment) });
             }
@@ -114,7 +115,7 @@ export function createRequestHandler(
 
         if (method === "GET" && path === "/api/toolboxes") {
             const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const r = await listToolboxes(ep);
+            const r = await listToolboxes(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichToolbox) });
             }
@@ -124,7 +125,7 @@ export function createRequestHandler(
         if (method === "GET" && path === "/api/guardrails") {
             const ep = (entry ? entry.state.projectEndpoint : null) || "";
             const sub = entry ? entry.state.subscriptionId : "";
-            const r = await listGuardrails(ep, sub);
+            const r = await listGuardrails(ep, sub, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichGuardrail) });
             }
@@ -133,7 +134,7 @@ export function createRequestHandler(
 
         if (method === "GET" && path === "/api/skills") {
             const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const r = await listSkills(ep);
+            const r = await listSkills(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichSkill) });
             }

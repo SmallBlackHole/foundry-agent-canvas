@@ -15,6 +15,7 @@ const DIST_DIR = join(ROOT, "dist");
 const PKG_DIR = join(DIST_DIR, "pkg");
 const ZIP_PATH = join(DIST_DIR, "foundry-agent-canvas.zip");
 const FLUENT_ICONS = [
+    "arrow_clockwise_16_regular.svg",
     "book_20_regular.svg",
     "box_multiple_20_regular.svg",
     "calendar_20_regular.svg",

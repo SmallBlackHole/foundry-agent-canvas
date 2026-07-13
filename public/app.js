@@ -804,7 +804,7 @@ async function loadDeployments(force) {
     st.status = "loading";
     renderDeployList();
     try {
-        const data = await getJSON("/api/deployments");
+        const data = await getJSON(force ? "/api/deployments?refresh=1" : "/api/deployments");
         st.source = data.source || null;
         st.reason = data.reason || null;
         if (data.ok === false) {
@@ -850,7 +850,7 @@ async function loadToolboxes(force) {
     st.status = "loading";
     renderToolboxList();
     try {
-        const data = await getJSON("/api/toolboxes");
+        const data = await getJSON(force ? "/api/toolboxes?refresh=1" : "/api/toolboxes");
         st.reason = data.reason || null;
         if (data.ok === false) {
             st.items = [];
@@ -872,7 +872,7 @@ async function loadGuardrails(force) {
     st.status = "loading";
     renderGuardrailList();
     try {
-        const data = await getJSON("/api/guardrails");
+        const data = await getJSON(force ? "/api/guardrails?refresh=1" : "/api/guardrails");
         st.reason = data.reason || null;
         if (data.ok === false) {
             st.items = [];
@@ -894,7 +894,7 @@ async function loadSkills(force) {
     st.status = "loading";
     renderSkillList();
     try {
-        const data = await getJSON("/api/skills");
+        const data = await getJSON(force ? "/api/skills?refresh=1" : "/api/skills");
         st.reason = data.reason || null;
         if (data.ok === false) {
             st.items = [];
