@@ -22,25 +22,11 @@ Inspector.
 
 ## Install
 
-Install the nightly release into the current project's extension directory:
-
-> Install https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip
-> into .github/extensions/foundry-agent-canvas/
-
-Alternatively, download the
-[nightly archive](https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip)
-and extract its contents directly into:
-
-```text
-.github/extensions/foundry-agent-canvas/
-```
-
-The resulting directory must contain `extension.mjs` at its root. Open the
-project in GitHub Copilot App, then ask Copilot to open **Foundry Agent Canvas**.
+Drop this folder at `~/.copilot/extensions/foundry-agent-canvas/` for user scope, or in a repository at `.github/extensions/foundry-agent-canvas/` for project scope.
 
 ## Usage
 
-1. Open **Foundry Agent Canvas**.
+1. Open **Foundry Agent Canvas** or ask Copilot to create a Foundry hosted agent.
 2. Open the project menu, sign in if needed, and choose a subscription and
    Foundry project.
 3. Initialize the agent or select existing models, toolboxes, skills, and
