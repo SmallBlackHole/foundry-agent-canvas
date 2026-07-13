@@ -13,6 +13,7 @@ import { mkdirSync } from "node:fs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
+const MINIFY = process.argv.includes("--minify");
 
 mkdirSync(DIST_DIR, { recursive: true });
 
@@ -22,7 +23,8 @@ await build({
     bundle: true,
     platform: "node",
     format: "esm",
-    target: "node18",
+    target: "node20.19",
+    minify: MINIFY,
     external: ["@github/copilot-sdk/extension"],
     // esbuild's ESM output wraps bundled CommonJS deps (e.g. ws) in a
     // __require() shim that delegates to a global `require`. In a real ESM
@@ -36,4 +38,4 @@ await build({
     logLevel: "info",
 });
 
-console.log(`Bundled extension.mjs -> ${join(DIST_DIR, "extension.mjs")}`);
+console.log(`Bundled${MINIFY ? " and minified" : ""} extension.mjs -> ${join(DIST_DIR, "extension.mjs")}`);

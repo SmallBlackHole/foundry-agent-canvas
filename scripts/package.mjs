@@ -39,8 +39,8 @@ const FLUENT_ICONS = [
     "wrench_screwdriver_20_regular.svg",
 ];
 
-// 1. Build the bundle first.
-execFileSync(process.execPath, [join(ROOT, "scripts", "build.mjs")], { stdio: "inherit" });
+// 1. Build a minified release bundle first.
+execFileSync(process.execPath, [join(ROOT, "scripts", "build.mjs"), "--minify"], { stdio: "inherit" });
 
 // 2. Stage the package folder fresh.
 rmSync(PKG_DIR, { recursive: true, force: true });
