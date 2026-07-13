@@ -1,61 +1,50 @@
 # Foundry Agent Canvas
 
-A GitHub Copilot App **canvas extension** that reproduces the Microsoft Foundry
-"Build agent" experience in a side panel. Pick models, tools, and toolboxes from
-your live Foundry project; initialize, inspect, and deploy a hosted agent. Most
-affordances send a ready-to-edit prompt to chat; **Inspect locally** runs the
-agent in the integrated terminal and embeds the Agent Inspector.
+A GitHub Copilot App canvas extension for designing Microsoft Foundry hosted
+agents from a side panel. It combines live Foundry project discovery with
+project-aware prompts to Copilot, portal handoffs, and an embedded local Agent
+Inspector.
 
 ## Features
 
-- **Build view** — add models, tools, skills, guardrails.
-- **Live project data** — model deployments, tool connections, and Foundry
-  Toolboxes are read from your selected project (read-only).
-- **Project picker** — sign in, pick subscription + project; the selection
-  persists locally across reopens.
-- **Toolboxes** — list/add toolboxes; "Add tool" lets you pick a target toolbox
-  (or create a new one).
-- **Local Agent Inspector** — **Inspect locally** launches the agent with
-  `azd ai agent run --no-inspector` in the integrated terminal (reusing an
-  already-running one) and embeds the inspector UI, proxied to the agent on
-  port 8088. Closing the last builder canvas closes that terminal, stopping the
-  agent and freeing the port.
-- **Prompt-to-chat** — actions post a prompt to the chat session for Copilot
-  to execute.
-
-## Requirements
-
-- GitHub Copilot App with canvas extension support
-- Node.js 18+
-- Azure CLI (`az login`) for live project/model/toolbox data
-- (Optional) `azd` to run/deploy hosted agents
+- **Project picker** - sign in, search subscriptions and Foundry projects, switch projects, and retain the
+  selection across canvas reopens.
+- **Live project resources** - browse deployed models, Foundry Toolboxes and
+  their tools, project skills, and account guardrails.
+- **Project-aware chat handoff** - model, toolbox, skill, guardrail,
+  initialization, and deployment choices send a ready-to-run prompt to the
+  current Copilot session with the selected project, subscription, and endpoint
+  attached.
+- **Embedded Agent Inspector** - **Inspect Locally** launches or reuses
+  `azd ai agent run --no-inspector` in the Copilot integrated terminal, waits
+  for the agent on port `8088`, and embeds the bundled inspector. Inspector
+  errors can be sent back to Copilot as fix requests.
 
 ## Install
 
-1. Add a project using a local folder or repo in the Copilot App.
-2. Install the extension — prompt Copilot:
+Install the nightly release into the current project's extension directory:
 
-   > Install https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip
-   > into .github/extensions/foundry-agent-canvas/
+> Install https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip
+> into .github/extensions/foundry-agent-canvas/
 
-   Or manually: download the zip from
-   [this direct link](https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip)
-   and unzip it into `.github/extensions/foundry-agent-canvas/` in your
-   project root.
-3. Prompt the Copilot App to open the Foundry Agent Canvas.
+Alternatively, download the
+[nightly archive](https://github.com/SmallBlackHole/foundry-agent-canvas/releases/download/nightly/foundry-agent-canvas.zip)
+and extract its contents directly into:
 
-## Configuration
+```text
+.github/extensions/foundry-agent-canvas/
+```
 
-No project is hardcoded. Sign in via the panel and pick your subscription +
-project; or pass `projectEndpoint` / `model` when opening the canvas. Local-only
-state is written to `.selection.json` (gitignored — never committed).
+The resulting directory must contain `extension.mjs` at its root. Open the
+project in GitHub Copilot App, then ask Copilot to open **Foundry Agent Canvas**.
 
-## Dependencies
+## Usage
 
-- `@azure/identity` — auth for live project data
-- `ws` — inspector WebSocket proxy
-
-## Security
-
-No secrets are stored in the repo. `.env` and `.selection.json` are gitignored.
-The bundled `inspector-ui/` assets are prebuilt vendor files.
+1. Open **Foundry Agent Canvas**.
+2. Open the project menu, sign in if needed, and choose a subscription and
+   Foundry project.
+3. Initialize the agent or select existing models, toolboxes, skills, and
+   guardrails. Selections are sent to Copilot for implementation.
+4. Select **Deploy to Foundry** when the agent is ready.
+5. Select **Inspect Locally** after the workspace contains a runnable Foundry hosted
+   agent.
