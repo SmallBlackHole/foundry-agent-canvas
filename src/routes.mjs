@@ -396,12 +396,6 @@ export function createRequestHandler(
             }
         }
 
-        if (method === "GET" && path === "/api/protocol-ref") {
-            return sendJson(res, 200, {
-                path: join(extDir, "references", "responses-vs-invocations.md"),
-            });
-        }
-
         if (method === "GET" && path === "/api/project-init") {
             const root = workspaceRootFn();
             const hasAzure = existsSync(join(root, "azure.yaml")) || existsSync(join(root, "azure.yml"));

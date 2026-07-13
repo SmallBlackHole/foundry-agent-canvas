@@ -24,7 +24,6 @@ import {
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");
 const FLUENT_ICONS_DIR = join(ROOT, "node_modules", "@fluentui", "svg-icons", "icons");
-const PROTOCOL_REF = join(ROOT, "references", "responses-vs-invocations.md");
 const PREVIEW_MOCK_JS = join(ROOT, "scripts", "preview-mock.js");
 const PREVIEW_MOCK_CSS = join(ROOT, "scripts", "preview-mock.css");
 
@@ -524,10 +523,6 @@ async function handleApi(req, res, url) {
         sentPrompts.push({ prompt, at: new Date().toISOString() });
         console.log("\n[preview] prompt-to-chat stub\n" + prompt + "\n");
         return sendJson(res, 200, { ok: true, preview: true });
-    }
-
-    if (method === "GET" && path === "/api/protocol-ref") {
-        return sendJson(res, 200, { path: PROTOCOL_REF });
     }
 
     if (method === "GET" && path === "/api/project-init") {
