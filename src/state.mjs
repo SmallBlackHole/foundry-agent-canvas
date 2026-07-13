@@ -10,8 +10,8 @@ import {
 } from "./foundry.mjs";
 
 const COPILOT_HOME = process.env.COPILOT_HOME || join(homedir(), ".copilot");
-const EXT_DIR = join(COPILOT_HOME, "extensions", "foundry-agent-canvas");
-const STATE_FILE = join(EXT_DIR, "state.json");
+const STATE_DIR = join(COPILOT_HOME, "extension-state", "foundry-agent-canvas");
+const STATE_FILE = join(STATE_DIR, "state.json");
 
 export function loadSelection() {
     try {
@@ -26,7 +26,7 @@ export function loadSelection() {
 
 export function saveSelection(sel) {
     try {
-        mkdirSync(EXT_DIR, { recursive: true });
+        mkdirSync(STATE_DIR, { recursive: true });
         writeFileSync(STATE_FILE, JSON.stringify(sel ?? {}, null, 2), "utf-8");
     } catch {
         /* best-effort persistence */
