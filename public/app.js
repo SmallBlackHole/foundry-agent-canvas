@@ -265,10 +265,6 @@ function applyFold(blockId, open) {
 function renderFolds() {
     applyFold("resourcesBlock", state.folds.resources);
     applyFold("deployBlock", state.folds.deploy);
-    const shell = document.querySelector(".panel-shell");
-    if (shell) {
-        shell.classList.toggle("resources-collapsed", !state.folds.resources);
-    }
 }
 
 // Prettify an ARM region code for display, e.g. "eastus2" → "East US 2".
@@ -586,6 +582,8 @@ function renderDeployList() {
         item.type = "button";
         item.setAttribute("role", "menuitem");
 
+        item.appendChild(fluentIcon("cube"));
+
         const name = document.createElement("span");
         name.className = "item-name";
         name.textContent = m.name;
@@ -739,7 +737,10 @@ function renderToolboxList() {
                 for (const tool of t.tools) {
                     const row = document.createElement("div");
                     row.className = "toolbox-tool";
-                    row.textContent = tool.name;
+                    row.append(
+                        fluentIcon("tools", "toolbox-tool-kind"),
+                        Object.assign(document.createElement("span"), { textContent: tool.name }),
+                    );
                     tools.appendChild(row);
                 }
             }

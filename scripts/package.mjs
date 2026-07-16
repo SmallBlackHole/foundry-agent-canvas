@@ -24,6 +24,7 @@ const FLUENT_ICONS = [
     "checkmark_16_regular.svg",
     "chevron_down_12_regular.svg",
     "code_20_regular.svg",
+    "cube_12_regular.svg",
     "globe_search_20_regular.svg",
     "more_horizontal_20_regular.svg",
     "number_circle_1_16_regular.svg",
