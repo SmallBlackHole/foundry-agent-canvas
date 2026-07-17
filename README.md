@@ -16,7 +16,7 @@ Inspector.
   current Copilot session with the selected project, subscription, and endpoint
   attached.
 - **Embedded Agent Inspector** - **Inspect Locally** launches or reuses
-  `azd ai agent run --no-inspector` in the Copilot integrated terminal, waits
+  `azd ai agent run --no-client` in the Copilot integrated terminal, waits
   for the agent on port `8088`, and embeds the bundled inspector. Inspector
   errors can be sent back to Copilot as fix requests.
 

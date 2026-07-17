@@ -11,9 +11,9 @@ const TERMINAL_CANVAS_ID = "terminal";
 const TERMINAL_INSTANCE_ID = "foundry-agent-run";
 const TERMINAL_TITLE = "Foundry agent (local)";
 
-// `--no-inspector` starts only the agent (on AGENT_PORT); the extension serves
-// its own inspector UI and proxies to it, so azd's built-in inspector is skipped.
-const AGENT_RUN_COMMAND = "azd ai agent run --no-inspector";
+// `--no-client` starts only the agent (on AGENT_PORT); the extension serves its
+// own inspector UI and proxies to it, so azd's built-in local client is skipped.
+const AGENT_RUN_COMMAND = "azd ai agent run --no-client";
 
 // Short window that only collapses rapid duplicate clicks so we don't stack the
 // run command onto a launch we issued moments ago. It is intentionally small:
