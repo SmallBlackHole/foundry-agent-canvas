@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { findHostedAgentManifest, inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
+import {
+    findHostedAgentManifest,
+    inspectHostedAgentWorkspace,
+    resolveHostedAgentName,
+} from "../src/local-agent.mjs";
 
 async function testWorkspace(t) {
     const root = await mkdtemp(join(tmpdir(), "foundry-agent-canvas-"));
@@ -52,6 +56,120 @@ test("detects a hosted agent from a nested azure.ai.agent service", async (t) =>
         hasAzure: true,
         hasAgent: true,
         manifestPath: manifest,
+    });
+});
+
+test("resolves the configured hosted agent name from nested azure.yml", async (t) => {
+    const root = await testWorkspace(t);
+    const nested = join(root, "apps", "customer-support");
+    await mkdir(nested, { recursive: true });
+    const manifest = join(nested, "azure.yml");
+    await writeFile(
+        manifest,
+        [
+            "services:",
+            "  customer-support-service:",
+            "    host: azure.ai.agent",
+            "    name: customer-support-agent",
+            "    project: src",
+            "",
+        ].join("\n"),
+    );
+
+    assert.deepEqual(await resolveHostedAgentName(root), {
+        agentName: "customer-support-agent",
+        ambiguous: false,
+        candidates: ["customer-support-agent"],
+        manifestPath: manifest,
+        serviceKey: "customer-support-service",
+        source: "azure_service_name",
+    });
+});
+
+test("falls back to the hosted service key when name is missing or parameterized", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(
+        join(root, "azure.yaml"),
+        [
+            "services:",
+            "  support-agent:",
+            "    host: azure.ai.agent",
+            "    name: ${AGENT_NAME}",
+            "",
+        ].join("\n"),
+    );
+
+    const result = await resolveHostedAgentName(root);
+    assert.equal(result.agentName, "support-agent");
+    assert.equal(result.serviceKey, "support-agent");
+    assert.equal(result.source, "azure_service_key");
+});
+
+test("explicit canvas input wins over ambiguous workspace services", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(
+        join(root, "azure.yaml"),
+        [
+            "services:",
+            "  first-agent:",
+            "    host: azure.ai.agent",
+            "  second-agent:",
+            "    host: azure.ai.agent",
+            "",
+        ].join("\n"),
+    );
+
+    assert.deepEqual(await resolveHostedAgentName(root, "selected-agent"), {
+        agentName: "selected-agent",
+        ambiguous: false,
+        candidates: ["selected-agent"],
+        manifestPath: "",
+        serviceKey: "",
+        source: "canvas_input",
+    });
+});
+
+test("reports multiple hosted services as ambiguous instead of guessing", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(
+        join(root, "azure.yaml"),
+        [
+            "services:",
+            "  first-agent:",
+            "    host: azure.ai.agent",
+            "  second-agent:",
+            "    host: azure.ai.agent",
+            "",
+        ].join("\n"),
+    );
+
+    const result = await resolveHostedAgentName(root);
+    assert.equal(result.agentName, "");
+    assert.equal(result.ambiguous, true);
+    assert.deepEqual(result.candidates, ["first-agent", "second-agent"]);
+});
+
+test("uses a legacy agent manifest name only without a hosted Azure service", async (t) => {
+    const root = await testWorkspace(t);
+    const manifest = join(root, "agent.yml");
+    await writeFile(manifest, "name: legacy-agent\n");
+    await writeFile(
+        join(root, "azure.yaml"),
+        [
+            "services:",
+            "  web:",
+            "    host: appservice",
+            "",
+        ].join("\n"),
+    );
+
+    assert.deepEqual(await resolveHostedAgentName(root), {
+        agentName: "legacy-agent",
+        ambiguous: false,
+        candidates: ["legacy-agent"],
+        manifestPath: manifest,
+        serviceKey: "",
+        source: "agent_manifest_name",
     });
 });
 

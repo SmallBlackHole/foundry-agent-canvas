@@ -36,12 +36,24 @@ const state = {
     // Hosted-agent region availability for the selected project.
     // supported: true | false | null (null = unknown → don't block, fail open).
     hostedRegion: { status: "idle", location: "", supported: null, regions: [], docsUrl: "" },
+    hostedAgentDeployment: {
+        status: "idle",
+        deployed: false,
+        available: false,
+        portalUrl: "",
+        agentName: "",
+        version: "",
+        reason: "",
+    },
 };
 
 const root = document.getElementById("root");
 const toastEl = document.getElementById("toast");
 
 let toastTimer = null;
+const HOSTED_AGENT_REFRESH_TTL_MS = 30_000;
+let hostedAgentDeploymentRequest = 0;
+let hostedAgentDeploymentCheckedAt = 0;
 function toast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.add("show");
@@ -248,6 +260,7 @@ function renderBuild() {
     renderInit();
     renderFolds();
     renderRegionSupport();
+    renderHostedAgentDeployment();
 }
 
 // Apply a collapsible card's open/closed state to the DOM. Mirrors the
@@ -311,6 +324,85 @@ function renderRegionSupport() {
             if (link && hr.docsUrl) link.href = hr.docsUrl;
         }
     }
+}
+
+function emptyHostedAgentDeployment(status = "idle", reason = "") {
+    return {
+        status,
+        deployed: false,
+        available: false,
+        portalUrl: "",
+        agentName: "",
+        version: "",
+        reason,
+    };
+}
+
+function resetHostedAgentDeployment() {
+    hostedAgentDeploymentRequest += 1;
+    hostedAgentDeploymentCheckedAt = 0;
+    state.hostedAgentDeployment = emptyHostedAgentDeployment();
+    renderHostedAgentDeployment();
+}
+
+function hasAvailableHostedAgentDeployment(deployment) {
+    return !!(deployment?.deployed && deployment?.available && deployment?.portalUrl);
+}
+
+function isDefinitiveHostedAgentResult(result) {
+    if (result?.ok === true) return true;
+    return ["ambiguous_agent", "no_agent", "no_project"].includes(result?.reason);
+}
+
+function renderHostedAgentDeployment() {
+    const link = document.getElementById("testPlaygroundLink");
+    if (!link) return;
+    const deployment = state.hostedAgentDeployment;
+    const visible = hasAvailableHostedAgentDeployment(deployment);
+    link.hidden = !visible;
+    link.closest(".row-deploy")?.classList.toggle("has-playground", visible);
+    if (visible) link.href = deployment.portalUrl;
+    else link.removeAttribute("href");
+    link.title = visible && deployment.version
+        ? `Test ${deployment.agentName} version ${deployment.version} in Microsoft Foundry Playground`
+        : "";
+}
+
+async function loadHostedAgentDeployment() {
+    const requestId = ++hostedAgentDeploymentRequest;
+    hostedAgentDeploymentCheckedAt = Date.now();
+    const previous = state.hostedAgentDeployment;
+    const preservePrevious = hasAvailableHostedAgentDeployment(previous);
+    state.hostedAgentDeployment = preservePrevious
+        ? { ...previous, status: "refreshing", reason: "" }
+        : emptyHostedAgentDeployment("loading");
+    renderHostedAgentDeployment();
+    try {
+        const result = await getJSON("/api/hosted-agent-deployment");
+        if (requestId !== hostedAgentDeploymentRequest) return null;
+        const available = !!(result?.ok && result?.deployed && result?.available && result?.portalUrl);
+        const refreshed = {
+            status: "ready",
+            deployed: !!result?.deployed,
+            available,
+            portalUrl: available ? result.portalUrl : "",
+            agentName: result?.agentName || "",
+            version: result?.version || "",
+            reason: result?.reason || "",
+        };
+        state.hostedAgentDeployment =
+            preservePrevious && !available && !isDefinitiveHostedAgentResult(result)
+                ? { ...previous, status: "ready", reason: result?.reason || "refresh_failed" }
+                : refreshed;
+    } catch (err) {
+        if (requestId !== hostedAgentDeploymentRequest) return null;
+        state.hostedAgentDeployment = preservePrevious
+            ? { ...previous, status: "ready", reason: err?.message || "fetch_failed" }
+            : emptyHostedAgentDeployment("error", err?.message || "fetch_failed");
+    }
+    hostedAgentDeploymentCheckedAt = Date.now();
+    renderHostedAgentDeployment();
+    return state.hostedAgentDeployment;
 }
 
 // Fetch hosted-agent region support for the selected project and update the UI.
@@ -1373,6 +1465,7 @@ async function doSignOut() {
     state.project.endpoint = "";
     state.project.rg = "";
     state.project.account = "";
+    resetHostedAgentDeployment();
     renderIdentity();
     renderSubList();
     renderProjList();
@@ -1386,6 +1479,7 @@ async function doSignOut() {
 
 // After sign-in: refresh subscriptions, auto-select default sub + first project.
 async function afterAuthChange() {
+    resetHostedAgentDeployment();
     state.subsState = { status: "idle", items: [], reason: null };
     state.projState = { status: "idle", items: [], reason: null, sub: null };
     await loadSubscriptions(true);
@@ -1398,6 +1492,7 @@ async function afterAuthChange() {
             if (b.project && b.project.name) setProjectLabels(b.project.name);
             resetSelectors();
             await loadProjects(true);
+            await loadHostedAgentDeployment();
         }
     } catch {
         /* keep current selection */
@@ -1461,6 +1556,7 @@ function renderSubList() {
 }
 
 async function selectSubscription(s) {
+    resetHostedAgentDeployment();
     setSelectedSubscription(s.id, s.name);
     renderSubList();
     try {
@@ -1531,6 +1627,7 @@ function renderProjList() {
 }
 
 async function selectProject(p) {
+    resetHostedAgentDeployment();
     try {
         await postJSON("/api/select-project", {
             endpoint: p.endpoint,
@@ -1554,6 +1651,7 @@ async function selectProject(p) {
     toast("Project: " + p.name);
     // Re-evaluate hosted-agent region support for the newly selected project.
     loadRegionSupport();
+    loadHostedAgentDeployment();
 }
 
 // Generic search-list row.
@@ -2147,6 +2245,7 @@ root.addEventListener("click", async (e) => {
             );
             return;
         }
+        resetHostedAgentDeployment();
         sendToChat(withProjectContext(state.deployPrompt));
         return;
     }
@@ -2331,6 +2430,8 @@ async function init() {
         /* fail open — leave Deploy enabled */
     }
 
+    await loadHostedAgentDeployment();
+
     // Optional: let an agent-invoked navigate() action reflect in the open
     // iframe. The stream also doubles as a liveness canary — see the
     // markReconnected / scheduleDisconnect helpers at module scope.
@@ -2355,5 +2456,10 @@ async function init() {
         /* SSE unsupported — non-fatal */
     }
 }
+
+window.addEventListener("focus", () => {
+    const stale = Date.now() - hostedAgentDeploymentCheckedAt >= HOSTED_AGENT_REFRESH_TTL_MS;
+    if (state.project?.endpoint && stale) loadHostedAgentDeployment();
+});
 
 init();

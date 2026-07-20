@@ -132,6 +132,27 @@ function mockAzd(url) {
     return mockBool(url, "azd", true);
 }
 
+function mockAgentDeployed(url) {
+    return mockBool(url, "deployed", true);
+}
+
+function mockAgentMetadata(url) {
+    return mockBool(url, "agentMetadata", true);
+}
+
+function mockAgentError(url) {
+    return mockBool(url, "agentError", false);
+}
+
+function mockAgentInput(url) {
+    return mockBool(url, "agentInput", true);
+}
+
+async function mockResolvedAgentName(url) {
+    if (mockAgentInput(url)) return state.agentName;
+    return (await projectInit(url)).hasAgent ? "Preview Agent" : "";
+}
+
 function emptyProject() {
     return { name: "", endpoint: "", rg: "", account: "" };
 }
@@ -351,6 +372,52 @@ function stubNeedsCopilot(res, extra = {}) {
     });
 }
 
+async function mockHostedAgentDeployment(url) {
+    const reason = projectScopedUnavailable(url);
+    const agentName = await mockResolvedAgentName(url);
+    if (reason || !agentName) {
+        return {
+            ok: false,
+            deployed: false,
+            available: false,
+            portalUrl: "",
+            reason: reason || "no_agent",
+        };
+    }
+    if (mockAgentError(url)) {
+        return {
+            ok: false,
+            deployed: false,
+            available: false,
+            portalUrl: "",
+            reason: "fetch_failed",
+        };
+    }
+    if (!mockAgentDeployed(url)) {
+        return {
+            ok: true,
+            deployed: false,
+            available: false,
+            portalUrl: "",
+            agentName,
+            version: "",
+            reason: "not_found",
+        };
+    }
+    const available = mockAgentMetadata(url);
+    return {
+        ok: true,
+        deployed: true,
+        available,
+        portalUrl: available
+            ? "https://ai.azure.com/nextgen/r/AAAAAAAAAAAAAAAAAAAAAA,preview-rg,,preview-foundry,preview-project/build/agents/Preview%20Agent/build?version=3"
+            : "",
+        agentName,
+        version: "3",
+        reason: "",
+    };
+}
+
 async function handleApi(req, res, url) {
     const path = url.pathname;
     const method = req.method || "GET";
@@ -358,6 +425,7 @@ async function handleApi(req, res, url) {
     if (method === "GET" && path === "/api/state") {
         return sendJson(res, 200, {
             ...state,
+            agentName: mockAgentInput(url) ? state.agentName : "",
             preview: true,
             project: mockProjectState(url),
             deployPrompt: DEPLOY_PROMPT,
@@ -374,6 +442,23 @@ async function handleApi(req, res, url) {
             endpoint: selectedProject.endpoint,
             resourceName: selectedProject.account,
         });
+    }
+
+    if (method === "GET" && path === "/api/hosted-agent-deployment") {
+        return sendJson(res, 200, await mockHostedAgentDeployment(url));
+    }
+
+    if (method === "GET" && path === "/api/hosted-agent-playground") {
+        const result = await mockHostedAgentDeployment(url);
+        if (!result.available) {
+            return sendText(res, 404, "This hosted agent deployment is no longer available.");
+        }
+        res.writeHead(302, {
+            "Cache-Control": "no-store",
+            Location: `/__preview-playground?agent=${encodeURIComponent(result.agentName)}&version=${encodeURIComponent(result.version)}`,
+        });
+        res.end();
+        return;
     }
 
     if (method === "GET" && path === "/api/deployments") {
@@ -601,6 +686,14 @@ async function handle(req, res) {
             sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
         }
         return;
+    }
+
+    if (method === "GET" && url.pathname === "/__preview-playground") {
+        return sendText(
+            res,
+            200,
+            `Preview Playground: ${url.searchParams.get("agent") || "agent"} version ${url.searchParams.get("version") || ""}`,
+        );
     }
 
     if (method === "GET" && serveStatic(req, res)) return;

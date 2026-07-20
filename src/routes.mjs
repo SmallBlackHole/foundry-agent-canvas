@@ -14,6 +14,7 @@ import {
     listWorkIQVariants,
     addWorkIQToolsToToolbox,
     createToolboxWithWorkIQTools,
+    getToken,
     getProject,
     resolveProjectLocation,
     isHostedAgentRegionSupported,
@@ -35,7 +36,39 @@ import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
 import { initialBuildSections } from "./build-sections.mjs";
-import { inspectHostedAgentWorkspace } from "./local-agent.mjs";
+import { inspectHostedAgentWorkspace, resolveHostedAgentName } from "./local-agent.mjs";
+import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
+
+async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
+    const ep = (entry ? entry.state.projectEndpoint : null) || "";
+    const projectIdentity = getProject(ep);
+    const agent = await resolveHostedAgentName(
+        workspaceRootFn(),
+        entry ? entry.state.agentName : "",
+    );
+    if (agent.ambiguous) {
+        return {
+            ok: false,
+            deployed: false,
+            available: false,
+            portalUrl: "",
+            agentName: "",
+            version: "",
+            reason: "ambiguous_agent",
+        };
+    }
+    return resolveHostedAgentPortalAction(
+        {
+            endpoint: ep,
+            agentName: agent.agentName,
+            subscriptionId: entry ? entry.state.subscriptionId : "",
+            resourceGroup: entry ? entry.state.project?.rg : "",
+            accountName: projectIdentity.resourceName,
+            projectName: projectIdentity.projectName,
+        },
+        { getToken },
+    );
+}
 
 export function createRequestHandler(
     instanceId,
@@ -55,6 +88,9 @@ export function createRequestHandler(
         }
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
+        if (method === "GET" && path === "/codicons/codicon.ttf") {
+            return serveStatic(res, join("codicons", "codicon.ttf"), publicDir);
+        }
 
         // Tool icons (path-traversal-safe: name must be a bare slug).
         if (method === "GET" && path.startsWith("/tool-icons/")) {
@@ -93,6 +129,34 @@ export function createRequestHandler(
             const p = getProject(ep);
             const name = p.projectName || (entry ? entry.state.project?.name : "") || "";
             return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint, resourceName: p.resourceName });
+        }
+
+        // Live hosted-agent deployment lookup. The direct agent GET is
+        // intentionally uncached; the selected project + agent name identify
+        // the resource, while the returned latest version proves deployment.
+        if (method === "GET" && path === "/api/hosted-agent-deployment") {
+            const result = await selectedHostedAgentPortalAction(entry, workspaceRootFn);
+            return sendJson(res, 200, result);
+        }
+
+        // Synchronous navigation target for the Playground button. Revalidate
+        // immediately before redirecting without mutating the clicked control.
+        if (method === "GET" && path === "/api/hosted-agent-playground") {
+            const result = await selectedHostedAgentPortalAction(entry, workspaceRootFn);
+            if (result.available && result.portalUrl.startsWith("https://ai.azure.com/")) {
+                res.writeHead(302, {
+                    "Cache-Control": "no-store",
+                    Location: result.portalUrl,
+                });
+                res.end();
+                return;
+            }
+            res.writeHead(404, {
+                "Cache-Control": "no-store",
+                "Content-Type": "text/plain; charset=utf-8",
+            });
+            res.end("This hosted agent deployment is no longer available.");
+            return;
         }
 
         // Live model deployments in the selected project (mock fallback).

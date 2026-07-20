@@ -1,7 +1,17 @@
 (function () {
     "use strict";
 
-    const MOCK_PARAM_KEYS = ["signedIn", "project", "agent", "az", "azd"];
+    const MOCK_PARAM_KEYS = [
+        "signedIn",
+        "project",
+        "agent",
+        "agentInput",
+        "az",
+        "azd",
+        "deployed",
+        "agentMetadata",
+        "agentError",
+    ];
 
     const originalFetch = window.fetch.bind(window);
 
@@ -52,8 +62,12 @@
             signedIn,
             project: signedIn && boolValue(params, "project"),
             agent,
+            agentInput: boolValue(params, "agentInput"),
             az: boolValue(params, "az"),
             azd: boolValue(params, "azd"),
+            deployed: boolValue(params, "deployed"),
+            agentMetadata: boolValue(params, "agentMetadata"),
+            agentError: params.get("agentError") === "true",
         };
     }
 
@@ -143,7 +157,9 @@
         const summary = document.createElement("div");
         summary.className = "preview-mock-summary";
         summary.textContent =
-            `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, az=${cfg.az}, azd=${cfg.azd}`;
+            `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
+            `agentInput=${cfg.agentInput}, az=${cfg.az}, azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
+            `metadata=${cfg.agentMetadata}, error=${cfg.agentError}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
@@ -156,10 +172,16 @@
             ]),
             section("Workspace", [
                 checkbox("agent", "Hosted agent exists", cfg.agent),
+                checkbox("agentInput", "Canvas agent name provided", cfg.agentInput),
             ]),
             section("Local tools", [
                 checkbox("az", "Azure CLI available", cfg.az),
                 checkbox("azd", "Azure Developer CLI available", cfg.azd),
+            ]),
+            section("Hosted agent", [
+                checkbox("deployed", "Agent deployed", cfg.deployed),
+                checkbox("agentMetadata", "Portal metadata available", cfg.agentMetadata),
+                checkbox("agentError", "Deployment lookup error", cfg.agentError),
             ]),
             summary,
             hint,
