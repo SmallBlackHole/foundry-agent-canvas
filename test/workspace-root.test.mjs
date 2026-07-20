@@ -54,6 +54,21 @@ test("uses the active cwd when a session-scoped extension has no git root", asyn
     assert.equal(workspaceRoot.resolve(), cwd);
 });
 
+test("prefers the active workspace for a plugin-contributed extension", async (t) => {
+    const root = await testDirectory(t);
+    const extensionDir = join(root, "installed-plugin", "canvas-extension");
+    const workspace = join(root, "workspace");
+    await mkdir(extensionDir, { recursive: true });
+
+    const workspaceRoot = createWorkspaceRootResolver({
+        extensionDir,
+        fallbackCwd: join(root, "plugin-process-cwd"),
+    });
+    workspaceRoot.update({ cwd: join(workspace, "task-agent"), gitRoot: workspace });
+
+    assert.equal(workspaceRoot.resolve(), workspace);
+});
+
 test("falls back to the repository for a project-scoped extension", async (t) => {
     const root = await testDirectory(t);
     const extensionDir = join(root, ".github", "extensions", "foundry-agent-canvas");
