@@ -1,5 +1,4 @@
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -11,18 +10,14 @@ import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
+import { createWorkspaceRootResolver } from "./src/workspace-root.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
 const openInstances = new Set();
-
-function workspaceRoot() {
-    const up = join(EXT_DIR, "..", "..", "..");
-    if (existsSync(join(up, ".github"))) return up;
-    return process.cwd();
-}
+const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
 
 async function ensureFoundrySkillForCanvas(session) {
     let failure = "";
@@ -73,7 +68,7 @@ async function startServer(instanceId, session) {
             publicDir: PUBLIC_DIR,
             extDir: EXT_DIR,
             inspectorUiDir: INSPECTOR_UI_DIR,
-            workspaceRootFn: workspaceRoot,
+            workspaceRootFn: workspaceRoot.resolve,
             onCanvasOpen: syncFoundrySkill,
             waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
         })
@@ -85,6 +80,14 @@ async function startServer(instanceId, session) {
 }
 
 const session = await joinSession({
+    hooks: {
+        onSessionStart: (input) => {
+            workspaceRoot.update(input.workingDirectory);
+        },
+        onUserPromptSubmitted: (input) => {
+            workspaceRoot.update(input.workingDirectory);
+        },
+    },
     canvases: [
         createCanvas({
             id: "agent-builder",
