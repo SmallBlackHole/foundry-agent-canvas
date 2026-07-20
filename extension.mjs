@@ -11,6 +11,7 @@ import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
+import { cancelWorkspaceStateMonitor } from "./src/workspace-state.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
@@ -175,6 +176,8 @@ const session = await joinSession({
                 return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
+                const entry = servers.get(ctx.instanceId);
+                if (entry) cancelWorkspaceStateMonitor(entry);
                 // Keep the loopback server alive for this provider process. The
                 // host can later reload the cached URL for the same instance
                 // without invoking open(), so closing it here strands the iframe

@@ -71,11 +71,14 @@ export function pushNavigate(entry, page) {
 
 export function pushFrame(entry, obj) {
     const frame = `data: ${JSON.stringify(obj)}\n\n`;
+    let delivered = 0;
     for (const client of entry.sseClients) {
         try {
             client.write(frame);
+            delivered += 1;
         } catch {
             /* drop broken client */
         }
     }
+    return delivered;
 }

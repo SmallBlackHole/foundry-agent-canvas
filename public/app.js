@@ -122,12 +122,12 @@ async function postJSON(url, body) {
     return res.json();
 }
 
-async function sendToChat(prompt) {
+async function sendToChat(prompt, { creationFlow = false } = {}) {
     try {
         const res = await fetch("/api/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify({ prompt, creationFlow }),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         toast("Sent to chat \u2713");
@@ -439,6 +439,14 @@ function applyInitDefaults(info) {
     state.init.open = sections.initOpen === true;
     state.folds.resources = sections.resourcesOpen === true;
     state.folds.deploy = sections.deployOpen === true;
+}
+
+function applyWorkspaceTransition(info) {
+    if (!info?.hasAgent || !info.sections) return false;
+    applyInitDefaults(info);
+    renderInit();
+    renderFolds();
+    return true;
 }
 
 // ----------------------------------------------------- Initialize agent code
@@ -2136,7 +2144,7 @@ root.addEventListener("click", async (e) => {
         if (!remindProjectSelection(e)) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
-        if (text) sendToChat(withProjectContext(text));
+        if (text) sendToChat(withProjectContext(text), { creationFlow: true });
         return;
     }
     if (e.target.closest("#initReset")) {
@@ -2443,6 +2451,7 @@ async function init() {
                 const msg = JSON.parse(ev.data);
                 if (msg.type === "navigate" && msg.page) render(msg.page);
                 else if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
+                else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
             } catch {
                 /* ignore malformed frames */
             }
