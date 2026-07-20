@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createRequestHandler } from "../src/routes.mjs";
-import { createWorkspaceRootResolver } from "../src/workspace-root.mjs";
+import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "../src/workspace-root.mjs";
 
 async function testDirectory(t) {
     const root = await mkdtemp(join(tmpdir(), "foundry-agent-canvas-root-"));
@@ -79,7 +79,63 @@ test("falls back to the repository for a project-scoped extension", async (t) =>
     assert.equal(workspaceRoot.resolve(), root);
 });
 
-test("project init scans the active workspace for a user-scoped extension", async (t) => {
+test("prefers the metadata snapshot when persisted context is stale", async (t) => {
+    const root = await testDirectory(t);
+    const currentWorkspace = join(root, "current-workspace");
+    const staleWorkspace = join(root, "stale-workspace");
+    const workspaceRoot = createWorkspaceRootResolver({ fallbackCwd: join(root, "wrong-cwd") });
+    const session = {
+        getEvents: async () => [
+            {
+                type: "session.start",
+                data: { context: { cwd: staleWorkspace, gitRoot: staleWorkspace } },
+            },
+        ],
+        on: () => () => {},
+        rpc: {
+            metadata: {
+                snapshot: async () => ({ workingDirectory: currentWorkspace }),
+            },
+        },
+    };
+
+    await initializeWorkspaceRoot(session, workspaceRoot);
+
+    assert.equal(workspaceRoot.resolve(), currentWorkspace);
+});
+
+test("keeps a live context change received during reload hydration", async (t) => {
+    const root = await testDirectory(t);
+    const liveWorkspace = join(root, "live-workspace");
+    const staleWorkspace = join(root, "stale-workspace");
+    const workspaceRoot = createWorkspaceRootResolver({ fallbackCwd: join(root, "wrong-cwd") });
+    let contextChanged;
+    let releaseSnapshot;
+    const snapshot = new Promise((resolve) => {
+        releaseSnapshot = resolve;
+    });
+    const session = {
+        getEvents: async () => [],
+        on: (eventType, handler) => {
+            if (eventType === "session.context_changed") contextChanged = handler;
+            return () => {};
+        },
+        rpc: {
+            metadata: {
+                snapshot: async () => snapshot,
+            },
+        },
+    };
+
+    const initialization = initializeWorkspaceRoot(session, workspaceRoot);
+    contextChanged({ data: { cwd: liveWorkspace, gitRoot: liveWorkspace } });
+    releaseSnapshot({ workingDirectory: staleWorkspace });
+    await initialization;
+
+    assert.equal(workspaceRoot.resolve(), liveWorkspace);
+});
+
+test("project init resolves a reloaded user extension before another prompt", async (t) => {
     const root = await testDirectory(t);
     const extensionDir = join(root, "Users", "test", ".copilot", "extensions", "foundry-agent-canvas");
     const workspace = join(root, "hosted-agent-sample");
@@ -104,17 +160,40 @@ test("project init scans the active workspace for a user-scoped extension", asyn
         extensionDir,
         fallbackCwd: join(root, "wrong-cwd"),
     });
-    workspaceRoot.update({ cwd, gitRoot: workspace });
+    let releaseSnapshot;
+    const snapshot = new Promise((resolve) => {
+        releaseSnapshot = resolve;
+    });
+    const session = {
+        getEvents: async () => [
+            {
+                type: "session.start",
+                data: { context: { cwd, gitRoot: workspace } },
+            },
+        ],
+        on: () => () => {},
+        rpc: {
+            metadata: {
+                snapshot: async () => snapshot,
+            },
+        },
+    };
+    const workspaceRootReady = initializeWorkspaceRoot(session, workspaceRoot);
     const handler = createRequestHandler("test-instance", {
-        session: {},
+        session,
         publicDir: "",
         extDir: extensionDir,
         inspectorUiDir: "",
-        workspaceRootFn: workspaceRoot.resolve,
+        workspaceRootFn: async () => {
+            await workspaceRootReady;
+            return workspaceRoot.resolve();
+        },
     });
     const response = jsonResponse();
 
-    await handler({ method: "GET", url: "/api/project-init" }, response);
+    const request = handler({ method: "GET", url: "/api/project-init" }, response);
+    releaseSnapshot({ workingDirectory: cwd });
+    await request;
 
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(response.body), {

@@ -43,7 +43,7 @@ async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
     const ep = (entry ? entry.state.projectEndpoint : null) || "";
     const projectIdentity = getProject(ep);
     const agent = await resolveHostedAgentName(
-        workspaceRootFn(),
+        await workspaceRootFn(),
         entry ? entry.state.agentName : "",
     );
     if (agent.ambiguous) {
@@ -463,7 +463,7 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/project-init") {
-            const root = workspaceRootFn();
+            const root = await workspaceRootFn();
             const { hasAzure, hasAgent } = await inspectHostedAgentWorkspace(root);
             return sendJson(res, 200, {
                 ok: true,

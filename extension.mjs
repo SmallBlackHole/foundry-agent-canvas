@@ -10,7 +10,7 @@ import { createRequestHandler } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
-import { createWorkspaceRootResolver } from "./src/workspace-root.mjs";
+import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
@@ -18,6 +18,10 @@ const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
 const openInstances = new Set();
 const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
+let markWorkspaceRootReady;
+const workspaceRootReady = new Promise((resolve) => {
+    markWorkspaceRootReady = resolve;
+});
 
 async function ensureFoundrySkillForCanvas(session) {
     let failure = "";
@@ -68,7 +72,10 @@ async function startServer(instanceId, session) {
             publicDir: PUBLIC_DIR,
             extDir: EXT_DIR,
             inspectorUiDir: INSPECTOR_UI_DIR,
-            workspaceRootFn: workspaceRoot.resolve,
+            workspaceRootFn: async () => {
+                await workspaceRootReady;
+                return workspaceRoot.resolve();
+            },
             onCanvasOpen: syncFoundrySkill,
             waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
         })
@@ -183,5 +190,17 @@ const session = await joinSession({
         }),
     ],
 });
+
+try {
+    await initializeWorkspaceRoot(session, workspaceRoot);
+} catch (err) {
+    try {
+        await session.log(`Active workspace detection failed: ${err?.message ?? err}`, { level: "error" });
+    } catch {
+        /* logging must not prevent the canvas provider from becoming ready */
+    }
+} finally {
+    markWorkspaceRootReady();
+}
 
 setInspectorSession(session);
