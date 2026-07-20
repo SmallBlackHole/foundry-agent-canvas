@@ -6,13 +6,15 @@
     "description": "Foundry Agent Canvas — a Copilot App canvas extension for building Microsoft Foundry agents, with live project model deployments, tool connections, and toolboxes.",
     "scripts": {
         "build": "node scripts/build.mjs",
+        "test": "node --test",
         "preview": "node scripts/preview.mjs",
         "package": "node scripts/package.mjs"
     },
     "dependencies": {
         "@azure/identity": "^4.5.0",
         "@fluentui/svg-icons": "^1.1.332",
-        "ws": "^8.21.0"
+        "ws": "^8.21.0",
+        "yaml": "^2.8.3"
     },
     "devDependencies": {
         "esbuild": "^0.28.1"

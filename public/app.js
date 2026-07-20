@@ -25,14 +25,14 @@ const state = {
     signin: { sessionId: null, timer: null, starting: false },
     // "Initialize agent code" block (ephemeral UI state).
     init: {
-        open: false,
+        open: true,
         promptDirty: false, // true once the user edits the textarea by hand
         promptText: "",
         startOption: "inspireIdea",
         idea: "",
     },
-    // Collapsible "Add Project Resources" / "Deploy & Test" cards (open by default).
-    folds: { resources: true, deploy: true },
+    // Existing-agent sections stay folded until workspace detection completes.
+    folds: { resources: false, deploy: false },
     // Hosted-agent region availability for the selected project.
     // supported: true | false | null (null = unknown → don't block, fail open).
     hostedRegion: { status: "idle", location: "", supported: null, regions: [], docsUrl: "" },
@@ -337,18 +337,16 @@ async function loadRegionSupport() {
     renderRegionSupport();
 }
 
-// Set the initial expand/fold state of the Build sections from whether the
-// workspace is already scaffolded. Not initialized => focus on Initialize
-// Agent Code (expanded, others folded). Initialized => fold Initialize Agent
-// Code and surface Add Project Resources / Deploy & Test (expanded). Applied
-// once on load; manual toggles afterward take over.
+// Apply the server-derived initial section state once on load. The server uses
+// an agent manifest or an Azure service hosted by azure.ai.agent anywhere in
+// the workspace, not generic Azure scaffolding.
+// Manual toggles afterward take over.
 function applyInitDefaults(info) {
-    const initialized = !!(info && info.initialized);
-    state.init.open = !initialized;
-    state.folds.resources = initialized;
-    state.folds.deploy = initialized;
-    renderInit();
-    renderFolds();
+    const sections = info && info.sections;
+    if (!sections) return;
+    state.init.open = sections.initOpen === true;
+    state.folds.resources = sections.resourcesOpen === true;
+    state.folds.deploy = sections.deployOpen === true;
 }
 
 // ----------------------------------------------------- Initialize agent code
@@ -2261,26 +2259,29 @@ root.addEventListener("input", (e) => {
 
 // ------------------------------------------------------- Init + live updates
 async function init() {
-    try {
-        const s = await getJSON("/api/state");
+    let initialPage = "build";
+    const [stateResult, projectInitResult] = await Promise.allSettled([
+        getJSON("/api/state"),
+        getJSON("/api/project-init"),
+    ]);
+
+    if (stateResult.status === "fulfilled") {
+        const s = stateResult.value;
         if (s.agentName) state.agentName = s.agentName;
         if (s.project) state.project = s.project;
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
-        render(s.page || "build");
-    } catch {
-        render("build");
+        initialPage = s.page || "build";
     }
 
-    // Seed the Build sections' expand/fold state from whether the workspace is
-    // already scaffolded (azure.yaml / agent.yaml). Non-fatal: on failure we
-    // keep the static defaults.
-    try {
-        const pi = await getJSON("/api/project-init");
+    // Resolve the workspace's hosted-agent signal before first paint so refresh
+    // does not briefly show the wrong section layout. On failure, retain the
+    // conservative create-first defaults.
+    if (projectInitResult.status === "fulfilled") {
+        const pi = projectInitResult.value;
         if (pi && pi.ok) applyInitDefaults(pi);
-    } catch {
-        /* keep static fold defaults */
     }
+    render(initialPage);
 
     // Resolve the default selection (az default subscription + first project)
     // and the signed-in identity. Falls back to the parsed project name.

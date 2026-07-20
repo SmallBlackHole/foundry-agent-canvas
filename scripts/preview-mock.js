@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const MOCK_PARAM_KEYS = ["signedIn", "project", "az", "azd"];
+    const MOCK_PARAM_KEYS = ["signedIn", "project", "agent", "az", "azd"];
 
     const originalFetch = window.fetch.bind(window);
 
@@ -26,16 +26,32 @@
         return originalFetch(withMockParams(input), init);
     };
 
-    function boolValue(params, key) {
-        return params.get(key) !== "false";
+    function boolValue(params, key, fallback = true) {
+        const raw = params.get(key);
+        return raw == null ? fallback : raw !== "false";
     }
 
-    function config() {
+    async function config() {
         const params = new URLSearchParams(window.location.search);
         const signedIn = boolValue(params, "signedIn");
+        let agent = boolValue(params, "agent", false);
+        if (!params.has("agent")) {
+            try {
+                const response = await originalFetch("/api/project-init", {
+                    headers: { Accept: "application/json" },
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    agent = data?.hasAgent === true;
+                }
+            } catch {
+                /* keep the fallback */
+            }
+        }
         return {
             signedIn,
             project: signedIn && boolValue(params, "project"),
+            agent,
             az: boolValue(params, "az"),
             azd: boolValue(params, "azd"),
         };
@@ -72,8 +88,8 @@
         return node;
     }
 
-    function renderPanel() {
-        const cfg = config();
+    async function renderPanel() {
+        const cfg = await config();
         let panel = document.getElementById("previewMockPanel");
         if (!panel) {
             panel = document.createElement("aside");
@@ -127,7 +143,7 @@
         const summary = document.createElement("div");
         summary.className = "preview-mock-summary";
         summary.textContent =
-            `signedIn=${cfg.signedIn}, project=${cfg.project}, az=${cfg.az}, azd=${cfg.azd}`;
+            `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, az=${cfg.az}, azd=${cfg.azd}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
@@ -137,6 +153,9 @@
             section("Session", [
                 checkbox("signedIn", "Signed in", cfg.signedIn),
                 checkbox("project", "Foundry project selected", cfg.project),
+            ]),
+            section("Workspace", [
+                checkbox("agent", "Hosted agent exists", cfg.agent),
             ]),
             section("Local tools", [
                 checkbox("az", "Azure CLI available", cfg.az),
@@ -158,8 +177,8 @@
     }
 
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", renderPanel, { once: true });
+        document.addEventListener("DOMContentLoaded", () => void renderPanel(), { once: true });
     } else {
-        renderPanel();
+        void renderPanel();
     }
 })();

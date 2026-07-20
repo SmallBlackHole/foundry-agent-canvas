@@ -20,6 +20,8 @@ import {
     selectGuardrailPrompt,
     toolConnections,
 } from "../src/catalog.mjs";
+import { initialBuildSections } from "../src/build-sections.mjs";
+import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");
@@ -316,10 +318,19 @@ function serveStatic(req, res) {
     return true;
 }
 
-function projectInit() {
-    const hasAzure = existsSync(join(ROOT, "azure.yaml")) || existsSync(join(ROOT, "azure.yml"));
-    const hasAgent = existsSync(join(ROOT, "agent.yaml")) || existsSync(join(ROOT, "agent.yml"));
-    return { ok: true, hasAzure, hasAgent, initialized: hasAzure || hasAgent };
+async function projectInit(url) {
+    const detected = await inspectHostedAgentWorkspace(ROOT);
+    const agentParam = url?.searchParams.get("agent");
+    const hasAgent = agentParam == null
+        ? detected.hasAgent
+        : agentParam !== "false";
+    return {
+        ok: true,
+        hasAzure: detected.hasAzure,
+        hasAgent,
+        initialized: detected.hasAzure || hasAgent,
+        sections: initialBuildSections({ hasAgent }),
+    };
 }
 
 function selectProject(project) {
@@ -527,7 +538,7 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/project-init") {
         return sendJson(res, 200, {
-            ...projectInit(),
+            ...(await projectInit(url)),
             azureCliAvailable: mockAzureCli(url),
             azdAvailable: mockAzd(url),
         });

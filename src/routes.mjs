@@ -34,6 +34,8 @@ import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enr
 import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
+import { initialBuildSections } from "./build-sections.mjs";
+import { inspectHostedAgentWorkspace } from "./local-agent.mjs";
 
 export function createRequestHandler(
     instanceId,
@@ -398,13 +400,13 @@ export function createRequestHandler(
 
         if (method === "GET" && path === "/api/project-init") {
             const root = workspaceRootFn();
-            const hasAzure = existsSync(join(root, "azure.yaml")) || existsSync(join(root, "azure.yml"));
-            const hasAgent = existsSync(join(root, "agent.yaml")) || existsSync(join(root, "agent.yml"));
+            const { hasAzure, hasAgent } = await inspectHostedAgentWorkspace(root);
             return sendJson(res, 200, {
                 ok: true,
                 hasAzure,
                 hasAgent,
                 initialized: hasAzure || hasAgent,
+                sections: initialBuildSections({ hasAgent }),
             });
         }
 
