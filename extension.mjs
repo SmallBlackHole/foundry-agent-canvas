@@ -129,6 +129,15 @@ const session = await joinSession({
             inputSchema: {
                 type: "object",
                 properties: {
+                    // Deprecated and ignored: the canvas only has the build view now.
+                    // Retained as an optional property (additionalProperties is false)
+                    // so persisted/rehydrated open inputs carrying page:"build" still
+                    // pass SDK validation before open(). No navigation reads it.
+                    page: {
+                        type: "string",
+                        enum: ["build"],
+                        description: 'Deprecated and ignored; retained only so older inputs with page:"build" still validate.',
+                    },
                     agentName: { type: "string", description: "Name shown in the builder header." },
                     model: { type: "string", description: "Currently selected model name." },
                     projectEndpoint: {
