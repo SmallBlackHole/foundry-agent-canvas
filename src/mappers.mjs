@@ -1,8 +1,6 @@
 import {
     providerColor,
-    toolIconFor,
     selectModelPrompt,
-    selectToolPrompt,
     selectToolboxPrompt,
     selectGuardrailPrompt,
     selectSkillPrompt,
@@ -20,18 +18,6 @@ export function enrichDeployment(d) {
         version: d.version,
         color: providerColor(d.provider),
         prompt: selectModelPrompt(d.name),
-    };
-}
-
-export function enrichConnection(c) {
-    const { iconSrc, color } = toolIconFor(`${c.name} ${c.toolEntityId} ${c.metaType} ${c.type}`);
-    return {
-        id: slug(c.name),
-        name: c.name,
-        kind: c.type,
-        iconSrc,
-        color,
-        prompt: selectToolPrompt(c.name),
     };
 }
 

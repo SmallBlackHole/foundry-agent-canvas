@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
-import { PAGES, servers, defaultState, applyInput } from "./src/state.mjs";
-import { pushNavigate, pushFrame } from "./src/server-utils.mjs";
+import { servers, defaultState, applyInput } from "./src/state.mjs";
+import { pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler, selectedHostedAgentPortalAction } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
@@ -129,36 +129,18 @@ const session = await joinSession({
             inputSchema: {
                 type: "object",
                 properties: {
-                    page: { type: "string", enum: PAGES, description: "Initial view to show." },
                     agentName: { type: "string", description: "Name shown in the builder header." },
                     model: { type: "string", description: "Currently selected model name." },
                     projectEndpoint: {
                         type: "string",
                         description:
-                            "Foundry project data-plane endpoint whose live model deployments and tool connections the selectors should show (e.g. https://<resource>.services.ai.azure.com/api/projects/<project>).",
+                            "Foundry project data-plane endpoint whose live model deployments, toolboxes, skills, and guardrails the selectors should show (e.g. https://<resource>.services.ai.azure.com/api/projects/<project>).",
                     },
                     projectName: { type: "string", description: "Display name of the selected Foundry project." },
                 },
                 additionalProperties: false,
             },
             actions: [
-                {
-                    name: "navigate",
-                    description: "Switch the open canvas to the build view.",
-                    inputSchema: {
-                        type: "object",
-                        properties: { page: { type: "string", enum: PAGES } },
-                        required: ["page"],
-                        additionalProperties: false,
-                    },
-                    handler: async (ctx) => {
-                        const entry = servers.get(ctx.instanceId);
-                        if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
-                        entry.state.page = ctx.input.page;
-                        pushNavigate(entry, ctx.input.page);
-                        return { ok: true, page: ctx.input.page };
-                    },
-                },
                 {
                     name: "setAgentIdea",
                     description:

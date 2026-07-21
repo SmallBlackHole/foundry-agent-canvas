@@ -58,17 +58,6 @@ export function readBody(req, limit = 1_000_000) {
     });
 }
 
-export function pushNavigate(entry, page) {
-    const frame = `data: ${JSON.stringify({ type: "navigate", page })}\n\n`;
-    for (const client of entry.sseClients) {
-        try {
-            client.write(frame);
-        } catch {
-            /* drop broken client */
-        }
-    }
-}
-
 export function pushFrame(entry, obj) {
     const frame = `data: ${JSON.stringify(obj)}\n\n`;
     let delivered = 0;

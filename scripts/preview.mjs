@@ -18,7 +18,6 @@ import {
     selectToolboxPrompt,
     selectSkillPrompt,
     selectGuardrailPrompt,
-    toolConnections,
 } from "../src/catalog.mjs";
 import { initialBuildSections } from "../src/build-sections.mjs";
 import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
@@ -100,7 +99,6 @@ let selectedProject = projects[0];
 let selectedSubscriptionId = identity.subscriptionId;
 
 const state = {
-    page: "build",
     agentName: "Preview Agent",
     project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
     projectEndpoint: selectedProject.endpoint,
@@ -218,16 +216,6 @@ const previewSkills = [
 const previewGuardrails = [
     { id: "content-safety", name: "Content Safety", prompt: selectGuardrailPrompt("Content Safety") },
     { id: "financial-advice-policy", name: "Financial Advice Policy", prompt: selectGuardrailPrompt("Financial Advice Policy") },
-];
-
-const workIqVariants = [
-    { entityId: "microsoft-copilot-chat-frontier", title: "Work IQ Copilot" },
-    { entityId: "microsoft-teams-mcp-frontier", title: "Work IQ Teams" },
-    { entityId: "microsoft-word-mcp-frontier", title: "Work IQ Word" },
-    { entityId: "microsoft-outlook-calendar-mcp-frontier", title: "Work IQ Calendar" },
-    { entityId: "microsoft-outlook-mail-mcp-frontier", title: "Work IQ Mail" },
-    { entityId: "microsoft-sharepoint-mcp-frontier", title: "Work IQ SharePoint" },
-    { entityId: "microsoft-onedrive-mcp-frontier", title: "Work IQ OneDrive" },
 ];
 
 const hostedAgentRegions = [
@@ -363,15 +351,6 @@ function selectProject(project) {
     state.projectLocation = selectedProject.location || "";
 }
 
-function stubNeedsCopilot(res, extra = {}) {
-    return sendJson(res, 200, {
-        ok: false,
-        reason: "preview_mode",
-        detail: "Preview mode does not call Copilot, Azure, or Foundry write APIs.",
-        ...extra,
-    });
-}
-
 async function mockHostedAgentDeployment(url) {
     const reason = projectScopedUnavailable(url);
     const agentName = await mockResolvedAgentName(url);
@@ -467,12 +446,6 @@ async function handleApi(req, res, url) {
         return sendJson(res, 200, { ok: true, source: "preview", items: previewDeployments });
     }
 
-    if (method === "GET" && path === "/api/connections") {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, source: "preview", reason, items: [] });
-        return sendJson(res, 200, { ok: true, source: "preview", items: toolConnections });
-    }
-
     if (method === "GET" && path === "/api/toolboxes") {
         const reason = projectScopedUnavailable(url);
         if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
@@ -496,22 +469,6 @@ async function handleApi(req, res, url) {
         if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
         const name = url.searchParams.get("name") || "";
         return sendJson(res, 200, { ok: true, items: previewToolboxTools[name] || [] });
-    }
-
-    if (method === "POST" && (path === "/api/toolbox/add-tool" || path === "/api/toolbox/create-with-tool")) {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason });
-        return stubNeedsCopilot(res, { reason: "needs_connection" });
-    }
-
-    if (method === "GET" && path === "/api/workiq/variants") {
-        return sendJson(res, 200, { ok: true, data: workIqVariants });
-    }
-
-    if (method === "POST" && (path === "/api/workiq/add-tools" || path === "/api/workiq/create-with-tools")) {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason });
-        return stubNeedsCopilot(res, { reason: "needs_connection" });
     }
 
     if (method === "GET" && path === "/api/identity") {

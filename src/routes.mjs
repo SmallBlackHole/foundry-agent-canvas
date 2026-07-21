@@ -1,19 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { deployments, toolConnections, DEPLOY_PROMPT } from "./catalog.mjs";
+import { deployments, DEPLOY_PROMPT } from "./catalog.mjs";
 import {
     listDeployments,
-    listConnections,
     listToolboxes,
     listToolboxTools,
     listGuardrails,
     listSkills,
-    addToolToToolbox,
-    createToolboxWithTool,
-    listWorkIQVariants,
-    addWorkIQToolsToToolbox,
-    createToolboxWithWorkIQTools,
     getToken,
     getProject,
     resolveProjectLocation,
@@ -31,7 +25,7 @@ import {
     signOut,
 } from "./foundry.mjs";
 import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
-import { enrichDeployment, enrichConnection, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
+import { enrichDeployment, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
@@ -170,16 +164,6 @@ export function createRequestHandler(
             return sendJson(res, 200, { ok: true, source: "mock", reason: r.reason, items: deployments });
         }
 
-        // Live tool connections in the selected project (mock fallback).
-        if (method === "GET" && path === "/api/connections") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const r = await listConnections(ep);
-            if (r.ok) {
-                return sendJson(res, 200, { ok: true, source: "live", items: r.data.map(enrichConnection) });
-            }
-            return sendJson(res, 200, { ok: true, source: "mock", reason: r.reason, items: toolConnections });
-        }
-
         if (method === "GET" && path === "/api/toolboxes") {
             const ep = (entry ? entry.state.projectEndpoint : null) || "";
             const r = await listToolboxes(ep, { force: forceRefresh });
@@ -215,71 +199,6 @@ export function createRequestHandler(
             const r = await listToolboxTools(ep, name, version);
             if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
             return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
-        }
-
-        if (method === "POST" && path === "/api/toolbox/add-tool") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            try {
-                const { toolbox, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
-                if (!toolbox || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
-                const r = await addToolToToolbox(ep, toolbox, toolId, toolName || "");
-                return sendJson(res, 200, r);
-            } catch (err) {
-                await session.log(`add-tool failed: ${err?.message ?? err}`, { level: "error" });
-                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
-            }
-        }
-
-        if (method === "POST" && path === "/api/toolbox/create-with-tool") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            try {
-                const { name, toolId, toolName } = JSON.parse((await readBody(req)) || "{}");
-                if (!name || !toolId) return sendJson(res, 400, { ok: false, reason: "bad_request" });
-                const r = await createToolboxWithTool(ep, name, toolId, toolName || "");
-                return sendJson(res, 200, r);
-            } catch (err) {
-                await session.log(`create-with-tool failed: ${err?.message ?? err}`, { level: "error" });
-                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
-            }
-        }
-
-        // ── Work IQ sub-tool picker ─────────────────────────────────────────
-        if (method === "GET" && path === "/api/workiq/variants") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const r = await listWorkIQVariants(ep);
-            return sendJson(res, 200, r);
-        }
-
-        if (method === "POST" && path === "/api/workiq/add-tools") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const sub = entry ? entry.state.subscriptionId : "";
-            try {
-                const { toolbox, variantIds } = JSON.parse((await readBody(req)) || "{}");
-                if (!toolbox || !Array.isArray(variantIds) || !variantIds.length) {
-                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
-                }
-                const r = await addWorkIQToolsToToolbox(ep, sub, toolbox, variantIds);
-                return sendJson(res, 200, r);
-            } catch (err) {
-                await session.log(`workiq add-tools failed: ${err?.message ?? err}`, { level: "error" });
-                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
-            }
-        }
-
-        if (method === "POST" && path === "/api/workiq/create-with-tools") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const sub = entry ? entry.state.subscriptionId : "";
-            try {
-                const { name, variantIds } = JSON.parse((await readBody(req)) || "{}");
-                if (!name || !Array.isArray(variantIds) || !variantIds.length) {
-                    return sendJson(res, 400, { ok: false, reason: "bad_request" });
-                }
-                const r = await createToolboxWithWorkIQTools(ep, sub, name, variantIds);
-                return sendJson(res, 200, r);
-            } catch (err) {
-                await session.log(`workiq create-with-tools failed: ${err?.message ?? err}`, { level: "error" });
-                return sendJson(res, 500, { ok: false, reason: "exception", detail: String(err?.message ?? err) });
-            }
         }
 
         // ── Project picker: identity / subscriptions / projects ──────────────
@@ -417,7 +336,7 @@ export function createRequestHandler(
             return sendJson(res, 200, r);
         }
 
-        // Server-Sent Events so an agent-invoked navigate() reflects live.
+        // Server-Sent Events so agent-driven canvas updates reflect live.
         if (method === "GET" && path === "/events") {
             res.writeHead(200, {
                 "Content-Type": "text/event-stream",

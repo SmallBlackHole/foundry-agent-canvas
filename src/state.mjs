@@ -41,15 +41,12 @@ export function clearSelection() {
     }
 }
 
-export const PAGES = ["build"];
-
 // Retained for the provider process lifetime because the host may reload a
 // cached canvas URL without invoking the provider's open handler again.
 export const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set }
 
 export function defaultState() {
     return {
-        page: "build",
         agentName: "",
         project: { ...project, rg: "", account: "" },
         projectEndpoint: "",
@@ -62,7 +59,6 @@ export function defaultState() {
 
 export function applyInput(state, input) {
     if (!input || typeof input !== "object") return state;
-    if (typeof input.page === "string" && PAGES.includes(input.page)) state.page = input.page;
     if (typeof input.agentName === "string" && input.agentName.trim()) state.agentName = input.agentName.trim();
     if (typeof input.projectEndpoint === "string" && input.projectEndpoint.trim()) {
         state.projectEndpoint = input.projectEndpoint.trim();

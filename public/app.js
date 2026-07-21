@@ -1,10 +1,9 @@
 // Foundry Agent Canvas — client SPA.
-// Three client-side views (build / tools / models). Add & Deploy affordances
-// POST a prompt to /api/send, which the extension forwards to the chat via
-// session.send(). Catalog data comes from /api/tools and /api/models.
+// A single build view. Add & Deploy affordances POST a prompt to /api/send,
+// which the extension forwards to the chat via session.send(). Live project
+// data (deployments, toolboxes, skills, guardrails) is read from /api/* routes.
 
 const state = {
-    page: "build",
     agentName: "",
     project: { name: "", rg: "", account: "" },
     model: { name: "", color: "#10a37f" },
@@ -12,7 +11,6 @@ const state = {
     // Live project data, lazily loaded when a dropdown first opens.
     // status: idle | loading | ready | error
     deploymentsState: { status: "idle", items: [], source: null, reason: null },
-    connectionsState: { status: "idle", items: [], source: null, reason: null },
     toolboxesState: { status: "idle", items: [], reason: null },
     guardrailsState: { status: "idle", items: [], reason: null },
     skillsState: { status: "idle", items: [], reason: null },
@@ -91,13 +89,13 @@ function markReconnected() {
         // Lists that errored out while the server was gone are showing a stale
         // "Canvas disconnected" panel. Reset them to idle so they refetch when
         // their dropdown next opens, then repaint.
-        for (const key of ["deploymentsState", "connectionsState", "toolboxesState", "guardrailsState", "skillsState"]) {
+        for (const key of ["deploymentsState", "toolboxesState", "guardrailsState", "skillsState"]) {
             if (state[key] && state[key].status === "error") {
                 state[key].status = "idle";
                 state[key].reason = null;
             }
         }
-        render(state.page);
+        render();
     }
 }
 
@@ -106,7 +104,7 @@ function scheduleDisconnect() {
     disconnectTimer = setTimeout(() => {
         disconnectTimer = null;
         state.canvasDisconnected = true;
-        render(state.page);
+        render();
     }, DISCONNECT_GRACE_MS);
 }
 
@@ -183,11 +181,6 @@ function portalUrl(path) {
     const bytes = new Uint8Array(subId.replace(/-/g, "").match(/.{2}/g).map((b) => parseInt(b, 16)));
     const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     return `https://ai.azure.com/nextgen/r/${b64},${rg},,${account},${project}/${path}`;
-}
-
-function refreshPortalLinks() {
-    // No-op — portal links now use window.open at click time, always reading
-    // the latest state. Kept as a call site placeholder.
 }
 
 function openPortalPage(path) {
@@ -295,7 +288,7 @@ function prettyRegion(code) {
 }
 
 // Reflect the current hosted-region check onto the Deploy button + warning
-// banner. Safe to call even when the deploy DOM isn't mounted (other pages).
+// banner. Safe to call even when the deploy DOM isn't mounted yet.
 function renderRegionSupport() {
     const warn = document.getElementById("regionWarn");
     const btn = document.getElementById("deployBtn");
@@ -517,15 +510,6 @@ function syncInitPrompt() {
     resizeInitPrompt(ta);
 }
 
-// Re-seed the prompt from structured state (used by the bubble buttons and the
-// agent-driven canvas actions) and make sure the section is expanded.
-function rebuildInitPrompt(message) {
-    state.init.promptDirty = false;
-    state.init.open = true;
-    renderInit();
-    if (message) toast(message);
-}
-
 // "Inspire me" / agent-driven setAgentIdea: swap the opening idea while
 // preserving any manual edits after the standard Foundry instruction.
 function setInitIdea(idea) {
@@ -684,52 +668,6 @@ function renderDeployList() {
         item.addEventListener("click", () => {
             closeModelMenu();
             sendToChat(withProjectContext(m.prompt));
-        });
-        host.appendChild(item);
-    }
-    if (st.source === "mock") host.appendChild(sampleNote(st.reason));
-}
-
-// Section 1 of the tools dropdown: tool connections already in the project.
-function renderToolList() {
-    const host = document.getElementById("toolList");
-    if (!host) return;
-    const st = state.connectionsState;
-    host.replaceChildren();
-
-    if (st.status === "loading") return host.appendChild(menuMsg("Loading connections\u2026", "loading"));
-    if (st.status === "error") {
-        return host.appendChild(dataLoadErrorRow("connections", st.reason, () => loadConnections(true)));
-    }
-    if (st.status === "ready" && st.items.length === 0) return host.appendChild(menuMsg("No tool connections in this project", "empty"));
-
-    for (const t of st.items) {
-        const item = document.createElement("button");
-        item.className = "menu-item";
-        item.type = "button";
-        item.setAttribute("role", "menuitem");
-
-        if (t.iconSrc) {
-            const img = document.createElement("img");
-            img.className = "menu-ticon";
-            img.src = t.iconSrc;
-            img.alt = "";
-            item.appendChild(img);
-        } else {
-            const dot = document.createElement("span");
-            dot.className = "model-dot";
-            dot.style.background = t.color || "#57606a";
-            item.appendChild(dot);
-        }
-
-        const name = document.createElement("span");
-        name.className = "item-name";
-        name.textContent = t.name;
-        item.appendChild(name);
-
-        item.addEventListener("click", () => {
-            closeToolMenu();
-            sendToChat(withProjectContext(t.prompt));
         });
         host.appendChild(item);
     }
@@ -949,29 +887,6 @@ async function loadDeployments(force) {
         st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
     }
     renderDeployList();
-}
-
-async function loadConnections(force) {
-    const st = state.connectionsState;
-    if (!force && (st.status === "loading" || st.status === "ready")) return;
-    st.status = "loading";
-    renderToolList();
-    try {
-        const data = await getJSON("/api/connections");
-        st.source = data.source || null;
-        st.reason = data.reason || null;
-        if (data.ok === false) {
-            st.items = [];
-            st.status = "error";
-        } else {
-            st.items = Array.isArray(data.items) ? data.items : [];
-            st.status = "ready";
-        }
-    } catch (err) {
-        st.status = "error";
-        st.reason = state.canvasDisconnected ? "canvas_disconnected" : err.message;
-    }
-    renderToolList();
 }
 
 async function loadToolboxes(force) {
@@ -1225,28 +1140,6 @@ function renderIdentity() {
     if (subValue) {
         subValue.textContent = selectedSubscriptionName() || "\u2014";
     }
-}
-
-async function loadIdentity() {
-    try {
-        const r = await getJSON("/api/identity");
-        if (r && r.ok) {
-            state.identity = {
-                signedIn: !!r.signedIn,
-                account: r.account || "",
-                tenantId: r.tenantId || "",
-                subscriptionId: r.subscriptionId || "",
-                subscriptionName: r.subscriptionName || "",
-            };
-            state.selectedSubscription = {
-                id: state.selectedSubscription.id || state.identity.subscriptionId,
-                name: state.selectedSubscription.name || state.identity.subscriptionName,
-            };
-        }
-    } catch {
-        /* keep prior identity */
-    }
-    renderIdentity();
 }
 
 // ---- Device-code sign-in ----
@@ -1644,7 +1537,6 @@ async function selectProject(p) {
     state.project.account = p.account || "";
     closeProjectMenu();
     resetSelectors();
-    refreshPortalLinks();
     toast("Project: " + p.name);
     // Re-evaluate hosted-agent region support for the newly selected project.
     loadRegionSupport();
@@ -1706,402 +1598,14 @@ function toggleAccordion(which) {
     }
 }
 
-// Client-side prompt builders for adding a catalog tool into a toolbox. These
-// mirror the toolbox flow but are built at click time because they depend on
-// the developer's chosen target toolbox.
-function addToolToToolboxPrompt(toolName, toolboxName) {
-    return (
-        `Add the ${toolName} tool to my existing "${toolboxName}" Foundry Toolbox, ` +
-        "then make sure my Foundry agent uses that toolbox"
-    );
-}
-function addToolToNewToolboxPrompt(toolName) {
-    return (
-        `Create a new Foundry Toolbox containing the ${toolName} tool, ` +
-        "then make sure my Foundry agent uses that toolbox"
-    );
-}
-
-// Auto-generate a toolbox name for a catalog tool, e.g. "toolbox-web-search-0627".
-function newToolboxName(toolItem) {
-    const slug =
-        (toolItem.id || toolItem.name || "tool")
-            .toString()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 24) || "tool";
-    const d = new Date();
-    const mmdd = String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
-    return `toolbox-${slug}-${mmdd}`;
-}
-
-// True for fetch failures caused by this panel's backing server being gone.
-function isDeadServer(err) {
-    return err instanceof TypeError || /failed to fetch/i.test(err?.message || "");
-}
-
-// Add a catalog tool into an EXISTING toolbox via the data-plane API. Connection-
-// backed tools we can't wire automatically (reason 'needs_connection') and any
-// hard error fall back to the chat prompt so the developer is never blocked.
-async function apiAddToolToToolbox(toolItem, toolboxName) {
-    toast(`Adding ${toolItem.name} to ${toolboxName}\u2026`);
-    try {
-        const r = await postJSON("/api/toolbox/add-tool", {
-            toolbox: toolboxName,
-            toolId: toolItem.id,
-            toolName: toolItem.name,
-        });
-        if (r.ok) {
-            toast(
-                r.already
-                    ? `${toolItem.name} is already in ${toolboxName}`
-                    : `Added ${toolItem.name} to ${toolboxName}${r.version ? ` \u00b7 v${r.version}` : ""} \u2713`,
-            );
-            await loadToolboxes(true);
-            return;
-        }
-        if (r.reason === "needs_connection") {
-            sendToChat(withProjectContext(addToolToToolboxPrompt(toolItem.name, toolboxName)));
-            return;
-        }
-        throw new Error(r.detail || r.reason || "add failed");
-    } catch (err) {
-        if (isDeadServer(err)) {
-            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
-            return;
-        }
-        sendToChat(withProjectContext(addToolToToolboxPrompt(toolItem.name, toolboxName)));
-    }
-}
-
-// Create a NEW toolbox (auto-named) containing just the catalog tool, via the
-// API. Same connection/error fallback to the chat prompt.
-async function apiCreateToolboxWithTool(toolItem) {
-    const name = newToolboxName(toolItem);
-    toast(`Creating ${name}\u2026`);
-    try {
-        const r = await postJSON("/api/toolbox/create-with-tool", {
-            name,
-            toolId: toolItem.id,
-            toolName: toolItem.name,
-        });
-        if (r.ok) {
-            toast(`Created ${name} with ${toolItem.name}${r.version ? ` \u00b7 v${r.version}` : ""} \u2713`);
-            await loadToolboxes(true);
-            return;
-        }
-        if (r.reason === "needs_connection") {
-            sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
-            return;
-        }
-        throw new Error(r.detail || r.reason || "create failed");
-    } catch (err) {
-        if (isDeadServer(err)) {
-            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
-            return;
-        }
-        sendToChat(withProjectContext(addToolToNewToolboxPrompt(toolItem.name)));
-    }
-}
-
-// Remove any open catalog toolbox picker popover.
-function closeToolboxPicker() {
-    const open = document.querySelector(".toolbox-picker");
-    if (open) open.remove();
-    document.removeEventListener("click", closeToolboxPicker);
-}
-
-// "Add tool" → pick a target Foundry Toolbox. Reads the existing toolbox list
-// (read-only) and performs the add directly via the data-plane API. If the
-// project has no toolbox yet, skip the picker and create a new one for this tool.
-async function openToolboxPicker(anchorBtn, toolItem, handlers) {
-    closeToolboxPicker();
-    const onExisting = handlers?.onExisting || apiAddToolToToolbox;
-    const onNew = handlers?.onNew || apiCreateToolboxWithTool;
-
-    // Load toolboxes if we don't already have them.
-    if (state.toolboxesState.status !== "ready") {
-        anchorBtn.disabled = true;
-        const prev = anchorBtn.textContent;
-        anchorBtn.textContent = "Loading\u2026";
-        await loadToolboxes(true);
-        anchorBtn.disabled = false;
-        anchorBtn.textContent = prev;
-    }
-
-    const toolboxes = state.toolboxesState.items || [];
-
-    // No toolbox available → create a new toolbox for this tool.
-    if (toolboxes.length === 0) {
-        onNew(toolItem);
-        return;
-    }
-
-    const menu = document.createElement("div");
-    menu.className = "model-menu toolbox-picker";
-    menu.setAttribute("role", "menu");
-
-    const head = document.createElement("div");
-    head.className = "menu-section";
-    const label = document.createElement("div");
-    label.className = "menu-label toolbox-picker-label";
-    label.textContent = `Add ${toolItem.name} to a toolbox`;
-    head.appendChild(label);
-
-    // Scrollable container so a long toolbox list doesn't overflow the panel.
-    const list = document.createElement("div");
-    list.className = "toolbox-picker-list";
-    for (const tb of toolboxes) {
-        const row = document.createElement("button");
-        row.className = "menu-item";
-        row.type = "button";
-        row.setAttribute("role", "menuitem");
-        const icon = document.createElement("span");
-        icon.className = "toolbox-icon";
-        icon.setAttribute("aria-hidden", "true");
-        icon.appendChild(fluentIcon("toolbox"));
-        row.appendChild(icon);
-        const nm = document.createElement("span");
-        nm.className = "item-name";
-        nm.textContent = tb.name;
-        row.appendChild(nm);
-        row.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeToolboxPicker();
-            onExisting(toolItem, tb.name);
-        });
-        list.appendChild(row);
-    }
-    head.appendChild(list);
-    menu.appendChild(head);
-
-    // Always offer a "new toolbox" escape hatch.
-    const sep = document.createElement("div");
-    sep.className = "menu-sep";
-    menu.appendChild(sep);
-    const newRow = document.createElement("button");
-    newRow.className = "menu-item";
-    newRow.type = "button";
-    newRow.setAttribute("role", "menuitem");
-    const plus = document.createElement("span");
-    plus.className = "toolbox-picker-plus";
-    plus.textContent = "+";
-    newRow.appendChild(plus);
-    const newName = document.createElement("span");
-    newName.className = "item-name";
-    newName.textContent = "Add to a new toolbox";
-    newRow.appendChild(newName);
-    newRow.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeToolboxPicker();
-        onNew(toolItem);
-    });
-    menu.appendChild(newRow);
-
-    // Anchor the popover to the button.
-    const host = anchorBtn.closest(".tcard-actions") || anchorBtn.parentElement;
-    host.style.position = "relative";
-    host.appendChild(menu);
-
-    // Close on the next outside click.
-    setTimeout(() => document.addEventListener("click", closeToolboxPicker), 0);
-}
-
-// ── Work IQ sub-tool picker ─────────────────────────────────────────────────
-// Clicking Work IQ opens this dialog so the developer can pick which Microsoft
-// 365 MCP sub-tools to add. Selected variants are then added to a toolbox (the
-// backend creates the secret-free OBO connection for each automatically).
-function closeWorkIQDialog() {
-    const open = document.querySelector(".wiq-overlay");
-    if (open) open.remove();
-}
-
-async function openWorkIQDialog(anchorBtn, toolItem) {
-    closeWorkIQDialog();
-
-    const overlay = document.createElement("div");
-    overlay.className = "wiq-overlay";
-    const panel = document.createElement("div");
-    panel.className = "wiq-dialog";
-    overlay.appendChild(panel);
-
-    const title = document.createElement("div");
-    title.className = "wiq-title";
-    title.textContent = "Add Work IQ tools";
-    const sub = document.createElement("div");
-    sub.className = "wiq-sub";
-    sub.textContent = "Pick the Microsoft 365 tools to add. A connection is created for each automatically.";
-    panel.append(title, sub);
-
-    const listWrap = document.createElement("div");
-    listWrap.className = "wiq-list";
-    listWrap.innerHTML = '<div class="wiq-loading"><span class="menu-spinner"></span> Loading Work IQ tools\u2026</div>';
-    panel.appendChild(listWrap);
-
-    const footer = document.createElement("div");
-    footer.className = "wiq-footer";
-    const cancel = document.createElement("button");
-    cancel.className = "wiq-btn wiq-btn-ghost";
-    cancel.type = "button";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", closeWorkIQDialog);
-    const addBtn = document.createElement("button");
-    addBtn.className = "wiq-btn wiq-btn-primary";
-    addBtn.type = "button";
-    addBtn.textContent = "Add";
-    addBtn.disabled = true;
-    footer.append(cancel, addBtn);
-    panel.appendChild(footer);
-
-    document.body.appendChild(overlay);
-    overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) closeWorkIQDialog();
-    });
-
-    let variants = [];
-    try {
-        const r = await getJSON("/api/workiq/variants");
-        variants = (r && r.data) || [];
-    } catch {
-        variants = [];
-    }
-    // Dialog may have been dismissed while loading.
-    if (!document.body.contains(overlay)) return;
-
-    if (!variants.length) {
-        listWrap.innerHTML = '<div class="wiq-empty">Couldn\u2019t load Work IQ tools. Close and try again.</div>';
-        return;
-    }
-
-    listWrap.innerHTML = "";
-    const checks = new Map();
-    const refreshAdd = () => {
-        addBtn.disabled = ![...checks.values()].some((c) => c.cb.checked);
-    };
-    for (const v of variants) {
-        const row = document.createElement("label");
-        row.className = "wiq-row";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.value = v.entityId;
-        const nm = document.createElement("span");
-        nm.className = "wiq-row-name";
-        nm.textContent = v.title;
-        row.append(cb, nm);
-        listWrap.appendChild(row);
-        checks.set(v.entityId, { cb, title: v.title });
-        cb.addEventListener("change", refreshAdd);
-    }
-
-    addBtn.addEventListener("click", () => {
-        const selected = [...checks.entries()].filter(([, c]) => c.cb.checked);
-        if (!selected.length) return;
-        const variantIds = selected.map(([id]) => id);
-        const titles = selected.map(([, c]) => c.title);
-        closeWorkIQDialog();
-        // Now choose a target toolbox (existing or new), then add + create
-        // connections via the Work IQ API routes.
-        openToolboxPicker(anchorBtn, toolItem, {
-            onExisting: (ti, name) => apiAddWorkIQToolsToToolbox(ti, name, variantIds, titles),
-            onNew: (ti) => apiCreateToolboxWithWorkIQTools(ti, variantIds, titles),
-        });
-    });
-}
-
-// Prompt fallback when the API can't create the connection (e.g. project ARM id
-// couldn't be resolved) — hand the work to the chat agent instead.
-function workIqPrompt(titles, toolboxName) {
-    const list = titles.join(", ");
-    if (toolboxName) {
-        return (
-            `Add these Work IQ tools to my "${toolboxName}" Foundry Toolbox: ${list}. ` +
-            "Create the required Work IQ connections in Foundry, then make sure my Foundry agent uses that toolbox."
-        );
-    }
-    return (
-        `Create a new Foundry Toolbox with these Work IQ tools: ${list}. ` +
-        "Create the required Work IQ connections in Foundry, then make sure my Foundry agent uses that toolbox."
-    );
-}
-
-function summarizeWorkIQResults(results, toolboxName, version) {
-    const rs = results || [];
-    const added = rs.filter((r) => r.ok && !r.already).length;
-    const already = rs.filter((r) => r.ok && r.already).length;
-    const created = rs.filter((r) => r.created).length;
-    const bits = [];
-    if (added) bits.push(`Added ${added} Work IQ tool${added > 1 ? "s" : ""}`);
-    if (already) bits.push(`${already} already present`);
-    let msg = bits.join(" \u00b7 ") || "No changes";
-    if (toolboxName) msg += ` \u2192 ${toolboxName}`;
-    if (version) msg += ` \u00b7 v${version}`;
-    if (created) msg += ` (${created} connection${created > 1 ? "s" : ""} created)`;
-    return `${msg} \u2713`;
-}
-
-async function apiAddWorkIQToolsToToolbox(toolItem, toolboxName, variantIds, titles) {
-    const n = variantIds.length;
-    toast(`Adding ${n} Work IQ tool${n > 1 ? "s" : ""} to ${toolboxName}\u2026`);
-    try {
-        const r = await postJSON("/api/workiq/add-tools", { toolbox: toolboxName, variantIds });
-        if (r.ok) {
-            toast(summarizeWorkIQResults(r.results, toolboxName, r.version));
-            await loadToolboxes(true);
-            return;
-        }
-        if (r.reason === "needs_connection" || r.reason === "no_project") {
-            sendToChat(withProjectContext(workIqPrompt(titles, toolboxName)));
-            return;
-        }
-        throw new Error(r.detail || r.reason || "add failed");
-    } catch (err) {
-        if (isDeadServer(err)) {
-            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
-            return;
-        }
-        sendToChat(withProjectContext(workIqPrompt(titles, toolboxName)));
-    }
-}
-
-async function apiCreateToolboxWithWorkIQTools(toolItem, variantIds, titles) {
-    const name = newToolboxName(toolItem);
-    toast(`Creating ${name}\u2026`);
-    try {
-        const r = await postJSON("/api/workiq/create-with-tools", { name, variantIds });
-        if (r.ok) {
-            toast(summarizeWorkIQResults(r.results, name, r.version));
-            await loadToolboxes(true);
-            return;
-        }
-        if (r.reason === "needs_connection" || r.reason === "no_project") {
-            sendToChat(withProjectContext(workIqPrompt(titles, "")));
-            return;
-        }
-        throw new Error(r.detail || r.reason || "create failed");
-    } catch (err) {
-        if (isDeadServer(err)) {
-            toast("Lost connection to the builder. Reopen the Foundry Agent Canvas, then try again.");
-            return;
-        }
-        sendToChat(withProjectContext(workIqPrompt(titles, "")));
-    }
-}
-
 // ------------------------------------------------------------------- Router
-function render(page) {
-    state.page = page;
+function render() {
     renderBuild();
 }
 
 // ----------------------------------------------------------- Event handling
 // Delegated clicks within the main area.
 root.addEventListener("click", async (e) => {
-    const nav = e.target.closest("[data-nav]");
-    if (nav) {
-        render(nav.getAttribute("data-nav"));
-        return;
-    }
     if (e.target.closest("#initToggle")) {
         const willOpen = !state.init.open;
         state.init.open = willOpen;
@@ -2134,13 +1638,6 @@ root.addEventListener("click", async (e) => {
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) sendToChat(withProjectContext(text), "workspace");
-        return;
-    }
-    if (e.target.closest("#initReset")) {
-        state.init.promptDirty = false;
-        state.init.startOption = "inspireIdea";
-        syncInitPrompt();
-        selectStartOption(state.init.startOption);
         return;
     }
     if (e.target.closest("#inspireIdea")) {
@@ -2355,7 +1852,6 @@ root.addEventListener("input", (e) => {
 
 // ------------------------------------------------------- Init + live updates
 async function init() {
-    let initialPage = "build";
     const [stateResult, projectInitResult] = await Promise.allSettled([
         getJSON("/api/state"),
         getJSON("/api/project-init"),
@@ -2367,7 +1863,6 @@ async function init() {
         if (s.project) state.project = s.project;
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
-        initialPage = s.page || "build";
     }
 
     // Resolve the workspace's hosted-agent signal before first paint so refresh
@@ -2377,7 +1872,7 @@ async function init() {
         const pi = projectInitResult.value;
         if (pi && pi.ok) applyInitDefaults(pi);
     }
-    render(initialPage);
+    render();
 
     // Resolve the default selection (az default subscription + first project)
     // and the signed-in identity. Falls back to the parsed project name.
@@ -2429,17 +1924,16 @@ async function init() {
 
     await loadHostedAgentDeployment();
 
-    // Optional: let an agent-invoked navigate() action reflect in the open
-    // iframe. The stream also doubles as a liveness canary — see the
-    // markReconnected / scheduleDisconnect helpers at module scope.
+    // Subscribe to server-sent canvas updates (agent-driven idea / workspace /
+    // deployment refreshes). The stream also doubles as a liveness canary — see
+    // the markReconnected / scheduleDisconnect helpers at module scope.
     try {
         const es = new EventSource("/events");
         es.addEventListener("open", () => markReconnected());
         es.addEventListener("message", (ev) => {
             try {
                 const msg = JSON.parse(ev.data);
-                if (msg.type === "navigate" && msg.page) render(msg.page);
-                else if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
+                if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
                 else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
                 else if (msg.type === "deploymentState" && msg.deployment) {
                     hostedAgentDeploymentRequest += 1;
