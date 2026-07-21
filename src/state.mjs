@@ -160,6 +160,8 @@ export async function bootstrapInstance(entry, dependencies = {}) {
                     }
                     resolved = !!selection.project;
                     services.saveSelection(selection);
+                } else if (!seed.project) {
+                    selection = selectSubscription(seed, saved.subscription);
                 }
             }
         } else {
@@ -176,6 +178,8 @@ export async function bootstrapInstance(entry, dependencies = {}) {
                     }
                     resolved = !!selection.project;
                     services.saveSelection(selection);
+                } else if (!seed.project) {
+                    selection = selectSubscription(seed, subscription);
                 }
             }
         }

@@ -238,6 +238,25 @@ test("failed default project discovery preserves input and does not persist subs
     assert.deepEqual(persisted, []);
 });
 
+test("failed default project discovery retains the subscription in empty live state without persisting it", async () => {
+    const entry = { state: defaultState() };
+    const persisted = [];
+
+    await bootstrapInstance(entry, {
+        getIdentity: async () => ({ signedIn: true, account: "user@example.com", tenantId: "tenant" }),
+        loadSelection: () => null,
+        listSubscriptions: async () => ({ ok: true, data: [{ ...SUBSCRIPTION_B, isDefault: true }] }),
+        listProjects: async () => ({ ok: false, reason: "fetch_failed" }),
+        saveSelection: (selection) => persisted.push(selection),
+    });
+
+    assert.deepEqual(entry.state.selection, {
+        subscription: SUBSCRIPTION_B,
+        project: null,
+    });
+    assert.deepEqual(persisted, []);
+});
+
 test("saved subscription-only state retries project discovery on later bootstrap", async () => {
     const saved = selectSubscription(emptySelection(), SUBSCRIPTION_B);
     const inputSelection = selectProject(emptySelection(), {
@@ -269,6 +288,39 @@ test("saved subscription-only state retries project discovery on later bootstrap
 
     await bootstrapInstance(entry, dependencies);
     assert.deepEqual(entry.state.selection, inputSelection);
+    assert.deepEqual(persisted, []);
+
+    await bootstrapInstance(entry, dependencies);
+    assert.equal(attempts, 2);
+    assert.deepEqual(entry.state.selection, selected(SUBSCRIPTION_B, PROJECT_B));
+    assert.deepEqual(persisted, [selected(SUBSCRIPTION_B, PROJECT_B)]);
+});
+
+test("failed saved subscription discovery stays live and remains retryable with an empty seed", async () => {
+    const saved = selectSubscription(emptySelection(), SUBSCRIPTION_B);
+    const entry = { state: defaultState() };
+    const persisted = [];
+    let attempts = 0;
+    const dependencies = {
+        getIdentity: async () => ({ signedIn: true, account: "user@example.com", tenantId: "tenant" }),
+        loadSelection: () => saved,
+        listSubscriptions: async () => {
+            throw new Error("saved subscription should be reused");
+        },
+        listProjects: async () => {
+            attempts += 1;
+            return attempts === 1
+                ? { ok: false, reason: "fetch_failed" }
+                : { ok: true, data: [PROJECT_B] };
+        },
+        saveSelection: (selection) => persisted.push(selection),
+    };
+
+    await bootstrapInstance(entry, dependencies);
+    assert.deepEqual(entry.state.selection, {
+        subscription: SUBSCRIPTION_B,
+        project: null,
+    });
     assert.deepEqual(persisted, []);
 
     await bootstrapInstance(entry, dependencies);
