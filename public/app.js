@@ -51,9 +51,7 @@ const root = document.getElementById("root");
 const toastEl = document.getElementById("toast");
 
 let toastTimer = null;
-const HOSTED_AGENT_REFRESH_TTL_MS = 30_000;
 let hostedAgentDeploymentRequest = 0;
-let hostedAgentDeploymentCheckedAt = 0;
 function toast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.add("show");
@@ -340,7 +338,6 @@ function emptyHostedAgentDeployment(status = "idle", reason = "") {
 
 function resetHostedAgentDeployment() {
     hostedAgentDeploymentRequest += 1;
-    hostedAgentDeploymentCheckedAt = 0;
     state.hostedAgentDeployment = emptyHostedAgentDeployment();
     renderHostedAgentDeployment();
 }
@@ -383,28 +380,16 @@ function renderHostedAgentDeployment() {
 
 async function loadHostedAgentDeployment() {
     const requestId = ++hostedAgentDeploymentRequest;
-    hostedAgentDeploymentCheckedAt = Date.now();
-    const previous = state.hostedAgentDeployment;
-    const preservePrevious = hasAvailableHostedAgentDeployment(previous);
-    state.hostedAgentDeployment = preservePrevious
-        ? { ...previous, status: "refreshing", reason: "" }
-        : emptyHostedAgentDeployment("loading");
+    state.hostedAgentDeployment = emptyHostedAgentDeployment("loading");
     renderHostedAgentDeployment();
     try {
         const result = await getJSON("/api/hosted-agent-deployment");
         if (requestId !== hostedAgentDeploymentRequest) return null;
-        const refreshed = hostedAgentDeploymentFromResult(result);
-        state.hostedAgentDeployment =
-            preservePrevious && !refreshed.available && !isDefinitiveHostedAgentResult(result)
-                ? { ...previous, status: "ready", reason: result?.reason || "refresh_failed" }
-                : refreshed;
+        state.hostedAgentDeployment = hostedAgentDeploymentFromResult(result);
     } catch (err) {
         if (requestId !== hostedAgentDeploymentRequest) return null;
-        state.hostedAgentDeployment = preservePrevious
-            ? { ...previous, status: "ready", reason: err?.message || "fetch_failed" }
-            : emptyHostedAgentDeployment("error", err?.message || "fetch_failed");
+        state.hostedAgentDeployment = emptyHostedAgentDeployment("error", err?.message || "fetch_failed");
     }
-    hostedAgentDeploymentCheckedAt = Date.now();
     renderHostedAgentDeployment();
     return state.hostedAgentDeployment;
 }
@@ -2458,7 +2443,6 @@ async function init() {
                 else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
                 else if (msg.type === "deploymentState" && msg.deployment) {
                     hostedAgentDeploymentRequest += 1;
-                    hostedAgentDeploymentCheckedAt = Date.now();
                     const previous = state.hostedAgentDeployment;
                     const refreshed = hostedAgentDeploymentFromResult(msg.deployment);
                     state.hostedAgentDeployment =
@@ -2480,10 +2464,5 @@ async function init() {
         /* SSE unsupported — non-fatal */
     }
 }
-
-window.addEventListener("focus", () => {
-    const stale = Date.now() - hostedAgentDeploymentCheckedAt >= HOSTED_AGENT_REFRESH_TTL_MS;
-    if (state.project?.endpoint && stale) loadHostedAgentDeployment();
-});
 
 init();

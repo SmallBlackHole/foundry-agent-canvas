@@ -53,6 +53,41 @@ test("deploy prompt no longer asks Copilot to invoke a canvas action", async () 
     assert.match(extensionSource, /refreshDeployment: refreshDeploymentState/);
 });
 
+test("SPA no longer polls deployment state on window focus or a TTL", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /HOSTED_AGENT_REFRESH_TTL_MS/);
+    assert.doesNotMatch(source, /hostedAgentDeploymentCheckedAt/);
+    assert.doesNotMatch(source, /addEventListener\(\s*["']focus["']/);
+    // The preserve-previous / "refreshing" branch only existed to keep a known-good
+    // link across background focus/TTL refreshes; with polling gone it is dead code.
+    const loader = source.match(/async function loadHostedAgentDeployment\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(loader);
+    assert.doesNotMatch(loader, /preservePrevious/);
+    assert.doesNotMatch(loader, /refreshing/);
+});
+
+test("SPA checks deployment only on open, project change, and bootstrap paths", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    // Initial canvas load (init) resolves region support before the deployment check.
+    assert.match(source, /await loadRegionSupport\(\);[\s\S]*?await loadHostedAgentDeployment\(\);/);
+    // Selecting a project re-runs the one-shot check.
+    assert.match(source, /loadRegionSupport\(\);\s*loadHostedAgentDeployment\(\);/);
+    // Bootstrap after sign-in also runs the one-shot check.
+    assert.match(source, /await loadProjects\(true\);\s*await loadHostedAgentDeployment\(\);/);
+});
+
+test("deploy click resets the deployment state so the playground link is hidden", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const handler = source.match(/if \(e\.target\.closest\("#deployBtn"\)\) \{[\s\S]*?\n    \}/)?.[0];
+    assert.ok(handler);
+    assert.match(handler, /resetHostedAgentDeployment\(\);/);
+    // resetHostedAgentDeployment clears state and re-renders (hiding the link).
+    const reset = source.match(/function resetHostedAgentDeployment\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(reset);
+    assert.match(reset, /emptyHostedAgentDeployment\(\)/);
+    assert.match(reset, /renderHostedAgentDeployment\(\)/);
+});
+
 test("SPA maps deployment frames to the Test in Playground state", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function hostedAgentDeploymentFromResult\(result\) \{[\s\S]*?\n\}/)?.[0];
