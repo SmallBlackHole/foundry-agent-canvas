@@ -122,12 +122,12 @@ async function postJSON(url, body) {
     return res.json();
 }
 
-async function sendToChat(prompt) {
+async function sendToChat(prompt, refresh) {
     try {
         const res = await fetch("/api/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify(refresh ? { prompt, refresh } : { prompt }),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         toast("Sent to chat \u2713");
@@ -468,7 +468,6 @@ function initPromptText() {
     return (
         sentenceCase(purpose) +
         ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
-        'Once the hosted-agent code is created, invoke the "refreshWorkspaceState" action for this canvas. ' +
         "Then run it locally to make sure it runs successfully."
     );
 }
@@ -2149,7 +2148,7 @@ root.addEventListener("click", async (e) => {
         if (!remindProjectSelection(e)) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
-        if (text) sendToChat(withProjectContext(text));
+        if (text) sendToChat(withProjectContext(text), "workspace");
         return;
     }
     if (e.target.closest("#initReset")) {
@@ -2259,7 +2258,7 @@ root.addEventListener("click", async (e) => {
             return;
         }
         resetHostedAgentDeployment();
-        sendToChat(withProjectContext(state.deployPrompt));
+        sendToChat(withProjectContext(state.deployPrompt), "deployment");
         return;
     }
     if (e.target.closest("#inspectBtn")) {

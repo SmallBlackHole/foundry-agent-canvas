@@ -21,8 +21,7 @@ export const selectSkillPrompt = (name) =>
 export const selectGuardrailPrompt = (name) =>
     `Use the "${name}" guardrail in my Foundry agent`;
 
-export const DEPLOY_PROMPT =
-    'deploy it as a Foundry hosted agent. After deployment succeeds, invoke the "refreshDeploymentState" action for this canvas';
+export const DEPLOY_PROMPT = "deploy it as a Foundry hosted agent";
 
 // Currently selected Foundry project — empty until the user picks one.
 export const project = { name: "" };

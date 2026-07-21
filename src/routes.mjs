@@ -73,7 +73,7 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
 
 export function createRequestHandler(
     instanceId,
-    { session, publicDir, extDir, inspectorUiDir, workspaceRootFn, onCanvasOpen, waitForFoundrySkill }
+    { session, publicDir, extDir, inspectorUiDir, workspaceRootFn, onCanvasOpen, waitForFoundrySkill, markPendingRefresh }
 ) {
     return async (req, res) => {
         const entry = servers.get(instanceId);
@@ -451,10 +451,15 @@ export function createRequestHandler(
         if (method === "POST" && path === "/api/send") {
             try {
                 const raw = await readBody(req);
-                const { prompt } = JSON.parse(raw || "{}");
+                const { prompt, refresh } = JSON.parse(raw || "{}");
                 if (typeof prompt !== "string" || !prompt.trim()) {
                     return sendJson(res, 400, { ok: false, error: "Missing prompt" });
                 }
+                // A canvas-originated create/deploy request expects the canvas to
+                // refresh once the agent finishes. Register the intent before the
+                // prompt is sent so the session.idle handler can verify real state
+                // and drive the refresh itself (no model-invoked action needed).
+                if (typeof refresh === "string" && refresh) markPendingRefresh?.(refresh);
                 await waitForFoundrySkill?.();
                 await session.send({ prompt });
                 return sendJson(res, 200, { ok: true });

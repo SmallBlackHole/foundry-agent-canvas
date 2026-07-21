@@ -34,16 +34,23 @@ test("deployment refresh action emits the verified live result", async () => {
     assert.deepEqual(frames, [{ type: "deploymentState", deployment }]);
 });
 
-test("deploy prompt and canvas metadata instruct Copilot to refresh after success", async () => {
+test("deploy prompt no longer asks Copilot to invoke a canvas action", async () => {
     const extensionSource = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const appSource = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
 
-    assert.match(DEPLOY_PROMPT, /After deployment succeeds/);
-    assert.match(DEPLOY_PROMPT, /invoke the "refreshDeploymentState" action for this canvas/);
+    assert.equal(DEPLOY_PROMPT, "deploy it as a Foundry hosted agent");
+    assert.doesNotMatch(DEPLOY_PROMPT, /After deployment succeeds/);
+    assert.doesNotMatch(DEPLOY_PROMPT, /refreshDeploymentState/);
+    // The client tags the deploy prompt so the extension can auto-refresh.
+    assert.match(appSource, /sendToChat\(withProjectContext\(state\.deployPrompt\), "deployment"\)/);
+    // The action is retained as a manual/recovery path alongside the idle-driven
+    // manager (which also uses the same refresh function).
     assert.match(extensionSource, /name: "refreshDeploymentState"/);
     assert.match(
         extensionSource,
         /description: "Refresh the canvas deployment state after the hosted agent is deployed\."/,
     );
+    assert.match(extensionSource, /refreshDeployment: refreshDeploymentState/);
 });
 
 test("SPA maps deployment frames to the Test in Playground state", async () => {

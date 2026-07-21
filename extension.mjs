@@ -13,16 +13,39 @@ import { ensureFoundrySkill } from "./src/skills.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
+import {
+    createPendingRefreshManager,
+    WORKSPACE_REFRESH,
+    DEPLOYMENT_REFRESH,
+} from "./src/pending-refresh.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
+const REFRESH_KINDS = new Set([WORKSPACE_REFRESH, DEPLOYMENT_REFRESH]);
 const openInstances = new Set();
 const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
 let markWorkspaceRootReady;
 const workspaceRootReady = new Promise((resolve) => {
     markWorkspaceRootReady = resolve;
+});
+
+const resolveWorkspaceRoot = async () => {
+    await workspaceRootReady;
+    return workspaceRoot.resolve();
+};
+
+// Drives the automatic canvas refresh after a canvas-originated create/deploy.
+// The client marks the pending kind when it sends the prompt; on session.idle we
+// verify real state and call the refresh functions directly for the instance.
+const pendingRefresh = createPendingRefreshManager({
+    servers,
+    workspaceRootFn: resolveWorkspaceRoot,
+    refreshWorkspace: refreshWorkspaceState,
+    inspectDeployment: (entry) => selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),
+    refreshDeployment: refreshDeploymentState,
+    log: (message, options) => session.log(message, options),
 });
 
 async function ensureFoundrySkillForCanvas(session) {
@@ -74,12 +97,12 @@ async function startServer(instanceId, session) {
             publicDir: PUBLIC_DIR,
             extDir: EXT_DIR,
             inspectorUiDir: INSPECTOR_UI_DIR,
-            workspaceRootFn: async () => {
-                await workspaceRootReady;
-                return workspaceRoot.resolve();
-            },
+            workspaceRootFn: resolveWorkspaceRoot,
             onCanvasOpen: syncFoundrySkill,
             waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
+            markPendingRefresh: (kind) => {
+                if (REFRESH_KINDS.has(kind)) pendingRefresh.mark(instanceId, kind);
+            },
         })
     );
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -162,28 +185,27 @@ const session = await joinSession({
                     },
                 },
                 {
+                    // Idle-driven refresh normally handles this automatically; the
+                    // action is retained as a manual/recovery path (e.g. if the
+                    // idle refresh was missed or the user wants to force a refresh).
                     name: "refreshWorkspaceState",
                     description: "Refresh the canvas workspace state after the hosted-agent code is created.",
                     handler: async (ctx) => {
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
-                        return refreshWorkspaceState(entry, async () => {
-                            await workspaceRootReady;
-                            return workspaceRoot.resolve();
-                        });
+                        return refreshWorkspaceState(entry, resolveWorkspaceRoot);
                     },
                 },
                 {
+                    // Retained as a manual/recovery path alongside the idle-driven
+                    // deployment refresh.
                     name: "refreshDeploymentState",
                     description: "Refresh the canvas deployment state after the hosted agent is deployed.",
                     handler: async (ctx) => {
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
                         return refreshDeploymentState(entry, () =>
-                            selectedHostedAgentPortalAction(entry, async () => {
-                                await workspaceRootReady;
-                                return workspaceRoot.resolve();
-                            }),
+                            selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),
                         );
                     },
                 },
@@ -217,6 +239,19 @@ const session = await joinSession({
             },
         }),
     ],
+});
+
+// Subscribe before workspace hydration so an early canvas request cannot finish
+// while no idle listener is registered. The refresh manager waits for
+// workspaceRootReady when it needs the resolved workspace.
+session.on("session.idle", () => {
+    pendingRefresh.handleSessionIdle().catch(async (err) => {
+        try {
+            await session.log(`session.idle refresh handler failed: ${err?.message ?? err}`, { level: "error" });
+        } catch {
+            /* logging must not surface an unhandled rejection */
+        }
+    });
 });
 
 try {

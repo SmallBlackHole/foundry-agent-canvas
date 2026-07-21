@@ -151,7 +151,7 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
     ]);
 });
 
-test("creation prompt instructs Copilot to refresh this canvas after code creation", async () => {
+test("creation prompt no longer asks Copilot to invoke a canvas action", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
@@ -164,15 +164,25 @@ test("creation prompt instructs Copilot to refresh this canvas after code creati
 
     vm.runInNewContext(`${functionSource}\nresult = initPromptText();`, context);
 
-    assert.match(context.result, /Once the hosted-agent code is created/);
-    assert.match(context.result, /invoke the "refreshWorkspaceState" action for this canvas/);
+    assert.doesNotMatch(context.result, /refreshWorkspaceState/);
+    assert.doesNotMatch(context.result, /invoke the .* action for this canvas/);
+    assert.match(context.result, /Create a foundry hosted agent for this task/);
     assert.match(context.result, /Then run it locally to make sure it runs successfully/);
 });
 
-test("canvas declares the workspace refresh action with concise metadata", async () => {
+test("the client tags the create prompt so the extension can auto-refresh", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    // The init "send to chat" call must pass the workspace refresh kind.
+    assert.match(source, /sendToChat\(withProjectContext\(text\), "workspace"\)/);
+});
+
+test("canvas retains the workspace refresh action as a manual/recovery path", async () => {
     const source = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
 
+    // Kept as a manual/recovery path alongside the idle-driven manager.
     assert.match(source, /name: "refreshWorkspaceState"/);
     assert.match(source, /description: "Refresh the canvas workspace state after the hosted-agent code is created\."/);
-    assert.match(source, /return refreshWorkspaceState\(entry/);
+    assert.match(source, /return refreshWorkspaceState\(entry, resolveWorkspaceRoot\)/);
+    // The same refresh function is also wired into the pending-refresh manager.
+    assert.match(source, /refreshWorkspace: refreshWorkspaceState/);
 });
