@@ -3,9 +3,16 @@
 // which the extension forwards to the chat via session.send(). Live project
 // data (deployments, toolboxes, skills, guardrails) is read from /api/* routes.
 
+import {
+    emptySelection,
+    normalizeSelection,
+    selectProject as transitionProject,
+    selectSubscription as transitionSubscription,
+} from "./selection-state.js";
+
 const state = {
     agentName: "",
-    project: { name: "", rg: "", account: "" },
+    selection: emptySelection(),
     model: { name: "", color: "#10a37f" },
     deployPrompt: "deploy it as a Foundry hosted agent",
     // Live project data, lazily loaded when a dropdown first opens.
@@ -16,8 +23,7 @@ const state = {
     skillsState: { status: "idle", items: [], reason: null },
     canvasDisconnected: false,
     // Project picker state.
-    identity: { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" },
-    selectedSubscription: { id: "", name: "" },
+    identity: { signedIn: false, account: "", tenantId: "" },
     subsState: { status: "idle", items: [], reason: null },
     projState: { status: "idle", items: [], reason: null, sub: null },
     signin: { sessionId: null, timer: null, starting: false },
@@ -146,41 +152,25 @@ async function sendToChat(prompt, refresh) {
 // agent knows which project to target (name, subscription, and data-plane
 // endpoint). Returns the prompt unchanged when no project is selected.
 function withProjectContext(prompt) {
-    const name = state.project?.name;
-    if (!name) return prompt;
-    const parts = [`project "${name}"`];
-    const sub = state.identity?.subscriptionName;
-    if (sub) parts.push(`in subscription "${sub}"`);
-    const ep = state.project?.endpoint;
-    if (ep) parts.push(`(endpoint: ${ep})`);
+    const { subscription, project } = state.selection;
+    if (!project?.name) return prompt;
+    const parts = [`project "${project.name}"`];
+    if (subscription.name) parts.push(`in subscription "${subscription.name}"`);
+    if (project.endpoint) parts.push(`(endpoint: ${project.endpoint})`);
     return `${prompt}\n\nUse my selected Foundry ${parts.join(" ")}.`;
 }
 
 // Build a Foundry Portal URL for the selected project. Returns "" when the
 // subscription or project info is unavailable.
 function portalUrl(path) {
-    const subId = state.identity?.subscriptionId;
-    let rg = state.project?.rg;
-    let account = state.project?.account;
-    const project = state.project?.name;
-    if (!subId || !project) return "";
-    // Backfill rg/account from the loaded project list if not yet in state.
-    if ((!rg || !account) && state.projState?.items?.length) {
-        const match = state.projState.items.find((p) => p.name === project);
-        if (match) {
-            rg = rg || match.rg || "";
-            account = account || match.account || "";
-        }
-    }
-    // Derive account from the endpoint hostname as a last resort.
-    if (!account && state.project?.endpoint) {
-        try { account = new URL(state.project.endpoint).hostname.split(".")[0] || ""; } catch {}
-    }
-    if (!rg || !account) return "";
+    const { subscription, project } = state.selection;
+    if (!subscription.id || !project?.name || !project.resourceGroup || !project.accountName) return "";
+    const hex = subscription.id.replace(/-/g, "");
+    if (!/^[0-9a-f]{32}$/i.test(hex)) return "";
     // The portal encodes the subscription GUID as url-safe base64 (no padding).
-    const bytes = new Uint8Array(subId.replace(/-/g, "").match(/.{2}/g).map((b) => parseInt(b, 16)));
+    const bytes = new Uint8Array(hex.match(/.{2}/g).map((byte) => parseInt(byte, 16)));
     const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    return `https://ai.azure.com/nextgen/r/${b64},${rg},,${account},${project}/${path}`;
+    return `https://ai.azure.com/nextgen/r/${b64},${project.resourceGroup},,${project.accountName},${project.name}/${path}`;
 }
 
 function openPortalPage(path) {
@@ -211,25 +201,7 @@ function fluentIcon(name, className = "") {
 function renderBuild() {
     const node = clone("tpl-build");
 
-    const projectName = state.project?.name || "Select a project";
-    const projEl = node.querySelector("#projectName");
-    if (projEl) projEl.textContent = projectName;
-    const projDot = node.querySelector(".project-dot");
-    if (projDot) projDot.classList.toggle("is-unset", !state.project?.name);
-    const menuProj = node.querySelector("#menuProject");
-    if (menuProj) menuProj.textContent = projectName;
-    const toolMenuProj = node.querySelector("#toolMenuProject");
-    if (toolMenuProj) toolMenuProj.textContent = projectName;
-    const toolboxMenuProj = node.querySelector("#toolboxMenuProject");
-    if (toolboxMenuProj) toolboxMenuProj.textContent = projectName;
-    // Reseed the picker's selected sub/project so a re-clone keeps the selection.
-    const pmProjValue = node.querySelector("#pmProjValue");
-    if (pmProjValue && state.project?.name) pmProjValue.textContent = state.project.name;
-    const pmSubValue = node.querySelector("#pmSubValue");
-    if (pmSubValue) {
-        const subName = selectedSubscriptionName();
-        if (subName) pmSubValue.textContent = subName;
-    }
+    renderSelectionLabels(node);
 
     // Set portal links for "Deploy new model" / "Add or update toolbox" / "Create new skill" / "Create new guardrail".
     const modelLink = node.querySelector("#deployNewModelLink");
@@ -1028,39 +1000,34 @@ function toggleSkillMenu() {
 // ------------------------------------------------------- Project picker panel
 const NO_PROJECT_LABEL = "Select a project";
 
-function selectedSubscriptionId() {
-    return state.selectedSubscription.id || state.identity.subscriptionId || "";
+function setIdentity(value) {
+    state.identity = {
+        signedIn: !!value?.signedIn,
+        account: value?.account || "",
+        tenantId: value?.tenantId || "",
+    };
 }
 
-function selectedSubscriptionName() {
-    return state.selectedSubscription.name || state.identity.subscriptionName || "";
+function setSelection(value) {
+    state.selection = normalizeSelection(value);
+    renderSelectionLabels();
 }
 
-function setSelectedSubscription(id, name) {
-    const nextId = id || "";
-    const nextName = name || "";
-    state.selectedSubscription = { id: nextId, name: nextName };
-    state.identity.subscriptionId = nextId;
-    state.identity.subscriptionName = nextName;
-    const subValue = document.getElementById("pmSubValue");
-    if (subValue) subValue.textContent = nextName || "\u2014";
-}
-
-function setProjectLabels(name) {
-    const display = name || NO_PROJECT_LABEL;
-    state.project = { ...state.project, name: name || "" };
-    for (const id of ["projectName", "menuProject", "toolMenuProject", "toolboxMenuProject", "skillMenuProject", "guardrailMenuProject", "pmProjValue"]) {
-        const el = document.getElementById(id);
+function renderSelectionLabels(scope = document) {
+    const projectName = state.selection.project?.name || "";
+    const display = projectName || NO_PROJECT_LABEL;
+    for (const id of ["projectName", "pmProjValue"]) {
+        const el = scope.querySelector(`#${id}`);
         if (el) el.textContent = display;
     }
-    // Grey the status dot when no project is selected so the header doesn't
-    // imply a connected project that doesn't belong to the chosen subscription.
-    const dot = document.querySelector(".project-dot");
-    if (dot) dot.classList.toggle("is-unset", !name);
+    const subValue = scope.querySelector("#pmSubValue");
+    if (subValue) subValue.textContent = state.selection.subscription.name || "\u2014";
+    const dot = scope.querySelector(".project-dot");
+    if (dot) dot.classList.toggle("is-unset", !projectName);
 }
 
 function hasSelectedProject() {
-    return !!String(state.project?.name || "").trim();
+    return !!state.selection.project?.name;
 }
 
 function remindProjectSelection(e) {
@@ -1138,7 +1105,7 @@ function renderIdentity() {
         authBtn.disabled = false;
     }
     if (subValue) {
-        subValue.textContent = selectedSubscriptionName() || "\u2014";
+        subValue.textContent = state.selection.subscription.name || "\u2014";
     }
 }
 
@@ -1290,16 +1257,7 @@ async function pollSignIn() {
         if (r.status === "done") {
             stopSignInPolling();
             renderDevice(null);
-            if (r.identity) {
-                state.identity = {
-                    signedIn: !!r.identity.signedIn,
-                    account: r.identity.account || "",
-                    tenantId: r.identity.tenantId || "",
-                    subscriptionId: r.identity.subscriptionId || "",
-                    subscriptionName: r.identity.subscriptionName || "",
-                };
-                setSelectedSubscription(state.identity.subscriptionId, state.identity.subscriptionName);
-            }
+            if (r.identity) setIdentity(r.identity);
             renderIdentity();
             toast("Signed in \u2713");
             await afterAuthChange();
@@ -1345,47 +1303,44 @@ async function doSignOut() {
     try {
         await postJSON("/api/signout", {});
     } catch {
-        /* ignore */
+        toast("Couldn\u2019t sign out. Please try again.");
+        if (authBtn) authBtn.disabled = false;
+        return;
     }
-    state.identity = { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" };
-    state.selectedSubscription = { id: "", name: "" };
+    setIdentity(null);
+    setSelection(emptySelection());
     state.subsState = { status: "idle", items: [], reason: null };
     state.projState = { status: "idle", items: [], reason: null, sub: null };
-    setProjectLabels("");
-    state.project.endpoint = "";
-    state.project.rg = "";
-    state.project.account = "";
-    resetHostedAgentDeployment();
+    resetProjectScopedState();
     renderIdentity();
     renderSubList();
     renderProjList();
-    const subValue = document.getElementById("pmSubValue");
-    if (subValue) subValue.textContent = "\u2014";
-    // Re-point selectors at fallback sample data.
-    resetSelectors();
     toast("Signed out");
     if (authBtn) authBtn.disabled = false;
 }
 
 // After sign-in: refresh subscriptions, auto-select default sub + first project.
 async function afterAuthChange() {
-    resetHostedAgentDeployment();
     state.subsState = { status: "idle", items: [], reason: null };
     state.projState = { status: "idle", items: [], reason: null, sub: null };
     await loadSubscriptions(true);
     try {
         const b = await getJSON("/api/bootstrap");
         if (b && b.ok) {
-            if (b.subscriptionId) state.identity.subscriptionId = b.subscriptionId;
-            const sub = state.subsState.items.find((s) => s.id === b.subscriptionId);
-            setSelectedSubscription(b.subscriptionId || state.identity.subscriptionId, sub?.name || state.identity.subscriptionName);
-            if (b.project && b.project.name) setProjectLabels(b.project.name);
-            resetSelectors();
-            await loadProjects(true);
+            if (b.identity) setIdentity(b.identity);
+            let selection = normalizeSelection(b.selection);
+            const match = state.subsState.items.find((item) => item.id === selection.subscription.id);
+            if (match && !selection.subscription.name) {
+                selection = transitionSubscription(selection, match);
+            }
+            setSelection(selection);
+            resetProjectScopedState();
+            if (selection.subscription.id) await loadProjects(true);
+            await loadRegionSupport();
             await loadHostedAgentDeployment();
         }
     } catch {
-        /* keep current selection */
+        toast("Signed in, but couldn\u2019t load Foundry projects.");
     }
 }
 
@@ -1399,6 +1354,13 @@ function resetSelectors() {
     renderToolboxList();
     renderGuardrailList();
     renderSkillList();
+}
+
+function resetProjectScopedState() {
+    resetHostedAgentDeployment();
+    state.hostedRegion = { status: "idle", location: "", supported: null, regions: [], docsUrl: "" };
+    renderRegionSupport();
+    resetSelectors();
 }
 
 // ---- Subscriptions ----
@@ -1416,12 +1378,10 @@ async function loadSubscriptions(force) {
         st.items = Array.isArray(data.items) ? data.items : [];
         st.reason = data.ok ? null : data.reason;
         st.status = data.ok ? "ready" : "error";
-        if (!selectedSubscriptionId()) {
-            const def = st.items.find((s) => s.isDefault);
-            if (def) setSelectedSubscription(def.id, def.name);
-        } else if (!selectedSubscriptionName()) {
-            const match = st.items.find((s) => s.id === selectedSubscriptionId());
-            if (match) setSelectedSubscription(match.id, match.name);
+        const selected = state.selection.subscription;
+        if (selected.id && !selected.name) {
+            const match = st.items.find((item) => item.id === selected.id);
+            if (match) setSelection(transitionSubscription(state.selection, match));
         }
     } catch (err) {
         st.status = "error";
@@ -1441,28 +1401,35 @@ function renderSubList() {
     if (st.status === "error") return host.appendChild(menuError("Couldn\u2019t load subscriptions", () => loadSubscriptions(true)));
     const items = st.items.filter((s) => !q || s.name.toLowerCase().includes(q) || s.id.includes(q));
     if (!items.length) return host.appendChild(menuMsg(st.items.length ? "No matches" : "No subscriptions", "empty"));
-    const activeSub = selectedSubscriptionId();
+    const activeSub = state.selection.subscription.id;
     for (const s of items) host.appendChild(makePickRow(s.name, s.id, activeSub === s.id, () => selectSubscription(s)));
 }
 
 async function selectSubscription(s) {
-    resetHostedAgentDeployment();
-    setSelectedSubscription(s.id, s.name);
-    renderSubList();
+    const previousProject = state.selection.project?.endpoint || "";
+    const next = transitionSubscription(state.selection, s);
     try {
-        await postJSON("/api/select-subscription", { subscriptionId: s.id, subscriptionName: s.name });
+        const result = await postJSON("/api/select-subscription", {
+            subscriptionId: s.id,
+            subscriptionName: s.name,
+        });
+        setSelection(result.selection || next);
     } catch {
-        /* ignore */
+        toast("Couldn\u2019t switch subscriptions.");
+        return;
     }
-    // Reset + reload projects for the new subscription, then expand it.
+    if (previousProject !== (state.selection.project?.endpoint || "")) {
+        resetProjectScopedState();
+    }
+    renderSubList();
     state.projState = { status: "idle", items: [], reason: null, sub: null };
     setAccordion("proj");
-    loadProjects(true);
+    await loadProjects(true);
 }
 
 // ---- Projects ----
 async function loadProjects(force) {
-    const sub = selectedSubscriptionId();
+    const sub = state.selection.subscription.id;
     const st = state.projState;
     if (!sub) {
         st.status = "error";
@@ -1482,13 +1449,6 @@ async function loadProjects(force) {
         st.items = Array.isArray(data.items) ? data.items : [];
         st.reason = data.ok ? null : data.reason;
         st.status = data.ok ? "ready" : "error";
-        // Keep the header project consistent with the selected subscription:
-        // if the currently displayed project isn't one of this subscription's
-        // projects, clear it so we never show a project/subscription mismatch.
-        if (st.status === "ready") {
-            const cur = state.project?.name;
-            if (cur && !st.items.some((p) => p.name === cur)) setProjectLabels("");
-        }
     } catch (err) {
         st.status = "error";
         st.reason = err.message;
@@ -1512,31 +1472,42 @@ function renderProjList() {
     if (!items.length) return host.appendChild(menuMsg(st.items.length ? "No matches" : "No projects in this subscription", "empty"));
     for (const p of items) {
         const sub = [p.account, p.rg, p.location].filter(Boolean).join(" \u00b7 ");
-        host.appendChild(makePickRow(p.name, sub, state.project?.name === p.name, () => selectProject(p)));
+        host.appendChild(makePickRow(
+            p.name,
+            sub,
+            state.selection.project?.endpoint === String(p.endpoint || "").replace(/\/+$/, ""),
+            () => selectProject(p),
+        ));
     }
 }
 
 async function selectProject(p) {
-    resetHostedAgentDeployment();
+    const subscription = state.selection.subscription;
+    const next = transitionProject(state.selection, {
+        subscriptionId: p.subscriptionId || subscription.id,
+        name: p.name,
+        endpoint: p.endpoint,
+        location: p.location,
+        resourceGroup: p.rg,
+        accountName: p.account,
+    }, subscription);
     try {
-        await postJSON("/api/select-project", {
+        const result = await postJSON("/api/select-project", {
             endpoint: p.endpoint,
             name: p.name,
             location: p.location || "",
-            rg: p.rg || "",
-            account: p.account || "",
-            subscriptionId: selectedSubscriptionId(),
-            subscriptionName: selectedSubscriptionName(),
+            resourceGroup: p.rg || "",
+            accountName: p.account || "",
+            subscriptionId: subscription.id,
+            subscriptionName: subscription.name,
         });
+        setSelection(result.selection || next);
     } catch {
-        /* ignore — still update locally */
+        toast("Couldn\u2019t select that project.");
+        return;
     }
-    setProjectLabels(p.name);
-    state.project.endpoint = p.endpoint || "";
-    state.project.rg = p.rg || "";
-    state.project.account = p.account || "";
     closeProjectMenu();
-    resetSelectors();
+    resetProjectScopedState();
     toast("Project: " + p.name);
     // Re-evaluate hosted-agent region support for the newly selected project.
     loadRegionSupport();
@@ -1860,7 +1831,7 @@ async function init() {
     if (stateResult.status === "fulfilled") {
         const s = stateResult.value;
         if (s.agentName) state.agentName = s.agentName;
-        if (s.project) state.project = s.project;
+        if (s.selection) state.selection = normalizeSelection(s.selection);
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
     }
@@ -1874,44 +1845,16 @@ async function init() {
     }
     render();
 
-    // Resolve the default selection (az default subscription + first project)
-    // and the signed-in identity. Falls back to the parsed project name.
+    // Resolve the signed-in identity and the persisted/default resource selection.
     try {
         const b = await getJSON("/api/bootstrap");
         if (b && b.ok) {
-            if (b.identity) {
-                state.identity = {
-                    signedIn: !!b.identity.signedIn,
-                    account: b.identity.account || "",
-                    tenantId: b.identity.tenantId || "",
-                    subscriptionId: b.identity.subscriptionId || b.subscriptionId || "",
-                    subscriptionName: b.identity.subscriptionName || "",
-                };
-                setSelectedSubscription(b.subscriptionId || state.identity.subscriptionId, state.identity.subscriptionName);
-            }
-            if (b.project && b.project.name) {
-                setProjectLabels(b.project.name);
-                state.project.endpoint = b.project.endpoint || "";
-                state.project.rg = b.project.rg || "";
-                state.project.account = b.project.account || "";
-            } else {
-                // Signed in but no project resolved in the selected
-                // subscription — show a neutral placeholder consistent with
-                // the (empty) project list rather than a stale default.
-                setProjectLabels("");
-            }
+            if (b.identity) setIdentity(b.identity);
+            setSelection(b.selection);
             renderIdentity();
-        } else {
-            const p = await getJSON("/api/project");
-            if (p && p.name) setProjectLabels(p.name);
         }
     } catch {
-        try {
-            const p = await getJSON("/api/project");
-            if (p && p.name) setProjectLabels(p.name);
-        } catch {
-            /* keep default project label */
-        }
+        /* retain the canvas-input selection already returned by /api/state */
     }
 
     // Evaluate hosted-agent region support for the resolved project so the

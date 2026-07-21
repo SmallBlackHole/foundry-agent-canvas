@@ -1,13 +1,18 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { project } from "./catalog.mjs";
 import {
     getIdentity,
-    getDefaultSubscriptionId,
+    listSubscriptions,
     listProjects,
-    getProject,
 } from "./foundry.mjs";
+import {
+    emptySelection,
+    normalizeSelection,
+    selectProject,
+    selectSubscription,
+    serializeSelection,
+} from "../public/selection-state.js";
 
 const COPILOT_HOME = process.env.COPILOT_HOME || join(homedir(), ".copilot");
 const STATE_DIR = join(COPILOT_HOME, "extension-state", "foundry-agent-canvas");
@@ -17,7 +22,7 @@ export function loadSelection() {
     try {
         if (!existsSync(STATE_FILE)) return null;
         const data = JSON.parse(readFileSync(STATE_FILE, "utf-8"));
-        if (data && typeof data === "object") return data;
+        if (data && typeof data === "object") return normalizeSelection(data);
     } catch {
         /* ignore a corrupt/unreadable store */
     }
@@ -27,7 +32,7 @@ export function loadSelection() {
 export function saveSelection(sel) {
     try {
         mkdirSync(STATE_DIR, { recursive: true });
-        writeFileSync(STATE_FILE, JSON.stringify(sel ?? {}, null, 2), "utf-8");
+        writeFileSync(STATE_FILE, JSON.stringify(serializeSelection(sel), null, 2), "utf-8");
     } catch {
         /* best-effort persistence */
     }
@@ -48,11 +53,7 @@ export const servers = new Map(); // instanceId -> { server, url, state, sseClie
 export function defaultState() {
     return {
         agentName: "",
-        project: { ...project, rg: "", account: "" },
-        projectEndpoint: "",
-        projectLocation: "",
-        subscriptionId: "",
-        bootstrapped: false,
+        selection: emptySelection(),
         model: { name: "", color: "#10a37f" },
     };
 }
@@ -60,11 +61,18 @@ export function defaultState() {
 export function applyInput(state, input) {
     if (!input || typeof input !== "object") return state;
     if (typeof input.agentName === "string" && input.agentName.trim()) state.agentName = input.agentName.trim();
-    if (typeof input.projectEndpoint === "string" && input.projectEndpoint.trim()) {
-        state.projectEndpoint = input.projectEndpoint.trim();
-    }
-    if (typeof input.projectName === "string" && input.projectName.trim()) {
-        state.project = { ...state.project, name: input.projectName.trim() };
+    const endpoint = typeof input.projectEndpoint === "string" && input.projectEndpoint.trim()
+        ? input.projectEndpoint.trim()
+        : state.selection.project?.endpoint || "";
+    const name = typeof input.projectName === "string" && input.projectName.trim()
+        ? input.projectName.trim()
+        : state.selection.project?.name || "";
+    if (endpoint || name) {
+        state.selection = selectProject(state.selection, {
+            ...state.selection.project,
+            endpoint,
+            name,
+        });
     }
     if (typeof input.model === "string" && input.model.trim()) {
         state.model = { name: input.model.trim(), color: "#10a37f" };
@@ -74,74 +82,42 @@ export function applyInput(state, input) {
 
 export async function bootstrapInstance(entry) {
     const identity = await getIdentity();
+    let selection = emptySelection();
     let resolved = false;
     if (identity.signedIn) {
         const saved = loadSelection();
-        if (saved && saved.subscriptionId) {
-            entry.state.subscriptionId = saved.subscriptionId;
-            identity.subscriptionId = saved.subscriptionId;
-            if (saved.subscriptionName) identity.subscriptionName = saved.subscriptionName;
-            if (saved.projectEndpoint) {
-                entry.state.projectEndpoint = saved.projectEndpoint;
-                entry.state.projectLocation = saved.projectLocation || "";
-                let rg = saved.projectRg || "";
-                let account = saved.projectAccount || "";
-                const projName = saved.projectName || getProject(saved.projectEndpoint).projectName || "";
-                if (!account && saved.projectEndpoint) {
-                    account = getProject(saved.projectEndpoint).resourceName || "";
+        if (saved?.subscription.id) {
+            selection = saved;
+            if (saved.project) {
+                const projects = await listProjects(saved.subscription.id);
+                if (projects.ok) {
+                    const endpoint = saved.project.endpoint.replace(/\/+$/, "");
+                    const match = projects.data.find((item) => item.endpoint.replace(/\/+$/, "") === endpoint);
+                    selection = selectProject(selection, match, selection.subscription);
+                    saveSelection(selection);
                 }
-                if ((!rg || !account) && saved.subscriptionId) {
-                    const proj = await listProjects(saved.subscriptionId);
-                    if (proj.ok) {
-                        const ep = saved.projectEndpoint.replace(/\/+$/, "");
-                        const match = (proj.data || []).find((p) => p.endpoint.replace(/\/+$/, "") === ep);
-                        if (match) {
-                            rg = match.rg || rg;
-                            account = match.account || account;
-                        }
-                    }
-                }
-                if ((rg && !saved.projectRg) || (account && !saved.projectAccount)) {
-                    saveSelection({ ...saved, projectRg: rg, projectAccount: account });
-                }
-                entry.state.project = {
-                    ...entry.state.project,
-                    name: projName,
-                    rg,
-                    account,
-                };
-                resolved = true;
-            } else {
-                entry.state.projectEndpoint = "";
-                entry.state.projectLocation = "";
-                entry.state.project = { ...entry.state.project, name: "" };
             }
+            resolved = !!selection.project;
         } else {
-            const subId = identity.subscriptionId || getDefaultSubscriptionId();
-            if (subId) {
-                entry.state.subscriptionId = subId;
-                identity.subscriptionId = subId;
-                const proj = await listProjects(subId);
-                if (proj.ok && proj.data.length) {
-                    const first = proj.data[0];
-                    entry.state.projectEndpoint = first.endpoint;
-                    entry.state.projectLocation = first.location || "";
-                    entry.state.project = { ...entry.state.project, name: first.name, rg: first.rg || "", account: first.account || "" };
+            const subscriptions = await listSubscriptions();
+            const subscription = subscriptions.ok
+                ? subscriptions.data.find((item) => item.isDefault) || subscriptions.data[0]
+                : null;
+            if (subscription) {
+                selection = selectSubscription(selection, subscription);
+                const projects = await listProjects(subscription.id);
+                if (projects.ok && projects.data.length) {
+                    selection = selectProject(selection, projects.data[0], subscription);
                     resolved = true;
-                } else {
-                    entry.state.projectEndpoint = "";
-                    entry.state.projectLocation = "";
-                    entry.state.project = { ...entry.state.project, name: "" };
                 }
+                saveSelection(selection);
             }
         }
     }
-    entry.state.bootstrapped = true;
-    const p = getProject(entry.state.projectEndpoint);
+    entry.state.selection = selection;
     return {
         identity,
-        subscriptionId: entry.state.subscriptionId,
+        selection,
         resolved,
-        project: { name: p.projectName || entry.state.project?.name || "", endpoint: p.endpoint, rg: entry.state.project?.rg || "", account: entry.state.project?.account || "" },
     };
 }

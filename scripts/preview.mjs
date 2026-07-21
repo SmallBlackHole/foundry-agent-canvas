@@ -21,6 +21,12 @@ import {
 } from "../src/catalog.mjs";
 import { initialBuildSections } from "../src/build-sections.mjs";
 import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
+import {
+    emptySelection,
+    normalizeSelection,
+    selectProject as transitionProject,
+    selectSubscription as transitionSubscription,
+} from "../public/selection-state.js";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PUBLIC_DIR = join(ROOT, "public");
@@ -59,17 +65,18 @@ const CONTENT_TYPES = {
     ".woff2": "font/woff2",
 };
 
+const DEFAULT_SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000001";
+const ALT_SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000002";
+
 const identity = {
     signedIn: true,
     account: "preview@local",
     tenantId: "preview-tenant",
-    subscriptionId: "preview-subscription",
-    subscriptionName: "Preview Subscription",
 };
 
 const subscriptions = [
-    { id: identity.subscriptionId, name: identity.subscriptionName, isDefault: true },
-    { id: "preview-subscription-alt", name: "Preview Subscription Alt", isDefault: false },
+    { id: DEFAULT_SUBSCRIPTION_ID, name: "Preview Subscription", isDefault: true },
+    { id: ALT_SUBSCRIPTION_ID, name: "Preview Subscription Alt", isDefault: false },
 ];
 
 const projects = [
@@ -81,7 +88,7 @@ const projects = [
         name: "Preview Project",
         project: "Preview Project",
         rg: "preview-rg",
-        subscriptionId: identity.subscriptionId,
+        subscriptionId: DEFAULT_SUBSCRIPTION_ID,
     },
     {
         account: "preview-alt-foundry",
@@ -91,22 +98,25 @@ const projects = [
         name: "Preview Alt Project",
         project: "Preview Alt Project",
         rg: "preview-alt-rg",
-        subscriptionId: "preview-subscription-alt",
+        subscriptionId: ALT_SUBSCRIPTION_ID,
     },
 ];
 
-let selectedProject = projects[0];
-let selectedSubscriptionId = identity.subscriptionId;
+function initialSelection() {
+    const subscription = subscriptions[0];
+    return transitionProject(
+        transitionSubscription(emptySelection(), subscription),
+        projects[0],
+        subscription,
+    );
+}
 
 const state = {
     agentName: "Preview Agent",
-    project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
-    projectEndpoint: selectedProject.endpoint,
-    projectLocation: selectedProject.location,
-    subscriptionId: selectedSubscriptionId,
-    bootstrapped: true,
+    selection: initialSelection(),
     model: { name: "gpt-5", color: "#10a37f" },
 };
+let sessionSignedIn = true;
 
 function mockBool(url, key, fallback = true) {
     const raw = url.searchParams.get(key);
@@ -115,7 +125,7 @@ function mockBool(url, key, fallback = true) {
 }
 
 function mockSignedIn(url) {
-    return mockBool(url, "signedIn", true);
+    return sessionSignedIn && mockBool(url, "signedIn", true);
 }
 
 function mockProjectSelected(url) {
@@ -151,32 +161,28 @@ async function mockResolvedAgentName(url) {
     return (await projectInit(url)).hasAgent ? "Preview Agent" : "";
 }
 
-function emptyProject() {
-    return { name: "", endpoint: "", rg: "", account: "" };
-}
-
 function mockIdentity(url) {
     if (!mockSignedIn(url)) {
         return {
             signedIn: false,
             account: "",
             tenantId: "",
-            subscriptionId: "",
-            subscriptionName: "",
         };
     }
-    const sub = subscriptions.find((s) => s.id === selectedSubscriptionId) || subscriptions[0];
-    return { ...identity, subscriptionId: sub.id, subscriptionName: sub.name };
+    return identity;
 }
 
-function mockProjectState(url) {
-    if (!mockProjectSelected(url)) return emptyProject();
-    return { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account };
+function mockSelection(url) {
+    if (!mockSignedIn(url)) return emptySelection();
+    const selection = state.selection.subscription.id
+        ? normalizeSelection(state.selection)
+        : initialSelection();
+    return mockProjectSelected(url) ? selection : transitionProject(selection, null);
 }
 
 function projectScopedUnavailable(url) {
     if (!mockSignedIn(url)) return "not_signed_in";
-    if (!mockProjectSelected(url)) return "no_project";
+    if (!mockSelection(url).project) return "no_project";
     return "";
 }
 
@@ -317,8 +323,8 @@ function serveStatic(req, res) {
     res.writeHead(200, { "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream" });
     if (ext === ".html" && (url.pathname === "/" || url.pathname === "/index.html")) {
         const html = readFileSync(file, "utf8").replace(
-            '<script src="app.js"></script>',
-            '<link rel="stylesheet" href="/__preview-mock.css">\n        <script src="/__preview-mock.js"></script>\n        <script src="app.js"></script>',
+            '<script type="module" src="app.js"></script>',
+            '<link rel="stylesheet" href="/__preview-mock.css">\n        <script src="/__preview-mock.js"></script>\n        <script type="module" src="app.js"></script>',
         );
         res.end(html);
     } else {
@@ -342,18 +348,10 @@ async function projectInit(url) {
     };
 }
 
-function selectProject(project) {
-    selectedProject = project || projects[0];
-    selectedSubscriptionId = selectedProject.subscriptionId || selectedSubscriptionId;
-    state.subscriptionId = selectedSubscriptionId;
-    state.project = { name: selectedProject.name, endpoint: selectedProject.endpoint };
-    state.projectEndpoint = selectedProject.endpoint;
-    state.projectLocation = selectedProject.location || "";
-}
-
 async function mockHostedAgentDeployment(url) {
     const reason = projectScopedUnavailable(url);
     const agentName = await mockResolvedAgentName(url);
+    const selection = mockSelection(url);
     if (reason || !agentName) {
         return {
             ok: false,
@@ -384,12 +382,14 @@ async function mockHostedAgentDeployment(url) {
         };
     }
     const available = mockAgentMetadata(url);
+    const project = selection.project;
+    const encodedSubscription = Buffer.from(selection.subscription.id.replace(/-/g, ""), "hex").toString("base64url");
     return {
         ok: true,
         deployed: true,
         available,
         portalUrl: available
-            ? "https://ai.azure.com/nextgen/r/AAAAAAAAAAAAAAAAAAAAAA,preview-rg,,preview-foundry,preview-project/build/agents/Preview%20Agent/build?version=3"
+            ? `https://ai.azure.com/nextgen/r/${encodedSubscription},${encodeURIComponent(project.resourceGroup)},,${encodeURIComponent(project.accountName)},${encodeURIComponent(project.name)}/build/agents/${encodeURIComponent(agentName)}/build?version=3`
             : "",
         agentName,
         version: "3",
@@ -406,20 +406,8 @@ async function handleApi(req, res, url) {
             ...state,
             agentName: mockAgentInput(url) ? state.agentName : "",
             preview: true,
-            project: mockProjectState(url),
+            selection: mockSelection(url),
             deployPrompt: DEPLOY_PROMPT,
-        });
-    }
-
-    if (method === "GET" && path === "/api/project") {
-        if (!mockProjectSelected(url)) {
-            return sendJson(res, 200, { ok: true, name: "", endpoint: "", resourceName: "" });
-        }
-        return sendJson(res, 200, {
-            ok: true,
-            name: selectedProject.name,
-            endpoint: selectedProject.endpoint,
-            resourceName: selectedProject.account,
         });
     }
 
@@ -477,22 +465,12 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/bootstrap") {
         const id = mockIdentity(url);
-        if (!id.signedIn || !mockProjectSelected(url)) {
-            return sendJson(res, 200, {
-                ok: true,
-                identity: id,
-                project: null,
-                resolved: false,
-                subscriptionId: "",
-                preview: true,
-            });
-        }
+        const selection = mockSelection(url);
         return sendJson(res, 200, {
             ok: true,
             identity: id,
-            project: { name: selectedProject.name, endpoint: selectedProject.endpoint, rg: selectedProject.rg, account: selectedProject.account },
-            resolved: true,
-            subscriptionId: id.subscriptionId,
+            selection,
+            resolved: !!selection.project,
             preview: true,
         });
     }
@@ -504,34 +482,33 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/projects") {
         if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
-        const sub = url.searchParams.get("sub") || selectedSubscriptionId;
+        const sub = url.searchParams.get("sub") || state.selection.subscription.id;
         return sendJson(res, 200, { ok: true, items: projects.filter((p) => !sub || p.subscriptionId === sub) });
     }
 
     if (method === "POST" && path === "/api/select-subscription") {
         const body = JSON.parse((await readBody(req)) || "{}");
-        const next = subscriptions.find((s) => s.id === body.subscriptionId) || subscriptions[0];
-        selectedSubscriptionId = next.id;
-        state.subscriptionId = next.id;
-        const firstProject = projects.find((p) => p.subscriptionId === next.id) || null;
-        selectedProject = firstProject || projects[0];
-        state.project = firstProject
-            ? { name: firstProject.name, endpoint: firstProject.endpoint, rg: firstProject.rg, account: firstProject.account }
-            : emptyProject();
-        state.projectEndpoint = firstProject?.endpoint || "";
-        state.projectLocation = firstProject?.location || "";
-        return sendJson(res, 200, { ok: true });
+        const next = subscriptions.find((s) => s.id === body.subscriptionId);
+        if (!next) return sendJson(res, 404, { ok: false, error: "Subscription not found" });
+        state.selection = transitionSubscription(state.selection, next);
+        return sendJson(res, 200, { ok: true, selection: state.selection });
     }
 
     if (method === "POST" && path === "/api/select-project") {
         const body = JSON.parse((await readBody(req)) || "{}");
-        const match = projects.find((p) => p.endpoint === body.endpoint || p.name === body.name) || projects[0];
-        selectProject(match);
-        return sendJson(res, 200, { ok: true, name: match.name, endpoint: match.endpoint });
+        const subscription = state.selection.subscription;
+        const match = projects.find((project) =>
+            project.subscriptionId === subscription.id
+            && (project.endpoint === body.endpoint || project.name === body.name),
+        );
+        if (!match) return sendJson(res, 404, { ok: false, error: "Project not found" });
+        state.selection = transitionProject(state.selection, match, subscription);
+        return sendJson(res, 200, { ok: true, selection: state.selection });
     }
 
     if (method === "GET" && path === "/api/region-support") {
-        if (!mockProjectSelected(url)) {
+        const project = mockSelection(url).project;
+        if (!project) {
             return sendJson(res, 200, {
                 ok: true,
                 docsUrl: hostedAgentRegionsDoc,
@@ -543,7 +520,7 @@ async function handleApi(req, res, url) {
         return sendJson(res, 200, {
             ok: true,
             docsUrl: hostedAgentRegionsDoc,
-            location: selectedProject.location,
+            location: project.location,
             regions: hostedAgentRegions,
             supported: true,
         });
@@ -558,6 +535,7 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "GET" && path === "/api/signin/status") {
+        sessionSignedIn = true;
         return sendJson(res, 200, { ok: true, status: "done", identity });
     }
 
@@ -566,6 +544,8 @@ async function handleApi(req, res, url) {
     }
 
     if (method === "POST" && path === "/api/signout") {
+        sessionSignedIn = false;
+        state.selection = emptySelection();
         return sendJson(res, 200, { ok: true });
     }
 

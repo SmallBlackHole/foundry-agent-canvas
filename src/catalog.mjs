@@ -19,9 +19,6 @@ export const selectGuardrailPrompt = (name) =>
 
 export const DEPLOY_PROMPT = "deploy it as a Foundry hosted agent";
 
-// Currently selected Foundry project — empty until the user picks one.
-export const project = { name: "" };
-
 // ---------------------------------------------------------------------------
 // Provider colors (used by live deployment enrichment for the colored dot)
 // ---------------------------------------------------------------------------

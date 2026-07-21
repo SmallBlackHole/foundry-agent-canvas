@@ -9,7 +9,6 @@ import {
     listGuardrails,
     listSkills,
     getToken,
-    getProject,
     resolveProjectLocation,
     isHostedAgentRegionSupported,
     HOSTED_AGENT_REGIONS,
@@ -25,6 +24,11 @@ import {
     signOut,
 } from "./foundry.mjs";
 import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
+import {
+    emptySelection,
+    selectProject,
+    selectSubscription,
+} from "../public/selection-state.js";
 import { enrichDeployment, enrichToolbox, enrichGuardrail, enrichSkill } from "./mappers.mjs";
 import { sendJson, serveStatic, serveFile, readBody, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
@@ -35,8 +39,8 @@ import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
 import { flushPendingWorkspaceState } from "./workspace-state.mjs";
 
 export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
-    const ep = (entry ? entry.state.projectEndpoint : null) || "";
-    const projectIdentity = getProject(ep);
+    const selection = entry?.state.selection ?? emptySelection();
+    const project = selection.project;
     const agent = await resolveHostedAgentName(
         await workspaceRootFn(),
         entry ? entry.state.agentName : "",
@@ -54,12 +58,12 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
     }
     return resolveHostedAgentPortalAction(
         {
-            endpoint: ep,
+            endpoint: project?.endpoint || "",
             agentName: agent.agentName,
-            subscriptionId: entry ? entry.state.subscriptionId : "",
-            resourceGroup: entry ? entry.state.project?.rg : "",
-            accountName: projectIdentity.resourceName,
-            projectName: projectIdentity.projectName,
+            subscriptionId: selection.subscription.id,
+            resourceGroup: project?.resourceGroup || "",
+            accountName: project?.accountName || "",
+            projectName: project?.name || "",
         },
         { getToken },
     );
@@ -83,6 +87,9 @@ export function createRequestHandler(
         }
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
+        if (method === "GET" && path === "/selection-state.js") {
+            return serveStatic(res, "selection-state.js", publicDir);
+        }
         if (method === "GET" && path === "/codicons/codicon.ttf") {
             return serveStatic(res, join("codicons", "codicon.ttf"), publicDir);
         }
@@ -118,14 +125,6 @@ export function createRequestHandler(
             return sendJson(res, 200, { ...state, deployPrompt: DEPLOY_PROMPT });
         }
 
-        // Live project identity (parsed from the endpoint; no network).
-        if (method === "GET" && path === "/api/project") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const p = getProject(ep);
-            const name = p.projectName || (entry ? entry.state.project?.name : "") || "";
-            return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint, resourceName: p.resourceName });
-        }
-
         // Live hosted-agent deployment lookup. The direct agent GET is
         // intentionally uncached; the selected project + agent name identify
         // the resource, while the returned latest version proves deployment.
@@ -156,7 +155,7 @@ export function createRequestHandler(
 
         // Live model deployments in the selected project (mock fallback).
         if (method === "GET" && path === "/api/deployments") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const ep = entry?.state.selection.project?.endpoint || "";
             const r = await listDeployments(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, source: "live", items: r.data.map(enrichDeployment) });
@@ -165,7 +164,7 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/toolboxes") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const ep = entry?.state.selection.project?.endpoint || "";
             const r = await listToolboxes(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichToolbox) });
@@ -174,8 +173,8 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/guardrails") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
-            const sub = entry ? entry.state.subscriptionId : "";
+            const ep = entry?.state.selection.project?.endpoint || "";
+            const sub = entry?.state.selection.subscription.id || "";
             const r = await listGuardrails(ep, sub, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichGuardrail) });
@@ -184,7 +183,7 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/skills") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const ep = entry?.state.selection.project?.endpoint || "";
             const r = await listSkills(ep, { force: forceRefresh });
             if (r.ok) {
                 return sendJson(res, 200, { ok: true, items: r.data.map(enrichSkill) });
@@ -193,7 +192,7 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/toolbox/tools") {
-            const ep = (entry ? entry.state.projectEndpoint : null) || "";
+            const ep = entry?.state.selection.project?.endpoint || "";
             const name = url.searchParams.get("name") || "";
             const version = url.searchParams.get("version") || "";
             const r = await listToolboxTools(ep, name, version);
@@ -225,7 +224,7 @@ export function createRequestHandler(
         }
 
         if (method === "GET" && path === "/api/projects") {
-            const sub = url.searchParams.get("sub") || (entry ? entry.state.subscriptionId : "");
+            const sub = url.searchParams.get("sub") || entry?.state.selection.subscription.id || "";
             const r = await listProjects(sub);
             if (r.ok) return sendJson(res, 200, { ok: true, items: r.data });
             return sendJson(res, 200, { ok: false, reason: r.reason, items: [] });
@@ -238,16 +237,13 @@ export function createRequestHandler(
                 if (!subscriptionId) {
                     return sendJson(res, 400, { ok: false, error: "Missing subscriptionId" });
                 }
-                if (entry) entry.state.subscriptionId = subscriptionId;
-                if (entry) entry.state.projectLocation = "";
-                saveSelection({
-                    subscriptionId,
-                    subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
-                    projectEndpoint: "",
-                    projectName: "",
-                    projectLocation: "",
+                const selection = selectSubscription(entry?.state.selection, {
+                    id: subscriptionId,
+                    name: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
                 });
-                return sendJson(res, 200, { ok: true });
+                if (entry) entry.state.selection = selection;
+                saveSelection(selection);
+                return sendJson(res, 200, { ok: true, selection });
             } catch (err) {
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }
@@ -258,28 +254,26 @@ export function createRequestHandler(
                 const body = JSON.parse((await readBody(req)) || "{}");
                 const ep = typeof body.endpoint === "string" ? body.endpoint.trim() : "";
                 if (!ep) return sendJson(res, 400, { ok: false, error: "Missing endpoint" });
-                const p = getProject(ep);
-                const name = (typeof body.name === "string" && body.name.trim()) || p.projectName || "project";
-                const subscriptionId = typeof body.subscriptionId === "string" ? body.subscriptionId.trim() : "";
-                const location = typeof body.location === "string" ? body.location.trim() : "";
-                const rg = typeof body.rg === "string" ? body.rg.trim() : "";
-                const account = typeof body.account === "string" ? body.account.trim() : "";
-                if (entry) {
-                    entry.state.projectEndpoint = ep;
-                    entry.state.projectLocation = location;
-                    entry.state.project = { ...entry.state.project, name, rg, account };
-                    if (subscriptionId) entry.state.subscriptionId = subscriptionId;
-                }
-                saveSelection({
-                    subscriptionId: subscriptionId || (entry ? entry.state.subscriptionId : ""),
-                    subscriptionName: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
-                    projectEndpoint: p.endpoint,
-                    projectName: name,
-                    projectLocation: location,
-                    projectRg: rg,
-                    projectAccount: account,
-                });
-                return sendJson(res, 200, { ok: true, name, endpoint: p.endpoint });
+                const current = entry?.state.selection ?? emptySelection();
+                const subscription = {
+                    id: typeof body.subscriptionId === "string"
+                        ? body.subscriptionId.trim()
+                        : current.subscription.id,
+                    name: typeof body.subscriptionName === "string"
+                        ? body.subscriptionName.trim()
+                        : current.subscription.name,
+                };
+                const selection = selectProject(current, {
+                    subscriptionId: subscription.id,
+                    name: typeof body.name === "string" ? body.name : "",
+                    endpoint: ep,
+                    location: typeof body.location === "string" ? body.location : "",
+                    resourceGroup: typeof body.resourceGroup === "string" ? body.resourceGroup : "",
+                    accountName: typeof body.accountName === "string" ? body.accountName : "",
+                }, subscription);
+                if (entry) entry.state.selection = selection;
+                saveSelection(selection);
+                return sendJson(res, 200, { ok: true, selection });
             } catch (err) {
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }
@@ -288,15 +282,22 @@ export function createRequestHandler(
         if (method === "GET" && path === "/api/region-support") {
             const docsUrl = HOSTED_AGENT_REGIONS_DOC;
             const regions = HOSTED_AGENT_REGIONS;
-            const ep = entry ? entry.state.projectEndpoint : "";
+            const selection = entry?.state.selection ?? emptySelection();
+            const ep = selection.project?.endpoint || "";
             if (!ep) {
                 return sendJson(res, 200, { ok: true, location: "", supported: null, regions, docsUrl });
             }
-            let location = (entry && entry.state.projectLocation) || "";
+            let location = selection.project.location;
             if (!location) {
                 try {
-                    location = await resolveProjectLocation(ep, entry ? entry.state.subscriptionId : "");
-                    if (location && entry) entry.state.projectLocation = location;
+                    location = await resolveProjectLocation(ep, selection.subscription.id);
+                    if (location && entry) {
+                        entry.state.selection = selectProject(selection, {
+                            ...selection.project,
+                            location,
+                        });
+                        saveSelection(entry.state.selection);
+                    }
                 } catch {
                     location = "";
                 }
@@ -330,8 +331,7 @@ export function createRequestHandler(
             const r = await signOut();
             clearSelection();
             if (entry) {
-                entry.state.subscriptionId = "";
-                entry.state.bootstrapped = false;
+                entry.state.selection = emptySelection();
             }
             return sendJson(res, 200, r);
         }

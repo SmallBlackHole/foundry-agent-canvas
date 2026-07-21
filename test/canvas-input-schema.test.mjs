@@ -30,4 +30,8 @@ test("applyInput accepts but ignores a compatibility page input", () => {
     const state = applyInput(defaultState(), { page: "build", agentName: "Compat" });
     assert.equal("page" in state, false);
     assert.equal(state.agentName, "Compat");
+    assert.deepEqual(state.selection, {
+        subscription: { id: "", name: "" },
+        project: null,
+    });
 });

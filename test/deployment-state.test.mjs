@@ -72,8 +72,11 @@ test("SPA checks deployment only on open, project change, and bootstrap paths", 
     assert.match(source, /await loadRegionSupport\(\);[\s\S]*?await loadHostedAgentDeployment\(\);/);
     // Selecting a project re-runs the one-shot check.
     assert.match(source, /loadRegionSupport\(\);\s*loadHostedAgentDeployment\(\);/);
-    // Bootstrap after sign-in also runs the one-shot check.
-    assert.match(source, /await loadProjects\(true\);\s*await loadHostedAgentDeployment\(\);/);
+    // Bootstrap after sign-in refreshes region support before the one-shot check.
+    assert.match(
+        source,
+        /await loadProjects\(true\);[\s\S]*?await loadRegionSupport\(\);\s*await loadHostedAgentDeployment\(\);/,
+    );
 });
 
 test("deploy click resets the deployment state so the playground link is hidden", async () => {

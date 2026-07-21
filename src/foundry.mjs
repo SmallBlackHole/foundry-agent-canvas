@@ -408,9 +408,8 @@ function decodeJwt(token) {
     }
 }
 
-// Signed-in identity. Derived from the cached credential's token (works without
-// the Azure CLI). Returns { signedIn, account, tenantId, subscriptionId,
-// subscriptionName }. Falls back to az/azd only if those happen to be present.
+// Signed-in account identity, separate from the selected Azure resources.
+// Falls back to az/azd only if those happen to be present.
 export async function getIdentity() {
     // Primary path: decode a token from the cached/default credential.
     const tok = (await tokenFromIdentity(MGMT_SCOPE))?.token;
@@ -421,8 +420,6 @@ export async function getIdentity() {
                 signedIn: true,
                 account: p.upn || p.preferred_username || p.unique_name || p.email || "",
                 tenantId: p.tid || "",
-                subscriptionId: "",
-                subscriptionName: "",
             };
         }
     }
@@ -435,14 +432,12 @@ export async function getIdentity() {
                 signedIn: true,
                 account: a?.user?.name || "",
                 tenantId: a?.tenantId || "",
-                subscriptionId: a?.id || "",
-                subscriptionName: a?.name || "",
             };
         } catch {
             /* fall through */
         }
     }
-    return { signedIn: false, account: "", tenantId: "", subscriptionId: "", subscriptionName: "" };
+    return { signedIn: false, account: "", tenantId: "" };
 }
 
 // Default subscription id: first enabled subscription from ARM (no az needed).
@@ -518,6 +513,7 @@ export async function listProjects(subscriptionId) {
                         rg: row.rg || "",
                         location: row.location || "",
                         id: row.id || "",
+                        subscriptionId: row.subscriptionId || subscriptionId,
                     });
                 }
                 skipToken = json?.$skipToken;
