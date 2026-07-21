@@ -43,21 +43,6 @@ export function serveFile(res, filePath) {
     }
 }
 
-export function readBody(req, limit = 1_000_000) {
-    return new Promise((resolve, reject) => {
-        let data = "";
-        req.on("data", (chunk) => {
-            data += chunk;
-            if (data.length > limit) {
-                reject(new Error("Body too large"));
-                req.destroy();
-            }
-        });
-        req.on("end", () => resolve(data));
-        req.on("error", reject);
-    });
-}
-
 export function pushFrame(entry, obj) {
     const frame = `data: ${JSON.stringify(obj)}\n\n`;
     let delivered = 0;

@@ -19,6 +19,7 @@ import {
     selectSkillPrompt,
     selectGuardrailPrompt,
 } from "../src/catalog.mjs";
+import { ApiError, createApiRouter } from "../src/api-router.mjs";
 import { initialBuildSections } from "../src/build-sections.mjs";
 import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
 import {
@@ -260,32 +261,9 @@ function valueFor(flag) {
     return index >= 0 ? process.argv[index + 1] : "";
 }
 
-function sendJson(res, status, body) {
-    res.writeHead(status, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store",
-    });
-    res.end(JSON.stringify(body));
-}
-
 function sendText(res, status, text) {
     res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
     res.end(text);
-}
-
-function readBody(req, limit = 1_000_000) {
-    return new Promise((resolve, reject) => {
-        let data = "";
-        req.on("data", (chunk) => {
-            data += chunk;
-            if (data.length > limit) {
-                reject(new Error("Body too large"));
-                req.destroy();
-            }
-        });
-        req.on("end", () => resolve(data));
-        req.on("error", reject);
-    });
 }
 
 function publicFile(pathname) {
@@ -401,196 +379,164 @@ async function mockHostedAgentDeployment(url) {
     };
 }
 
-async function handleApi(req, res, url) {
-    const path = url.pathname;
-    const method = req.method || "GET";
-
-    if (method === "GET" && path === "/api/state") {
-        return sendJson(res, 200, {
-            ...state,
-            agentName: mockAgentInput(url) ? state.agentName : "",
-            preview: true,
-            selection: mockSelection(url),
-            deployPrompt: DEPLOY_PROMPT,
-        });
-    }
-
-    if (method === "GET" && path === "/api/hosted-agent-deployment") {
-        return sendJson(res, 200, await mockHostedAgentDeployment(url));
-    }
-
-    if (method === "GET" && path === "/api/hosted-agent-playground") {
-        const result = await mockHostedAgentDeployment(url);
-        if (!result.available) {
-            return sendText(res, 404, "This hosted agent deployment is no longer available.");
-        }
-        res.writeHead(302, {
-            "Cache-Control": "no-store",
-            Location: `/__preview-playground?agent=${encodeURIComponent(result.agentName)}&version=${encodeURIComponent(result.version)}`,
-        });
-        res.end();
-        return;
-    }
-
-    if (method === "GET" && path === "/api/deployments") {
+function createPreviewApiServices() {
+    const resourceResult = (url, items, extra = {}) => {
         const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, source: "preview", reason, items: [] });
-        return sendJson(res, 200, { ok: true, source: "preview", items: previewDeployments });
-    }
+        return reason
+            ? { ok: false, reason, items: [], ...extra }
+            : { ok: true, items, ...extra };
+    };
 
-    if (method === "GET" && path === "/api/toolboxes") {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
-        return sendJson(res, 200, { ok: true, items: previewToolboxes });
-    }
-
-    if (method === "GET" && path === "/api/skills") {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
-        return sendJson(res, 200, { ok: true, items: previewSkills });
-    }
-
-    if (method === "GET" && path === "/api/guardrails") {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
-        return sendJson(res, 200, { ok: true, items: previewGuardrails });
-    }
-
-    if (method === "GET" && path === "/api/toolbox/tools") {
-        const reason = projectScopedUnavailable(url);
-        if (reason) return sendJson(res, 200, { ok: false, reason, items: [] });
-        const name = url.searchParams.get("name") || "";
-        return sendJson(res, 200, { ok: true, items: previewToolboxTools[name] || [] });
-    }
-
-    if (method === "GET" && path === "/api/identity") {
-        return sendJson(res, 200, { ok: true, ...mockIdentity(url) });
-    }
-
-    if (method === "GET" && path === "/api/bootstrap") {
-        const id = mockIdentity(url);
-        if (id.signedIn) restoreInitialSelection();
-        const selection = mockSelection(url);
-        return sendJson(res, 200, {
-            ok: true,
-            identity: id,
-            selection,
-            resolved: !!selection.project,
-            preview: true,
-        });
-    }
-
-    if (method === "GET" && path === "/api/subscriptions") {
-        if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
-        return sendJson(res, 200, { ok: true, items: subscriptions });
-    }
-
-    if (method === "GET" && path === "/api/projects") {
-        if (!mockSignedIn(url)) return sendJson(res, 200, { ok: false, reason: "not_signed_in", items: [] });
-        const sub = url.searchParams.get("sub") || state.selection.subscription.id;
-        return sendJson(res, 200, { ok: true, items: projects.filter((p) => !sub || p.subscriptionId === sub) });
-    }
-
-    if (method === "POST" && path === "/api/select-subscription") {
-        const body = JSON.parse((await readBody(req)) || "{}");
-        const next = subscriptions.find((s) => s.id === body.subscriptionId);
-        if (!next) return sendJson(res, 404, { ok: false, error: "Subscription not found" });
-        state.selection = transitionSubscription(state.selection, next);
-        return sendJson(res, 200, { ok: true, selection: state.selection });
-    }
-
-    if (method === "POST" && path === "/api/select-project") {
-        const body = JSON.parse((await readBody(req)) || "{}");
-        const subscription = state.selection.subscription;
-        const match = projects.find((project) =>
-            project.subscriptionId === subscription.id
-            && (project.endpoint === body.endpoint || project.name === body.name),
-        );
-        if (!match) return sendJson(res, 404, { ok: false, error: "Project not found" });
-        state.selection = transitionProject(state.selection, match, subscription);
-        return sendJson(res, 200, { ok: true, selection: state.selection });
-    }
-
-    if (method === "GET" && path === "/api/region-support") {
-        const project = mockSelection(url).project;
-        if (!project) {
-            return sendJson(res, 200, {
+    return {
+        getState({ url }) {
+            return {
+                ...state,
+                agentName: mockAgentInput(url) ? state.agentName : "",
+                preview: true,
+                selection: mockSelection(url),
+                deployPrompt: DEPLOY_PROMPT,
+            };
+        },
+        getHostedAgentDeployment({ url }) {
+            return mockHostedAgentDeployment(url);
+        },
+        async getHostedAgentPlayground({ url }) {
+            const result = await mockHostedAgentDeployment(url);
+            return result.available
+                ? {
+                    ...result,
+                    portalUrl: `/__preview-playground?agent=${encodeURIComponent(result.agentName)}&version=${encodeURIComponent(result.version)}`,
+                }
+                : result;
+        },
+        listDeployments({ url }) {
+            return resourceResult(url, previewDeployments, { source: "preview" });
+        },
+        listToolboxes({ url }) {
+            return resourceResult(url, previewToolboxes);
+        },
+        listSkills({ url }) {
+            return resourceResult(url, previewSkills);
+        },
+        listGuardrails({ url }) {
+            return resourceResult(url, previewGuardrails);
+        },
+        listToolboxTools({ url }) {
+            return resourceResult(
+                url,
+                previewToolboxTools[url.searchParams.get("name") || ""] || [],
+            );
+        },
+        getIdentity({ url }) {
+            return { ok: true, ...mockIdentity(url) };
+        },
+        bootstrap({ url }) {
+            const previewIdentity = mockIdentity(url);
+            if (previewIdentity.signedIn) restoreInitialSelection();
+            const selection = mockSelection(url);
+            return {
+                ok: true,
+                identity: previewIdentity,
+                selection,
+                resolved: !!selection.project,
+                preview: true,
+            };
+        },
+        listSubscriptions({ url }) {
+            return mockSignedIn(url)
+                ? { ok: true, items: subscriptions }
+                : { ok: false, reason: "not_signed_in", items: [] };
+        },
+        listProjects({ url }) {
+            if (!mockSignedIn(url)) {
+                return { ok: false, reason: "not_signed_in", items: [] };
+            }
+            const subscriptionId = url.searchParams.get("sub")
+                || state.selection.subscription.id;
+            return {
+                ok: true,
+                items: projects.filter((project) =>
+                    !subscriptionId || project.subscriptionId === subscriptionId),
+            };
+        },
+        selectSubscription({ body }) {
+            const subscription = subscriptions.find((item) =>
+                item.id === body.subscriptionId);
+            if (!subscription) throw new ApiError(404, "Subscription not found");
+            state.selection = transitionSubscription(state.selection, subscription);
+            return { ok: true, selection: state.selection };
+        },
+        selectProject({ body }) {
+            const subscription = state.selection.subscription;
+            const project = projects.find((item) =>
+                item.subscriptionId === subscription.id
+                && (item.endpoint === body.endpoint || item.name === body.name));
+            if (!project) throw new ApiError(404, "Project not found");
+            state.selection = transitionProject(state.selection, project, subscription);
+            return { ok: true, selection: state.selection };
+        },
+        getRegionSupport({ url }) {
+            const project = mockSelection(url).project;
+            return {
                 ok: true,
                 docsUrl: hostedAgentRegionsDoc,
-                location: "",
+                location: project?.location || "",
                 regions: hostedAgentRegions,
-                supported: null,
-            });
-        }
-        return sendJson(res, 200, {
-            ok: true,
-            docsUrl: hostedAgentRegionsDoc,
-            location: project.location,
-            regions: hostedAgentRegions,
-            supported: true,
-        });
-    }
-
-    if (method === "POST" && path === "/api/signin") {
-        return sendJson(res, 200, {
-            ok: true,
-            sessionId: "preview-signin",
-            mode: mockAzureCli(url) ? "preview" : "preview-no-az",
-        });
-    }
-
-    if (method === "GET" && path === "/api/signin/status") {
-        sessionSignedIn = true;
-        restoreInitialSelection();
-        return sendJson(res, 200, { ok: true, status: "done", identity });
-    }
-
-    if (method === "POST" && path === "/api/signin/cancel") {
-        return sendJson(res, 200, { ok: true });
-    }
-
-    if (method === "POST" && path === "/api/signout") {
-        sessionSignedIn = false;
-        state.selection = emptySelection();
-        return sendJson(res, 200, { ok: true });
-    }
-
-    if (method === "POST" && path === "/api/send") {
-        const body = JSON.parse((await readBody(req)) || "{}");
-        const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-        if (!prompt) return sendJson(res, 400, { ok: false, error: "Missing prompt" });
-        sentPrompts.push({ prompt, at: new Date().toISOString() });
-        console.log("\n[preview] prompt-to-chat stub\n" + prompt + "\n");
-        return sendJson(res, 200, { ok: true, preview: true });
-    }
-
-    if (method === "GET" && path === "/api/project-init") {
-        return sendJson(res, 200, {
-            ...(await projectInit(url)),
-            azureCliAvailable: mockAzureCli(url),
-            azdAvailable: mockAzd(url),
-        });
-    }
-
-    if (method === "GET" && path === "/api/inspect/ready") {
-        return sendJson(res, 200, { ready: false });
-    }
-
-    if (method === "GET" && path === "/api/inspect/start") {
-        if (!mockAzd(url)) {
-            return sendJson(res, 200, {
+                supported: project ? true : null,
+            };
+        },
+        signIn({ url }) {
+            return {
+                ok: true,
+                sessionId: "preview-signin",
+                mode: mockAzureCli(url) ? "preview" : "preview-no-az",
+            };
+        },
+        getSignInStatus() {
+            sessionSignedIn = true;
+            restoreInitialSelection();
+            return { ok: true, status: "done", identity };
+        },
+        cancelSignIn() {
+            return { ok: true };
+        },
+        signOut() {
+            sessionSignedIn = false;
+            state.selection = emptySelection();
+            return { ok: true };
+        },
+        sendPrompt({ body }) {
+            sentPrompts.push({ prompt: body.prompt, at: new Date().toISOString() });
+            console.log("\n[preview] prompt-to-chat stub\n" + body.prompt + "\n");
+            return { preview: true };
+        },
+        async getProjectInit({ url }) {
+            return {
+                ...(await projectInit(url)),
+                azureCliAvailable: mockAzureCli(url),
+                azdAvailable: mockAzd(url),
+            };
+        },
+        getInspectorReady() {
+            return { ready: false };
+        },
+        startInspector({ url }) {
+            return {
                 ok: false,
-                error: "Azure Developer CLI (azd) is not available. Install azd, then try Inspect locally again.",
-            });
-        }
-        return sendJson(res, 200, {
-            ok: false,
-            error: "Preview mode does not start the Agent Inspector. Open the canvas in Copilot for this flow.",
-        });
-    }
-
-    return sendText(res, 404, "Not found");
+                error: !mockAzd(url)
+                    ? "Azure Developer CLI (azd) is not available. Install azd, then try Inspect locally again."
+                    : "Preview mode does not start the Agent Inspector. Open the canvas in Copilot for this flow.",
+            };
+        },
+    };
 }
+
+const handleApi = createApiRouter({
+    services: createPreviewApiServices(),
+    reportError: (error, request) => {
+        console.error(`[preview] ${request.method} ${request.path} failed: ${error?.message ?? error}`);
+    },
+});
 
 async function handle(req, res) {
     const url = new URL(req.url, `http://${HOST}`);
@@ -623,11 +569,7 @@ async function handle(req, res) {
     }
 
     if (url.pathname.startsWith("/api/")) {
-        try {
-            await handleApi(req, res, url);
-        } catch (err) {
-            sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
-        }
+        await handleApi(req, res, url);
         return;
     }
 
