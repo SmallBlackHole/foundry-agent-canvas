@@ -1109,7 +1109,7 @@ function renderIdentity() {
     }
 }
 
-// ---- Device-code sign-in ----
+// ---- Interactive browser sign-in ----
 function renderDevice(info) {
     const wrap = document.getElementById("pmDevice");
     const body = document.getElementById("pmDeviceBody");
@@ -1165,56 +1165,7 @@ function renderDevice(info) {
         t.className = "pm-dc-label";
         t.textContent = info.message || "Sign-in failed";
         body.append(t);
-        return;
     }
-
-    // kind === "code"
-    body.className = "pm-device-row";
-    const label = document.createElement("span");
-    label.className = "pm-dc-label";
-    label.textContent = "To sign in, open the link and enter this code:";
-
-    const codeRow = document.createElement("div");
-    codeRow.className = "pm-dc-code";
-    const code = document.createElement("span");
-    code.textContent = info.code;
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "pm-dc-copy";
-    copy.textContent = "Copy";
-    copy.addEventListener("click", (e) => {
-        e.stopPropagation();
-        navigator.clipboard?.writeText(info.code).then(() => toast("Code copied \u2713")).catch(() => {});
-    });
-    codeRow.append(code, copy);
-
-    const link = document.createElement("a");
-    link.className = "pm-dc-link";
-    link.href = info.url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = info.url;
-
-    const foot = document.createElement("div");
-    foot.className = "pm-dc-foot";
-    const wait = document.createElement("span");
-    wait.className = "pm-dc-wait";
-    const sp = document.createElement("span");
-    sp.className = "menu-spinner";
-    const wt = document.createElement("span");
-    wt.textContent = "Waiting for sign-in\u2026";
-    wait.append(sp, wt);
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "pm-dc-cancel";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", (e) => {
-        e.stopPropagation();
-        cancelSignIn();
-    });
-    foot.append(wait, cancel);
-
-    body.append(label, codeRow, link, foot);
 }
 
 async function startSignIn() {
@@ -1236,11 +1187,7 @@ async function startSignIn() {
             return;
         }
         state.signin.sessionId = r.sessionId;
-        if (r.mode === "device" && r.code) {
-            renderDevice({ kind: "code", code: r.code, url: r.url });
-        } else {
-            renderDevice({ kind: "interactive" });
-        }
+        renderDevice({ kind: "interactive" });
         state.signin.timer = setInterval(pollSignIn, 2500);
     } catch (err) {
         renderDevice({ kind: "error", message: "Sign-in error: " + err.message });
@@ -1254,6 +1201,7 @@ async function pollSignIn() {
     if (!sid) return stopSignInPolling();
     try {
         const r = await getJSON("/api/signin/status?sessionId=" + encodeURIComponent(sid));
+        if (state.signin.sessionId !== sid) return;
         if (r.status === "done") {
             stopSignInPolling();
             renderDevice(null);
@@ -1264,10 +1212,9 @@ async function pollSignIn() {
         } else if (r.status === "error" || r.status === "cancelled") {
             stopSignInPolling();
             renderDevice(r.status === "cancelled" ? null : { kind: "error", message: r.error || "Sign-in failed" });
-        } else if (r.status === "pending" && r.mode === "device" && r.code && state.signin.shownCode !== r.code) {
-            // az fell back to a device code mid-flight — surface it once.
-            state.signin.shownCode = r.code;
-            renderDevice({ kind: "code", code: r.code, url: r.url || "https://microsoft.com/devicelogin" });
+        } else if (!r.ok || r.status === "unknown") {
+            stopSignInPolling();
+            renderDevice({ kind: "error", message: "Sign-in session expired. Please try again." });
         }
     } catch {
         /* transient — keep polling */
@@ -1279,7 +1226,6 @@ function stopSignInPolling() {
     state.signin.timer = null;
     state.signin.sessionId = null;
     state.signin.starting = false;
-    state.signin.shownCode = null;
     const authBtn = document.getElementById("pmAuthBtn");
     if (authBtn) authBtn.disabled = false;
 }

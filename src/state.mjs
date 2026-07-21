@@ -2,11 +2,11 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
-    getIdentity,
     listSubscriptions,
     listProjects,
     resolveProjectLocation,
 } from "./foundry.mjs";
+import { getIdentity } from "./foundry-auth.mjs";
 import {
     emptySelection,
     normalizeSelection,

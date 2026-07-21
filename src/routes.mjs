@@ -4,8 +4,7 @@ import { join } from "node:path";
 import { createApiRouter } from "./api-router.mjs";
 import { deployments, DEPLOY_PROMPT } from "./catalog.mjs";
 import {
-    getIdentity,
-    getToken,
+    clearFoundryCache,
     HOSTED_AGENT_REGIONS,
     HOSTED_AGENT_REGIONS_DOC,
     isHostedAgentRegionSupported,
@@ -16,11 +15,15 @@ import {
     listSubscriptions,
     listToolboxes,
     listToolboxTools,
+} from "./foundry.mjs";
+import {
+    getIdentity,
+    getToken,
     signInCancel,
     signInStart,
     signInStatus,
     signOut,
-} from "./foundry.mjs";
+} from "./foundry-auth.mjs";
 import {
     bootstrapInstance,
     clearSelection,
@@ -85,6 +88,15 @@ export function createRuntimeApiServices(instanceId, {
     workspaceRootFn,
     waitForFoundrySkill,
     markPendingRefresh,
+    auth = {
+        getIdentity,
+        signInStart,
+        signInStatus,
+        signInCancel,
+        signOut,
+    },
+    clearResourceCache = clearFoundryCache,
+    clearSavedSelection = clearSelection,
 }) {
     const getEntry = () => servers.get(instanceId);
     const getSelection = () => getEntry()?.state.selection ?? emptySelection();
@@ -156,7 +168,7 @@ export function createRuntimeApiServices(instanceId, {
                 : { ok: false, reason: result.reason, items: [] };
         },
         async getIdentity() {
-            return { ok: true, ...(await getIdentity()) };
+            return { ok: true, ...(await auth.getIdentity()) };
         },
         async bootstrap() {
             const entry = getEntry();
@@ -244,19 +256,25 @@ export function createRuntimeApiServices(instanceId, {
             };
         },
         signIn() {
-            return signInStart();
+            return auth.signInStart();
         },
-        getSignInStatus({ url }) {
-            return signInStatus(url.searchParams.get("sessionId") || "");
+        async getSignInStatus({ url }) {
+            const result = await auth.signInStatus(url.searchParams.get("sessionId") || "");
+            if (result.ok && result.status === "done") clearResourceCache();
+            return result;
         },
         cancelSignIn({ body }) {
-            return signInCancel(typeof body.sessionId === "string" ? body.sessionId : "");
+            return auth.signInCancel(typeof body.sessionId === "string" ? body.sessionId : "");
         },
         async signOut() {
-            const result = await signOut();
-            clearSelection();
-            const entry = getEntry();
-            if (entry) entry.state.selection = emptySelection();
+            const result = await auth.signOut();
+            if (result.ok) {
+                clearResourceCache();
+                clearSavedSelection();
+                for (const entry of servers.values()) {
+                    if (entry?.state) entry.state.selection = emptySelection();
+                }
+            }
             return result;
         },
         async sendPrompt({ body }) {
