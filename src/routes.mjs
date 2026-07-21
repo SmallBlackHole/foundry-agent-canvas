@@ -38,14 +38,9 @@ import { launchAgentTerminal } from "./agent-terminal.mjs";
 import { initialBuildSections } from "./build-sections.mjs";
 import { inspectHostedAgentWorkspace, resolveHostedAgentName } from "./local-agent.mjs";
 import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
-import {
-    cancelWorkspaceStateMonitor,
-    flushPendingWorkspaceState,
-    refreshWorkspaceState,
-    startWorkspaceStateMonitor,
-} from "./workspace-state.mjs";
+import { flushPendingWorkspaceState } from "./workspace-state.mjs";
 
-async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
+export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
     const ep = (entry ? entry.state.projectEndpoint : null) || "";
     const projectIdentity = getProject(ep);
     const agent = await resolveHostedAgentName(
@@ -454,39 +449,16 @@ export function createRequestHandler(
 
         // "Prompt to chat": forward the text to the session as a user turn.
         if (method === "POST" && path === "/api/send") {
-            let monitor = null;
             try {
                 const raw = await readBody(req);
-                const { prompt, creationFlow } = JSON.parse(raw || "{}");
+                const { prompt } = JSON.parse(raw || "{}");
                 if (typeof prompt !== "string" || !prompt.trim()) {
                     return sendJson(res, 400, { ok: false, error: "Missing prompt" });
-                }
-                if (creationFlow === true && entry) {
-                    monitor = startWorkspaceStateMonitor(
-                        entry,
-                        (source, isActive) => refreshWorkspaceState(entry, workspaceRootFn, { isActive, source }),
-                        {
-                            workspaceRoot: await workspaceRootFn(),
-                            onError: async (err, source) => {
-                                await session.log(
-                                    `Workspace ${source} inspection failed: ${err?.message ?? err}`,
-                                    { level: "warning" },
-                                );
-                            },
-                            onWatchError: async (err) => {
-                                await session.log(
-                                    `Workspace file watcher unavailable; bounded polling will continue: ${err?.message ?? err}`,
-                                    { level: "warning" },
-                                );
-                            },
-                        },
-                    );
                 }
                 await waitForFoundrySkill?.();
                 await session.send({ prompt });
                 return sendJson(res, 200, { ok: true });
             } catch (err) {
-                if (monitor && entry) cancelWorkspaceStateMonitor(entry);
                 await session.log(`Failed to send prompt to chat: ${err?.message ?? err}`, { level: "error" });
                 return sendJson(res, 500, { ok: false, error: String(err?.message ?? err) });
             }

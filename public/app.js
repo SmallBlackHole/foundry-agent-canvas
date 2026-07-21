@@ -122,12 +122,12 @@ async function postJSON(url, body) {
     return res.json();
 }
 
-async function sendToChat(prompt, { creationFlow = false } = {}) {
+async function sendToChat(prompt) {
     try {
         const res = await fetch("/api/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt, creationFlow }),
+            body: JSON.stringify({ prompt }),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         toast("Sent to chat \u2713");
@@ -354,6 +354,19 @@ function isDefinitiveHostedAgentResult(result) {
     return ["ambiguous_agent", "no_agent", "no_project"].includes(result?.reason);
 }
 
+function hostedAgentDeploymentFromResult(result) {
+    const available = !!(result?.ok && result?.deployed && result?.available && result?.portalUrl);
+    return {
+        status: "ready",
+        deployed: !!result?.deployed,
+        available,
+        portalUrl: available ? result.portalUrl : "",
+        agentName: result?.agentName || "",
+        version: result?.version || "",
+        reason: result?.reason || "",
+    };
+}
+
 function renderHostedAgentDeployment() {
     const link = document.getElementById("testPlaygroundLink");
     if (!link) return;
@@ -380,18 +393,9 @@ async function loadHostedAgentDeployment() {
     try {
         const result = await getJSON("/api/hosted-agent-deployment");
         if (requestId !== hostedAgentDeploymentRequest) return null;
-        const available = !!(result?.ok && result?.deployed && result?.available && result?.portalUrl);
-        const refreshed = {
-            status: "ready",
-            deployed: !!result?.deployed,
-            available,
-            portalUrl: available ? result.portalUrl : "",
-            agentName: result?.agentName || "",
-            version: result?.version || "",
-            reason: result?.reason || "",
-        };
+        const refreshed = hostedAgentDeploymentFromResult(result);
         state.hostedAgentDeployment =
-            preservePrevious && !available && !isDefinitiveHostedAgentResult(result)
+            preservePrevious && !refreshed.available && !isDefinitiveHostedAgentResult(result)
                 ? { ...previous, status: "ready", reason: result?.reason || "refresh_failed" }
                 : refreshed;
     } catch (err) {
@@ -464,7 +468,8 @@ function initPromptText() {
     return (
         sentenceCase(purpose) +
         ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
-        "Once it's done, run it locally to make sure it runs successfully."
+        'Once the hosted-agent code is created, invoke the "refreshWorkspaceState" action for this canvas. ' +
+        "Then run it locally to make sure it runs successfully."
     );
 }
 
@@ -2144,7 +2149,7 @@ root.addEventListener("click", async (e) => {
         if (!remindProjectSelection(e)) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
-        if (text) sendToChat(withProjectContext(text), { creationFlow: true });
+        if (text) sendToChat(withProjectContext(text));
         return;
     }
     if (e.target.closest("#initReset")) {
@@ -2452,6 +2457,17 @@ async function init() {
                 if (msg.type === "navigate" && msg.page) render(msg.page);
                 else if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
                 else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
+                else if (msg.type === "deploymentState" && msg.deployment) {
+                    hostedAgentDeploymentRequest += 1;
+                    hostedAgentDeploymentCheckedAt = Date.now();
+                    const previous = state.hostedAgentDeployment;
+                    const refreshed = hostedAgentDeploymentFromResult(msg.deployment);
+                    state.hostedAgentDeployment =
+                        previous.available && !refreshed.available && !isDefinitiveHostedAgentResult(msg.deployment)
+                            ? { ...previous, status: "ready", reason: msg.deployment.reason || "refresh_failed" }
+                            : refreshed;
+                    renderHostedAgentDeployment();
+                }
             } catch {
                 /* ignore malformed frames */
             }

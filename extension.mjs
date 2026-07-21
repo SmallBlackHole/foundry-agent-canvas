@@ -6,12 +6,13 @@ import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/exte
 
 import { PAGES, servers, defaultState, applyInput } from "./src/state.mjs";
 import { pushNavigate, pushFrame } from "./src/server-utils.mjs";
-import { createRequestHandler } from "./src/routes.mjs";
+import { createRequestHandler, selectedHostedAgentPortalAction } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
-import { cancelWorkspaceStateMonitor } from "./src/workspace-state.mjs";
+import { refreshWorkspaceState } from "./src/workspace-state.mjs";
+import { refreshDeploymentState } from "./src/deployment-state.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
@@ -160,6 +161,32 @@ const session = await joinSession({
                         return { ok: true, idea: ctx.input.idea };
                     },
                 },
+                {
+                    name: "refreshWorkspaceState",
+                    description: "Refresh the canvas workspace state after the hosted-agent code is created.",
+                    handler: async (ctx) => {
+                        const entry = servers.get(ctx.instanceId);
+                        if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
+                        return refreshWorkspaceState(entry, async () => {
+                            await workspaceRootReady;
+                            return workspaceRoot.resolve();
+                        });
+                    },
+                },
+                {
+                    name: "refreshDeploymentState",
+                    description: "Refresh the canvas deployment state after the hosted agent is deployed.",
+                    handler: async (ctx) => {
+                        const entry = servers.get(ctx.instanceId);
+                        if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
+                        return refreshDeploymentState(entry, () =>
+                            selectedHostedAgentPortalAction(entry, async () => {
+                                await workspaceRootReady;
+                                return workspaceRoot.resolve();
+                            }),
+                        );
+                    },
+                },
             ],
             open: async (ctx) => {
                 let entry = servers.get(ctx.instanceId);
@@ -176,8 +203,6 @@ const session = await joinSession({
                 return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
-                const entry = servers.get(ctx.instanceId);
-                if (entry) cancelWorkspaceStateMonitor(entry);
                 // Keep the loopback server alive for this provider process. The
                 // host can later reload the cached URL for the same instance
                 // without invoking open(), so closing it here strands the iframe
