@@ -9,7 +9,8 @@ async function withRouter(services, run, options = {}) {
     const router = createApiRouter({
         services,
         bodyLimit: options.bodyLimit,
-        reportError: async (error, request) => errors.push({ error, request }),
+        reportError: options.reportError
+            || (async (error, request) => errors.push({ error, request })),
     });
     const server = createServer((req, res) => router(req, res));
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -290,5 +291,33 @@ test("reports service failures once and returns the shared 500 response", async 
             method: "GET",
             path: "/api/inspect/start",
         });
+    });
+});
+
+test("reporter failures cannot suppress a 500 response or poison later requests", async () => {
+    let reports = 0;
+    await withRouter({
+        startInspector: () => {
+            throw new Error("service failed");
+        },
+        getState: () => ({ ok: true, healthy: true }),
+    }, async (base) => {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            assert.deepEqual(await json(await fetch(`${base}/api/inspect/start`)), {
+                status: 500,
+                body: { ok: false, error: "service failed" },
+            });
+        }
+        assert.deepEqual(await json(await fetch(`${base}/api/state`)), {
+            status: 200,
+            body: { ok: true, healthy: true },
+        });
+        assert.equal(reports, 2);
+    }, {
+        reportError: () => {
+            reports += 1;
+            if (reports === 1) throw new Error("synchronous reporter failure");
+            return Promise.reject(new Error("asynchronous reporter failure"));
+        },
     });
 });

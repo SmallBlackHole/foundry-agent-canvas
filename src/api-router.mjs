@@ -185,8 +185,14 @@ export function createApiRouter({
             sendResult(res, result);
         } catch (error) {
             const status = error instanceof ApiError ? error.status : 500;
-            if (status === 500) await reportError?.(error, { method, path: url.pathname });
             sendJson(res, status, { ok: false, error: error?.message || String(error) });
+            if (status === 500 && reportError) {
+                try {
+                    await reportError(error, { method, path: url.pathname });
+                } catch {
+                    /* diagnostics must never affect the HTTP response */
+                }
+            }
         }
         return true;
     };
