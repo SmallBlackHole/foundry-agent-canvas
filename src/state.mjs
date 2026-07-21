@@ -5,6 +5,7 @@ import {
     getIdentity,
     listSubscriptions,
     listProjects,
+    resolveProjectLocation,
 } from "./foundry.mjs";
 import {
     emptySelection,
@@ -61,15 +62,27 @@ export function defaultState() {
 export function applyInput(state, input) {
     if (!input || typeof input !== "object") return state;
     if (typeof input.agentName === "string" && input.agentName.trim()) state.agentName = input.agentName.trim();
-    const endpoint = typeof input.projectEndpoint === "string" && input.projectEndpoint.trim()
-        ? input.projectEndpoint.trim()
-        : state.selection.project?.endpoint || "";
-    const name = typeof input.projectName === "string" && input.projectName.trim()
+    const current = normalizeSelection(state.selection);
+    const hasEndpoint = typeof input.projectEndpoint === "string" && !!input.projectEndpoint.trim();
+    const hasName = typeof input.projectName === "string" && !!input.projectName.trim();
+    const endpoint = hasEndpoint
+        ? input.projectEndpoint.trim().replace(/\/+$/, "")
+        : current.project?.endpoint || "";
+    const name = hasName
         ? input.projectName.trim()
-        : state.selection.project?.name || "";
-    if (endpoint || name) {
-        state.selection = selectProject(state.selection, {
-            ...state.selection.project,
+        : current.project?.name || "";
+    if (hasEndpoint && endpoint !== (current.project?.endpoint || "")) {
+        state.selection = selectProject(emptySelection(), {
+            endpoint,
+            name: hasName ? name : "",
+            location: "",
+            resourceGroup: "",
+            accountName: "",
+            subscriptionId: "",
+        });
+    } else if (endpoint || name) {
+        state.selection = selectProject(current, {
+            ...current.project,
             endpoint,
             name,
         });
@@ -80,37 +93,90 @@ export function applyInput(state, input) {
     return state;
 }
 
-export async function bootstrapInstance(entry) {
-    const identity = await getIdentity();
-    let selection = emptySelection();
-    let resolved = false;
+export async function enrichProjectLocation(
+    entry,
+    resolveLocation = resolveProjectLocation,
+    persist = saveSelection,
+) {
+    const captured = normalizeSelection(entry?.state?.selection);
+    const endpoint = captured.project?.endpoint || "";
+    const subscriptionId = captured.subscription.id;
+    if (!endpoint) return "";
+    if (captured.project.location) return captured.project.location;
+
+    const location = await resolveLocation(endpoint, subscriptionId);
+    if (!location || !entry) return location || "";
+
+    const current = normalizeSelection(entry.state.selection);
+    if (
+        current.subscription.id !== subscriptionId
+        || current.project?.endpoint !== endpoint
+    ) {
+        return "";
+    }
+
+    const selection = selectProject(current, {
+        ...current.project,
+        location,
+    });
+    entry.state.selection = selection;
+    persist(selection);
+    return selection.project.location;
+}
+
+export async function bootstrapInstance(entry, dependencies = {}) {
+    const services = {
+        getIdentity,
+        listSubscriptions,
+        listProjects,
+        loadSelection,
+        saveSelection,
+        ...dependencies,
+    };
+    const identity = await services.getIdentity();
+    const seed = normalizeSelection(entry.state.selection);
+    let selection = seed;
+    let resolved = !!selection.project;
     if (identity.signedIn) {
-        const saved = loadSelection();
+        const saved = normalizeSelection(services.loadSelection());
         if (saved?.subscription.id) {
-            selection = saved;
             if (saved.project) {
-                const projects = await listProjects(saved.subscription.id);
+                selection = saved;
+                resolved = true;
+                const projects = await services.listProjects(saved.subscription.id);
                 if (projects.ok) {
                     const endpoint = saved.project.endpoint.replace(/\/+$/, "");
                     const match = projects.data.find((item) => item.endpoint.replace(/\/+$/, "") === endpoint);
                     selection = selectProject(selection, match, selection.subscription);
-                    saveSelection(selection);
+                    resolved = !!selection.project;
+                    services.saveSelection(selection);
+                }
+            } else {
+                const projects = await services.listProjects(saved.subscription.id);
+                if (projects.ok) {
+                    selection = selectSubscription(emptySelection(), saved.subscription);
+                    if (projects.data.length) {
+                        selection = selectProject(selection, projects.data[0], saved.subscription);
+                    }
+                    resolved = !!selection.project;
+                    services.saveSelection(selection);
                 }
             }
-            resolved = !!selection.project;
         } else {
-            const subscriptions = await listSubscriptions();
+            const subscriptions = await services.listSubscriptions();
             const subscription = subscriptions.ok
                 ? subscriptions.data.find((item) => item.isDefault) || subscriptions.data[0]
                 : null;
             if (subscription) {
-                selection = selectSubscription(selection, subscription);
-                const projects = await listProjects(subscription.id);
-                if (projects.ok && projects.data.length) {
-                    selection = selectProject(selection, projects.data[0], subscription);
-                    resolved = true;
+                const projects = await services.listProjects(subscription.id);
+                if (projects.ok) {
+                    selection = selectSubscription(emptySelection(), subscription);
+                    if (projects.data.length) {
+                        selection = selectProject(selection, projects.data[0], subscription);
+                    }
+                    resolved = !!selection.project;
+                    services.saveSelection(selection);
                 }
-                saveSelection(selection);
             }
         }
     }

@@ -28,6 +28,8 @@ function normalizeProject(value, subscriptionId) {
     const endpoint = text(value.endpoint ?? value.projectEndpoint).replace(/\/+$/, "");
     const parsed = endpointIdentity(endpoint);
     const name = text(value.name ?? value.projectName ?? value.project) || parsed.name;
+    const hasCanonicalAccount = Object.prototype.hasOwnProperty.call(value, "accountName")
+        || Object.prototype.hasOwnProperty.call(value, "account");
     if (!name && !endpoint) return null;
     return {
         subscriptionId: text(value.subscriptionId) || subscriptionId,
@@ -35,7 +37,9 @@ function normalizeProject(value, subscriptionId) {
         endpoint,
         location: text(value.location ?? value.projectLocation),
         resourceGroup: text(value.resourceGroup ?? value.rg ?? value.projectRg),
-        accountName: text(value.accountName ?? value.account ?? value.projectAccount) || parsed.accountName,
+        accountName: hasCanonicalAccount
+            ? text(value.accountName ?? value.account)
+            : text(value.projectAccount) || parsed.accountName,
     };
 }
 

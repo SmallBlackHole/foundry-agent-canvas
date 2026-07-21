@@ -9,7 +9,6 @@ import {
     listGuardrails,
     listSkills,
     getToken,
-    resolveProjectLocation,
     isHostedAgentRegionSupported,
     HOSTED_AGENT_REGIONS,
     HOSTED_AGENT_REGIONS_DOC,
@@ -23,7 +22,14 @@ import {
     signInCancel,
     signOut,
 } from "./foundry.mjs";
-import { saveSelection, clearSelection, servers, defaultState, bootstrapInstance } from "./state.mjs";
+import {
+    saveSelection,
+    clearSelection,
+    servers,
+    defaultState,
+    enrichProjectLocation,
+    bootstrapInstance,
+} from "./state.mjs";
 import {
     emptySelection,
     selectProject,
@@ -290,14 +296,7 @@ export function createRequestHandler(
             let location = selection.project.location;
             if (!location) {
                 try {
-                    location = await resolveProjectLocation(ep, selection.subscription.id);
-                    if (location && entry) {
-                        entry.state.selection = selectProject(selection, {
-                            ...selection.project,
-                            location,
-                        });
-                        saveSelection(entry.state.selection);
-                    }
+                    location = await enrichProjectLocation(entry);
                 } catch {
                     location = "";
                 }

@@ -118,6 +118,10 @@ const state = {
 };
 let sessionSignedIn = true;
 
+function restoreInitialSelection() {
+    if (!state.selection.subscription.id) state.selection = initialSelection();
+}
+
 function mockBool(url, key, fallback = true) {
     const raw = url.searchParams.get(key);
     if (raw == null) return fallback;
@@ -465,6 +469,7 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/bootstrap") {
         const id = mockIdentity(url);
+        if (id.signedIn) restoreInitialSelection();
         const selection = mockSelection(url);
         return sendJson(res, 200, {
             ok: true,
@@ -536,6 +541,7 @@ async function handleApi(req, res, url) {
 
     if (method === "GET" && path === "/api/signin/status") {
         sessionSignedIn = true;
+        restoreInitialSelection();
         return sendJson(res, 200, { ok: true, status: "done", identity });
     }
 
