@@ -54,7 +54,7 @@ export const servers = new Map(); // instanceId -> { server, url, state, sseClie
 export function defaultState() {
     return {
         agentName: "",
-        initIdea: "",
+        initPrompt: "",
         selection: emptySelection(),
         model: { name: "", color: "#10a37f" },
     };
@@ -63,7 +63,7 @@ export function defaultState() {
 export function applyInput(state, input) {
     if (!input || typeof input !== "object") return state;
     if (typeof input.agentName === "string" && input.agentName.trim()) state.agentName = input.agentName.trim();
-    if (typeof input.idea === "string" && input.idea.trim()) state.initIdea = input.idea.trim();
+    if (typeof input.idea === "string" && input.idea.trim()) state.initPrompt = input.idea.trim();
     const current = normalizeSelection(state.selection);
     const hasEndpoint = typeof input.projectEndpoint === "string" && !!input.projectEndpoint.trim();
     const hasName = typeof input.projectName === "string" && !!input.projectName.trim();

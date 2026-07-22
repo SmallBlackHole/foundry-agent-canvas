@@ -176,8 +176,8 @@ const session = await joinSession({
                     handler: async (ctx) => {
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
-                        entry.state.initIdea = ctx.input.idea;
-                        pushFrame(entry, { type: "setIdea", idea: ctx.input.idea });
+                        entry.state.initPrompt = ctx.input.idea;
+                        pushFrame(entry, { type: "setPrompt", prompt: ctx.input.idea });
                         return { ok: true, idea: ctx.input.idea };
                     },
                 },

@@ -412,13 +412,12 @@ function sentenceCase(text) {
 }
 
 function initPromptText() {
-    const suppliedPurpose = (state.init.idea || "").trim();
-    const purpose = suppliedPurpose || "Perform one clearly defined task from the user's text input";
-    const separator = /[.!?]$/.test(purpose) ? " " : ". ";
+    const purpose =
+        (state.init.idea || "").trim() ||
+        "perform one clearly defined task from the user's text input";
     return (
-        purpose +
-        separator +
-        "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
+        sentenceCase(purpose) +
+        ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
         "Then run it locally to make sure it runs successfully."
     );
 }
@@ -467,6 +466,15 @@ function setInitPreviewPrompt(text) {
     }
 }
 
+function setInitUserPrompt(prompt) {
+    if (!prompt || !prompt.trim()) return;
+    state.init.idea = "";
+    state.init.open = true;
+    setInitPreviewPrompt(prompt.trim());
+    renderInit();
+    toast("Task added \u2713");
+}
+
 // Seed the textarea from durable state. When promptDirty is true, the value is
 // owned by state.init.promptText; do not read from a newly cloned empty textarea.
 function syncInitPrompt() {
@@ -487,7 +495,7 @@ function syncInitPrompt() {
 // preserving any manual edits after the standard Foundry instruction.
 function setInitIdea(idea) {
     if (!idea || !idea.trim()) return;
-    const purpose = idea.trim();
+    const purpose = idea.trim().replace(/[.!?]+$/, "");
     state.init.idea = purpose;
     state.init.open = true;
     state.init.startOption = "inspireIdea";
@@ -495,13 +503,12 @@ function setInitIdea(idea) {
     const ta = document.getElementById("initPrompt");
     const current = (ta ? ta.value : state.init.promptText) || initPromptText();
     const re =
-        /^.+?[.!?]\s+Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
-    const separator = /[.!?]$/.test(purpose) ? " " : ". ";
+        /^.+?\. Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
     const next = re.test(current)
         ? current.replace(
               re,
-              purpose +
-                  separator +
+              sentenceCase(purpose) +
+                  ". " +
                   "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol.",
           )
         : initPromptText();
@@ -1573,7 +1580,7 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#inspireIdea")) {
-        setInitIdea(sentenceCase(randomInspirationIdea()));
+        setInitIdea(randomInspirationIdea());
         return;
     }
     if (e.target.closest("#decideIdea")) {
@@ -1792,7 +1799,10 @@ async function init() {
     if (stateResult.status === "fulfilled") {
         const s = stateResult.value;
         if (s.agentName) state.agentName = s.agentName;
-        if (s.initIdea) state.init.idea = s.initIdea;
+        if (s.initPrompt) {
+            state.init.promptText = s.initPrompt;
+            state.init.promptDirty = true;
+        }
         if (s.selection) state.selection = normalizeSelection(s.selection);
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
@@ -1838,7 +1848,7 @@ async function init() {
         es.addEventListener("message", (ev) => {
             try {
                 const msg = JSON.parse(ev.data);
-                if (msg.type === "setIdea" && msg.idea) setInitIdea(msg.idea);
+                if (msg.type === "setPrompt" && msg.prompt) setInitUserPrompt(msg.prompt);
                 else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
                 else if (msg.type === "deploymentState" && msg.deployment) {
                     hostedAgentDeploymentRequest += 1;

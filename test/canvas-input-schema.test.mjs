@@ -34,7 +34,7 @@ test("applyInput accepts but ignores a compatibility page input", () => {
     });
     assert.equal("page" in state, false);
     assert.equal(state.agentName, "Compat");
-    assert.equal(state.initIdea, "compare each query result with yesterday and email the analysis");
+    assert.equal(state.initPrompt, "compare each query result with yesterday and email the analysis");
     assert.deepEqual(state.selection, {
         subscription: { id: "", name: "" },
         project: null,
@@ -49,6 +49,6 @@ test("canvas input schema declares the optional idea used to prefill a clear tas
 
     assert.match(extensionSource, /idea: \{\s*type: "string"/);
     assert.match(extensionSource, /Exact original user prompt to prefill/);
-    assert.match(appSource, /if \(s\.initIdea\) state\.init\.idea = s\.initIdea/);
-    assert.match(appSource, /\(state\.init\.idea \|\| ""\)\.trim\(\)/);
+    assert.match(appSource, /state\.init\.promptText = s\.initPrompt/);
+    assert.match(appSource, /state\.init\.promptDirty = true/);
 });
