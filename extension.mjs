@@ -14,6 +14,10 @@ import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/work
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
 import {
+    FOUNDRY_AGENT_CANVAS_ID,
+    FOUNDRY_AGENT_CANVAS_SYSTEM_MESSAGE,
+} from "./src/agent-canvas-system-message.mjs";
+import {
     createPendingRefreshManager,
     WORKSPACE_REFRESH,
     DEPLOYMENT_REFRESH,
@@ -112,6 +116,10 @@ async function startServer(instanceId, session) {
 }
 
 const session = await joinSession({
+    systemMessage: {
+        mode: "append",
+        content: FOUNDRY_AGENT_CANVAS_SYSTEM_MESSAGE,
+    },
     hooks: {
         onSessionStart: (input) => {
             workspaceRoot.update(input.workingDirectory);
@@ -122,7 +130,7 @@ const session = await joinSession({
     },
     canvases: [
         createCanvas({
-            id: "agent-builder",
+            id: FOUNDRY_AGENT_CANVAS_ID,
             displayName: "Foundry Agent Canvas",
             description:
                 "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, then deploy it as a Foundry hosted agent.",
@@ -139,6 +147,11 @@ const session = await joinSession({
                         description: 'Deprecated and ignored; retained only so older inputs with page:"build" still validate.',
                     },
                     agentName: { type: "string", description: "Name shown in the builder header." },
+                    idea: {
+                        type: "string",
+                        description:
+                            "Concrete task or purpose to prefill in the hosted-agent creation prompt. Omit when the user has not provided a clear task.",
+                    },
                     model: { type: "string", description: "Currently selected model name." },
                     projectEndpoint: {
                         type: "string",

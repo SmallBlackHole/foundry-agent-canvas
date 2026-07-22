@@ -27,11 +27,28 @@ test("canvas input schema retains page as a deprecated compatibility property", 
 });
 
 test("applyInput accepts but ignores a compatibility page input", () => {
-    const state = applyInput(defaultState(), { page: "build", agentName: "Compat" });
+    const state = applyInput(defaultState(), {
+        page: "build",
+        agentName: "Compat",
+        idea: "compare each query result with yesterday and email the analysis",
+    });
     assert.equal("page" in state, false);
     assert.equal(state.agentName, "Compat");
+    assert.equal(state.initIdea, "compare each query result with yesterday and email the analysis");
     assert.deepEqual(state.selection, {
         subscription: { id: "", name: "" },
         project: null,
     });
+});
+
+test("canvas input schema declares the optional idea used to prefill a clear task", async () => {
+    const [extensionSource, appSource] = await Promise.all([
+        readFile(new URL("../extension.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    ]);
+
+    assert.match(extensionSource, /idea: \{\s*type: "string"/);
+    assert.match(extensionSource, /Concrete task or purpose to prefill/);
+    assert.match(appSource, /if \(s\.initIdea\) state\.init\.idea = s\.initIdea/);
+    assert.match(appSource, /\(state\.init\.idea \|\| ""\)\.trim\(\)/);
 });

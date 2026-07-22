@@ -1777,6 +1777,7 @@ async function init() {
     if (stateResult.status === "fulfilled") {
         const s = stateResult.value;
         if (s.agentName) state.agentName = s.agentName;
+        if (s.initIdea) state.init.idea = s.initIdea;
         if (s.selection) state.selection = normalizeSelection(s.selection);
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
