@@ -84,7 +84,6 @@ test("workspace transition reaches the live client once even when it connects la
         type: "workspaceState",
         hasAgent: true,
         sections: {
-            initOpen: false,
             resourcesOpen: true,
             deployOpen: true,
         },
@@ -128,13 +127,11 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
     const context = {
         info: {
             hasAgent: true,
-            sections: { initOpen: false, resourcesOpen: true, deployOpen: true },
+            sections: { resourcesOpen: true, deployOpen: true },
         },
-        applyInitDefaults(value) {
-            calls.push(["sections", value.sections]);
-        },
-        renderInit() {
-            calls.push(["init"]);
+        state: {
+            init: { open: true },
+            folds: { resources: false, deploy: false },
         },
         renderFolds() {
             calls.push(["folds"]);
@@ -144,11 +141,9 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
     vm.runInNewContext(`${functionSource}\nresult = applyWorkspaceTransition(info);`, context);
 
     assert.equal(context.result, true);
-    assert.deepEqual(calls, [
-        ["sections", context.info.sections],
-        ["init"],
-        ["folds"],
-    ]);
+    assert.equal(context.state.init.open, true);
+    assert.deepEqual(context.state.folds, { resources: true, deploy: true });
+    assert.deepEqual(calls, [["folds"]]);
 });
 
 test("creation prompt no longer asks Copilot to invoke a canvas action", async () => {
@@ -170,19 +165,27 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
     assert.match(context.result, /Then run it locally to make sure it runs successfully/);
 });
 
-test("the client tags the create prompt so the extension can auto-refresh", async () => {
+test("the client sends the create prompt without a pending workspace refresh", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-    // The init "send to chat" call must pass the workspace refresh kind.
-    assert.match(source, /sendToChat\(withProjectContext\(text\), "workspace"\)/);
+    assert.match(source, /sendToChat\(withProjectContext\(text\)\)/);
+    assert.doesNotMatch(source, /sendToChat\(withProjectContext\(text\), "workspace"\)/);
+});
+
+test("the client collapses the create section immediately after sending", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const handler = source.match(/if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/)?.[0];
+    assert.ok(handler);
+    assert.match(
+        handler,
+        /sendToChat\(withProjectContext\(text\)\);\s*collapseInit\(\);/,
+    );
 });
 
 test("canvas retains the workspace refresh action as a manual/recovery path", async () => {
     const source = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
 
-    // Kept as a manual/recovery path alongside the idle-driven manager.
     assert.match(source, /name: "refreshWorkspaceState"/);
     assert.match(source, /description: "Refresh the canvas workspace state after the hosted-agent code is created\."/);
     assert.match(source, /return refreshWorkspaceState\(entry, resolveWorkspaceRoot\)/);
-    // The same refresh function is also wired into the pending-refresh manager.
-    assert.match(source, /refreshWorkspace: refreshWorkspaceState/);
+    assert.doesNotMatch(source, /refreshWorkspace: refreshWorkspaceState/);
 });

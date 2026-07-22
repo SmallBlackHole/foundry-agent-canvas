@@ -397,8 +397,8 @@ function applyInitDefaults(info) {
 
 function applyWorkspaceTransition(info) {
     if (!info?.hasAgent || !info.sections) return false;
-    applyInitDefaults(info);
-    renderInit();
+    state.folds.resources = info.sections.resourcesOpen === true;
+    state.folds.deploy = info.sections.deployOpen === true;
     renderFolds();
     return true;
 }
@@ -532,6 +532,12 @@ function renderInit() {
     syncInitPrompt();
     selectStartOption(state.init.startOption || "inspireIdea");
 }
+
+function collapseInit() {
+    state.init.open = false;
+    renderInit();
+}
+
 function menuMsg(text, variant) {
     const el = document.createElement("div");
     el.className = "menu-msg" + (variant ? " is-" + variant : "");
@@ -1554,7 +1560,10 @@ root.addEventListener("click", async (e) => {
         if (!remindProjectSelection(e)) return;
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
-        if (text) sendToChat(withProjectContext(text), "workspace");
+        if (text) {
+            sendToChat(withProjectContext(text));
+            collapseInit();
+        }
         return;
     }
     if (e.target.closest("#inspireIdea")) {

@@ -19,7 +19,6 @@ import {
 } from "./src/agent-canvas-system-message.mjs";
 import {
     createPendingRefreshManager,
-    WORKSPACE_REFRESH,
     DEPLOYMENT_REFRESH,
 } from "./src/pending-refresh.mjs";
 
@@ -27,7 +26,6 @@ const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
-const REFRESH_KINDS = new Set([WORKSPACE_REFRESH, DEPLOYMENT_REFRESH]);
 const openInstances = new Set();
 const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
 let markWorkspaceRootReady;
@@ -40,13 +38,11 @@ const resolveWorkspaceRoot = async () => {
     return workspaceRoot.resolve();
 };
 
-// Drives the automatic canvas refresh after a canvas-originated create/deploy.
+// Drives the automatic canvas refresh after a canvas-originated deployment.
 // The client marks the pending kind when it sends the prompt; on session.idle we
-// verify real state and call the refresh functions directly for the instance.
+// verify real state and refresh the relevant open canvas instance.
 const pendingRefresh = createPendingRefreshManager({
     servers,
-    workspaceRootFn: resolveWorkspaceRoot,
-    refreshWorkspace: refreshWorkspaceState,
     inspectDeployment: (entry) => selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),
     refreshDeployment: refreshDeploymentState,
     log: (message, options) => session.log(message, options),
@@ -104,9 +100,7 @@ async function startServer(instanceId, session) {
             workspaceRootFn: resolveWorkspaceRoot,
             onCanvasOpen: syncFoundrySkill,
             waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
-            markPendingRefresh: (kind) => {
-                if (REFRESH_KINDS.has(kind)) pendingRefresh.mark(instanceId, kind);
-            },
+            markPendingRefresh: (kind) => pendingRefresh.mark(instanceId, kind),
         })
     );
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

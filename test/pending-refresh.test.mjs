@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
     createPendingRefreshManager,
-    WORKSPACE_REFRESH,
     DEPLOYMENT_REFRESH,
 } from "../src/pending-refresh.mjs";
 
@@ -16,8 +15,6 @@ function managerWith(overrides = {}) {
     const servers = overrides.servers || new Map();
     const manager = createPendingRefreshManager({
         servers,
-        workspaceRootFn: async () => "root",
-        refreshWorkspace: overrides.refreshWorkspace || (async () => ({ hasAgent: false })),
         inspectDeployment: overrides.inspectDeployment || (async () => ({ ok: true, deployed: false, reason: "not_deployed" })),
         refreshDeployment: overrides.refreshDeployment || (async () => ({})),
         log: async (message, options) => logs.push({ message, options }),
@@ -28,10 +25,10 @@ function managerWith(overrides = {}) {
 
 test("mark ignores unknown kinds and empty instance ids", () => {
     const { manager } = managerWith();
-    assert.equal(manager.mark("", WORKSPACE_REFRESH), false);
+    assert.equal(manager.mark("", DEPLOYMENT_REFRESH), false);
     assert.equal(manager.mark("canvas-1", "bogus"), false);
     assert.equal(manager.hasPending(), false);
-    assert.equal(manager.mark("canvas-1", WORKSPACE_REFRESH), true);
+    assert.equal(manager.mark("canvas-1", DEPLOYMENT_REFRESH), true);
     assert.equal(manager.hasPending(), true);
 });
 
@@ -47,36 +44,6 @@ test("idle with no pending work does nothing", async () => {
     });
     await manager.handleSessionIdle();
     assert.equal(inspected, 0);
-});
-
-test("workspace refresh clears only once the agent code is verified present", async () => {
-    const servers = new Map([["canvas-1", aliveEntry()]]);
-    let hasAgent = false;
-    let calls = 0;
-    const { manager } = managerWith({
-        servers,
-        refreshWorkspace: async () => {
-            calls += 1;
-            return { hasAgent };
-        },
-    });
-
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
-
-    // First idle: agent code not there yet — stays pending.
-    await manager.handleSessionIdle();
-    assert.equal(calls, 1);
-    assert.equal(manager.hasPending(), true);
-
-    // Second idle after the agent code appears — verified, cleared.
-    hasAgent = true;
-    await manager.handleSessionIdle();
-    assert.equal(calls, 2);
-    assert.equal(manager.hasPending(), false);
-
-    // No further work once cleared.
-    await manager.handleSessionIdle();
-    assert.equal(calls, 2);
 });
 
 test("intermediate idle states keep the deployment pending without pushing a frame", async () => {
@@ -149,13 +116,13 @@ test("pending work is bounded by the attempt budget", async () => {
     const { manager, logs } = managerWith({
         servers,
         maxAttempts: 3,
-        refreshWorkspace: async () => {
+        inspectDeployment: async () => {
             calls += 1;
-            return { hasAgent: false };
+            return { ok: true, deployed: false, reason: "creating" };
         },
     });
 
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
     for (let i = 0; i < 5; i += 1) await manager.handleSessionIdle();
 
     assert.equal(calls, 3);
@@ -168,13 +135,13 @@ test("stale (closed) canvas instances are dropped without running a refresh", as
     let calls = 0;
     const { manager } = managerWith({
         servers,
-        refreshWorkspace: async () => {
+        inspectDeployment: async () => {
             calls += 1;
-            return { hasAgent: true };
+            return { ok: true, deployed: true };
         },
     });
 
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
     await manager.handleSessionIdle();
 
     assert.equal(calls, 0);
@@ -186,13 +153,13 @@ test("a missing canvas entry is treated as stale and cleared", async () => {
     let calls = 0;
     const { manager } = managerWith({
         servers,
-        refreshWorkspace: async () => {
+        inspectDeployment: async () => {
             calls += 1;
-            return { hasAgent: true };
+            return { ok: true, deployed: true };
         },
     });
 
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
     await manager.handleSessionIdle();
 
     assert.equal(calls, 0);
@@ -204,12 +171,12 @@ test("a refresh failure is logged and never rejects the idle handler", async () 
     const { manager, logs } = managerWith({
         servers,
         maxAttempts: 1,
-        refreshWorkspace: async () => {
+        inspectDeployment: async () => {
             throw new Error("boom");
         },
     });
 
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
     await assert.doesNotReject(manager.handleSessionIdle());
 
     assert.ok(logs.some((l) => /boom/.test(l.message) && l.options?.level === "error"));
@@ -227,16 +194,16 @@ test("an in-flight op is not started concurrently by a second idle", async () =>
     });
     const { manager } = managerWith({
         servers,
-        refreshWorkspace: async () => {
+        inspectDeployment: async () => {
             active += 1;
             maxActive = Math.max(maxActive, active);
             await gate;
             active -= 1;
-            return { hasAgent: false };
+            return { ok: true, deployed: false, reason: "creating" };
         },
     });
 
-    manager.mark("canvas-1", WORKSPACE_REFRESH);
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
     const first = manager.handleSessionIdle();
     // Second idle arrives while the first refresh is still awaiting.
     const second = manager.handleSessionIdle();

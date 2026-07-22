@@ -31,7 +31,10 @@ export async function refreshWorkspaceState(
         const frame = {
             type: WORKSPACE_STATE_FRAME_TYPE,
             hasAgent: true,
-            sections,
+            sections: {
+                resourcesOpen: sections.resourcesOpen,
+                deployOpen: sections.deployOpen,
+            },
         };
         if (!entry.sseClients?.size || push(entry, frame) === 0) {
             entry.pendingWorkspaceStateFrame = frame;

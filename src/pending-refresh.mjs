@@ -1,17 +1,14 @@
-// Tracks refresh work that a canvas-originated create/deploy request expects to
-// happen once the agent finishes. Instead of asking the model to invoke a canvas
-// action, the client marks a pending refresh when it sends the prompt; on every
-// `session.idle` we verify the real workspace/deployment state and drive the
-// existing refresh functions directly for the relevant open canvas instance.
+// Tracks deployment refresh work that a canvas-originated request expects to
+// happen once the agent finishes. On every `session.idle` we verify the live
+// deployment state and update the relevant open canvas instance.
 
-export const WORKSPACE_REFRESH = "workspace";
 export const DEPLOYMENT_REFRESH = "deployment";
 
-const REFRESH_KINDS = new Set([WORKSPACE_REFRESH, DEPLOYMENT_REFRESH]);
+const REFRESH_KINDS = new Set([DEPLOYMENT_REFRESH]);
 
 // Upper bound on how many idle cycles we keep re-checking a single pending op
-// before giving up. Keeps live Azure/workspace polling bounded when the agent
-// never reaches the expected state (e.g. the user abandons the deploy).
+// before giving up. Keeps live Azure polling bounded when the agent never
+// reaches the expected state (e.g. the user abandons the deploy).
 const DEFAULT_MAX_ATTEMPTS = 12;
 
 // Deployment result reasons that will not resolve by waiting longer, so we stop
@@ -49,8 +46,6 @@ function isDeploymentDefinitiveFailure(deployment) {
 
 export function createPendingRefreshManager({
     servers,
-    workspaceRootFn,
-    refreshWorkspace,
     inspectDeployment,
     refreshDeployment,
     log = async () => {},
@@ -96,21 +91,6 @@ export function createPendingRefreshManager({
         return false;
     }
 
-    async function runWorkspace(instanceId, entry, op) {
-        const result = await refreshWorkspace(entry, workspaceRootFn);
-        if (result && result.hasAgent) {
-            clear(instanceId, WORKSPACE_REFRESH);
-            return;
-        }
-        if (op.attempts >= maxAttempts) {
-            clear(instanceId, WORKSPACE_REFRESH);
-            await safeLog(
-                `Automatic workspace refresh for canvas ${instanceId} gave up after ${op.attempts} idle checks; hosted-agent code was not detected.`,
-                { level: "warn" },
-            );
-        }
-    }
-
     async function runDeployment(instanceId, entry, op) {
         const deployment = await inspectDeployment(entry);
         if (isDeploymentComplete(deployment)) {
@@ -141,11 +121,7 @@ export function createPendingRefreshManager({
         op.running = true;
         op.attempts += 1;
         try {
-            if (kind === WORKSPACE_REFRESH) {
-                await runWorkspace(instanceId, entry, op);
-            } else if (kind === DEPLOYMENT_REFRESH) {
-                await runDeployment(instanceId, entry, op);
-            }
+            await runDeployment(instanceId, entry, op);
         } catch (err) {
             await safeLog(
                 `Automatic ${kind} refresh failed for canvas ${instanceId}: ${err?.message ?? err}`,
