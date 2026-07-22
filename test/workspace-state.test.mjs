@@ -165,6 +165,19 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
     assert.match(context.result, /Then run it locally to make sure it runs successfully/);
 });
 
+test("creation prompt preserves the exact original user request", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
+    const original =
+        "build a foundry agent to run the powershell scripts under queries folder 7am every day, then follow the analysis methodolgy markdown files";
+    const context = { state: { init: { idea: original } } };
+
+    vm.runInNewContext(`${functionSource}\nresult = initPromptText();`, context);
+
+    assert.equal(context.result.slice(0, original.length), original);
+    assert.match(context.result, new RegExp(`^${original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\. Create`));
+});
+
 test("the client sends the create prompt without a pending workspace refresh", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     assert.match(source, /sendToChat\(withProjectContext\(text\)\)/);

@@ -48,7 +48,7 @@ test("canvas input schema declares the optional idea used to prefill a clear tas
     ]);
 
     assert.match(extensionSource, /idea: \{\s*type: "string"/);
-    assert.match(extensionSource, /Concrete task or purpose to prefill/);
+    assert.match(extensionSource, /Exact original user prompt to prefill/);
     assert.match(appSource, /if \(s\.initIdea\) state\.init\.idea = s\.initIdea/);
     assert.match(appSource, /\(state\.init\.idea \|\| ""\)\.trim\(\)/);
 });

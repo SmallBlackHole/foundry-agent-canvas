@@ -144,7 +144,7 @@ const session = await joinSession({
                     idea: {
                         type: "string",
                         description:
-                            "Concrete task or purpose to prefill in the hosted-agent creation prompt. Omit when the user has not provided a clear task.",
+                            "Exact original user prompt to prefill for a concrete task. Preserve it verbatim; omit when no clear task was provided.",
                     },
                     model: { type: "string", description: "Currently selected model name." },
                     projectEndpoint: {
@@ -160,15 +160,14 @@ const session = await joinSession({
                 {
                     name: "setAgentIdea",
                     description:
-                        "Set the idea shown at the beginning of the builder's starter prompt. Pass one concise " +
-                        "capability clause describing what the agent should do.",
+                        "Set the original user request shown at the beginning of the builder's starter prompt.",
                     inputSchema: {
                         type: "object",
                         properties: {
                             idea: {
                                 type: "string",
                                 description:
-                                    "Concise purpose clause, e.g. 'summarize meeting notes into decisions and action items'.",
+                                    "Exact original user prompt, preserved verbatim without summarizing or rewriting.",
                             },
                         },
                         required: ["idea"],

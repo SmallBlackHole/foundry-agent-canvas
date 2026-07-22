@@ -412,12 +412,13 @@ function sentenceCase(text) {
 }
 
 function initPromptText() {
-    const purpose =
-        (state.init.idea || "").trim() ||
-        "perform one clearly defined task from the user's text input";
+    const suppliedPurpose = (state.init.idea || "").trim();
+    const purpose = suppliedPurpose || "Perform one clearly defined task from the user's text input";
+    const separator = /[.!?]$/.test(purpose) ? " " : ". ";
     return (
-        sentenceCase(purpose) +
-        ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
+        purpose +
+        separator +
+        "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
         "Then run it locally to make sure it runs successfully."
     );
 }
@@ -486,7 +487,7 @@ function syncInitPrompt() {
 // preserving any manual edits after the standard Foundry instruction.
 function setInitIdea(idea) {
     if (!idea || !idea.trim()) return;
-    const purpose = idea.trim().replace(/[.!?]+$/, "");
+    const purpose = idea.trim();
     state.init.idea = purpose;
     state.init.open = true;
     state.init.startOption = "inspireIdea";
@@ -494,12 +495,14 @@ function setInitIdea(idea) {
     const ta = document.getElementById("initPrompt");
     const current = (ta ? ta.value : state.init.promptText) || initPromptText();
     const re =
-        /^.+?\. Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
+        /^.+?[.!?]\s+Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
+    const separator = /[.!?]$/.test(purpose) ? " " : ". ";
     const next = re.test(current)
         ? current.replace(
               re,
-              sentenceCase(purpose) +
-                  ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol.",
+              purpose +
+                  separator +
+                  "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol.",
           )
         : initPromptText();
 
@@ -1567,7 +1570,7 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#inspireIdea")) {
-        setInitIdea(randomInspirationIdea());
+        setInitIdea(sentenceCase(randomInspirationIdea()));
         return;
     }
     if (e.target.closest("#decideIdea")) {
