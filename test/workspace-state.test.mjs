@@ -184,14 +184,35 @@ test("the client sends the create prompt without a pending workspace refresh", a
     assert.doesNotMatch(source, /sendToChat\(withProjectContext\(text\), "workspace"\)/);
 });
 
-test("the client collapses the create section immediately after sending", async () => {
+test("the client opens the build sections immediately after sending", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const handler = source.match(/if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/)?.[0];
+    const functionSource = source.match(/function showBuildSections\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(handler);
+    assert.ok(functionSource);
     assert.match(
         handler,
-        /sendToChat\(withProjectContext\(text\)\);\s*collapseInit\(\);/,
+        /sendToChat\(withProjectContext\(text\)\);\s*showBuildSections\(\);/,
     );
+
+    const calls = [];
+    const context = {
+        state: {
+            init: { open: true },
+            folds: { resources: false, deploy: false },
+        },
+        renderInit() {
+            calls.push("init");
+        },
+        renderFolds() {
+            calls.push("folds");
+        },
+    };
+    vm.runInNewContext(`${functionSource}\nshowBuildSections();`, context);
+
+    assert.equal(context.state.init.open, false);
+    assert.deepEqual(context.state.folds, { resources: true, deploy: true });
+    assert.deepEqual(calls, ["init", "folds"]);
 });
 
 test("canvas retains the workspace refresh action as a manual/recovery path", async () => {

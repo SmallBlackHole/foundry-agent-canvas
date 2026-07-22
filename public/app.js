@@ -536,9 +536,12 @@ function renderInit() {
     selectStartOption(state.init.startOption || "inspireIdea");
 }
 
-function collapseInit() {
+function showBuildSections() {
     state.init.open = false;
+    state.folds.resources = true;
+    state.folds.deploy = true;
     renderInit();
+    renderFolds();
 }
 
 function menuMsg(text, variant) {
@@ -1565,7 +1568,7 @@ root.addEventListener("click", async (e) => {
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) {
             sendToChat(withProjectContext(text));
-            collapseInit();
+            showBuildSections();
         }
         return;
     }
