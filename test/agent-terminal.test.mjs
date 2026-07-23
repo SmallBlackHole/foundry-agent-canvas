@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -7,15 +8,33 @@ import {
     launchAgentTerminal,
 } from "../src/agent-terminal.mjs";
 
-test("builds an azd command with an explicit project directory", () => {
+test("builds an azd command with a native absolute project directory", () => {
+    const projectDir = resolve("workspace", "Agent Projects", "support");
+    const quotedProjectDir = process.platform === "win32"
+        ? `"${projectDir}"`
+        : `'${projectDir}'`;
+
+    assert.equal(
+        buildAgentRunCommand(projectDir),
+        `azd --cwd ${quotedProjectDir} ai agent run --no-inspector`,
+    );
+});
+
+test("quotes Windows project directories", { skip: process.platform !== "win32" }, () => {
     assert.equal(
         buildAgentRunCommand("C:\\workspace\\Agent Projects\\support", "win32"),
         "azd --cwd \"C:\\workspace\\Agent Projects\\support\" ai agent run --no-inspector",
     );
+});
+
+test("quotes POSIX project directories", { skip: process.platform === "win32" }, () => {
     assert.equal(
         buildAgentRunCommand("/workspace/customer's agent", "linux"),
         "azd --cwd '/workspace/customer'\"'\"'s agent' ai agent run --no-inspector",
     );
+});
+
+test("rejects relative project directories", () => {
     assert.throws(
         () => buildAgentRunCommand("relative-agent", "linux"),
         /must be an absolute path/,
@@ -58,12 +77,13 @@ test("opens and retries the terminal with the selected nested project", async ()
             },
         },
     };
+    const alphaProjectDir = resolve("workspace", "apps", "alpha");
     const project = {
-        projectDir: "C:\\workspace\\apps\\alpha",
-        manifestPath: "C:\\workspace\\apps\\alpha\\azure.yaml",
+        projectDir: alphaProjectDir,
+        manifestPath: join(alphaProjectDir, "azure.yaml"),
         projects: [
-            { projectDir: "C:\\workspace\\apps\\alpha" },
-            { projectDir: "C:\\workspace\\apps\\zeta" },
+            { projectDir: alphaProjectDir },
+            { projectDir: resolve("workspace", "apps", "zeta") },
         ],
     };
 
@@ -77,7 +97,7 @@ test("opens and retries the terminal with the selected nested project", async ()
         );
         assert.equal(
             opened[0].input.command,
-            "azd --cwd \"C:\\workspace\\apps\\alpha\" ai agent run --no-inspector",
+            buildAgentRunCommand(alphaProjectDir),
         );
         assert.equal(opened[0].extensionId, "terminal-ext");
 
