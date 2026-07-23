@@ -48,7 +48,7 @@ test("canvas input schema declares the optional idea used to prefill a clear tas
     ]);
 
     assert.match(extensionSource, /idea: \{\s*type: "string"/);
-    assert.match(extensionSource, /Exact original user prompt to prefill/);
+    assert.match(extensionSource, /Exact original user prompt when it describes what the agent will do or produce/);
     assert.match(appSource, /state\.init\.promptText = s\.initPrompt/);
     assert.match(appSource, /state\.init\.promptDirty = true/);
 });

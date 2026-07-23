@@ -144,7 +144,7 @@ const session = await joinSession({
                     idea: {
                         type: "string",
                         description:
-                            "Exact original user prompt to prefill for a concrete task. Preserve it verbatim; omit when no clear task was provided.",
+                            "Exact original user prompt when it describes what the agent will do or produce. Preserve it verbatim; omit for generic requests such as 'create a basic foundry agent'.",
                     },
                     model: { type: "string", description: "Currently selected model name." },
                     projectEndpoint: {
@@ -167,7 +167,7 @@ const session = await joinSession({
                             idea: {
                                 type: "string",
                                 description:
-                                    "Exact original user prompt, preserved verbatim without summarizing or rewriting.",
+                                    "Exact original user prompt describing what the agent will do or produce, preserved verbatim without summarizing or rewriting.",
                             },
                         },
                         required: ["idea"],
