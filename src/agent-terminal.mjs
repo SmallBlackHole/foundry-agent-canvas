@@ -92,8 +92,10 @@ export function buildAgentRunCommand(projectDir, platform = process.platform) {
         ? quoteWindowsArgument(projectDir)
         : quotePosixArgument(projectDir);
     // `--cwd` gives azd the project containing azure.yaml without depending on
-    // the integrated terminal's shell or current directory.
-    return `azd --cwd ${cwd} ai agent run --no-client`;
+    // the integrated terminal's shell or current directory. Keep the older
+    // `--no-inspector` alias for compatibility with azure.ai.agents beta.4;
+    // newer extension versions still accept it.
+    return `azd --cwd ${cwd} ai agent run --no-inspector`;
 }
 
 /**

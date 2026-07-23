@@ -10,11 +10,11 @@ import {
 test("builds an azd command with an explicit project directory", () => {
     assert.equal(
         buildAgentRunCommand("C:\\workspace\\Agent Projects\\support", "win32"),
-        "azd --cwd \"C:\\workspace\\Agent Projects\\support\" ai agent run --no-client",
+        "azd --cwd \"C:\\workspace\\Agent Projects\\support\" ai agent run --no-inspector",
     );
     assert.equal(
         buildAgentRunCommand("/workspace/customer's agent", "linux"),
-        "azd --cwd '/workspace/customer'\"'\"'s agent' ai agent run --no-client",
+        "azd --cwd '/workspace/customer'\"'\"'s agent' ai agent run --no-inspector",
     );
     assert.throws(
         () => buildAgentRunCommand("relative-agent", "linux"),
@@ -77,7 +77,7 @@ test("opens and retries the terminal with the selected nested project", async ()
         );
         assert.equal(
             opened[0].input.command,
-            "azd --cwd \"C:\\workspace\\apps\\alpha\" ai agent run --no-client",
+            "azd --cwd \"C:\\workspace\\apps\\alpha\" ai agent run --no-inspector",
         );
         assert.equal(opened[0].extensionId, "terminal-ext");
 
