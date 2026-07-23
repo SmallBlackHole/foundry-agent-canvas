@@ -8,7 +8,7 @@ import { createRequestHandler } from "../src/routes.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "../src/workspace-root.mjs";
 
 async function testDirectory(t) {
-    const root = await mkdtemp(join(tmpdir(), "foundry-agent-canvas-root-"));
+    const root = await mkdtemp(join(tmpdir(), "microsoft-foundry-root-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     return root;
 }
@@ -28,7 +28,7 @@ function jsonResponse() {
 
 test("prefers the active git root for a user-scoped extension", async (t) => {
     const root = await testDirectory(t);
-    const extensionDir = join(root, "Users", "test", ".copilot", "extensions", "foundry-agent-canvas");
+    const extensionDir = join(root, "Users", "test", ".copilot", "extensions", "microsoft-foundry");
     const cwd = join(root, "workspace", "task-agent");
     const gitRoot = join(root, "workspace");
     await mkdir(extensionDir, { recursive: true });
@@ -44,7 +44,7 @@ test("prefers the active git root for a user-scoped extension", async (t) => {
 
 test("uses the active cwd when a session-scoped extension has no git root", async (t) => {
     const root = await testDirectory(t);
-    const extensionDir = join(root, ".copilot", "session-state", "session-id", "extensions", "foundry-agent-canvas");
+    const extensionDir = join(root, ".copilot", "session-state", "session-id", "extensions", "microsoft-foundry");
     const cwd = join(root, "workspace");
     await mkdir(extensionDir, { recursive: true });
 
@@ -71,7 +71,7 @@ test("prefers the active workspace for a plugin-contributed extension", async (t
 
 test("falls back to the repository for a project-scoped extension", async (t) => {
     const root = await testDirectory(t);
-    const extensionDir = join(root, ".github", "extensions", "foundry-agent-canvas");
+    const extensionDir = join(root, ".github", "extensions", "microsoft-foundry");
     await mkdir(extensionDir, { recursive: true });
 
     const workspaceRoot = createWorkspaceRootResolver({ extensionDir, fallbackCwd: join(root, "wrong-cwd") });
@@ -137,7 +137,7 @@ test("keeps a live context change received during reload hydration", async (t) =
 
 test("project init resolves a reloaded user extension before another prompt", async (t) => {
     const root = await testDirectory(t);
-    const extensionDir = join(root, "Users", "test", ".copilot", "extensions", "foundry-agent-canvas");
+    const extensionDir = join(root, "Users", "test", ".copilot", "extensions", "microsoft-foundry");
     const workspace = join(root, "hosted-agent-sample");
     const cwd = join(workspace, "task-agent");
     const agentDir = join(cwd, "agent-framework-agent-basic-responses");

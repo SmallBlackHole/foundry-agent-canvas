@@ -35,8 +35,8 @@ jobs:
           set -euo pipefail
           SHORT_SHA=$(git rev-parse --short HEAD)
           gh release delete nightly --yes --cleanup-tag || true
-          gh release create nightly dist/foundry-agent-canvas.zip \
+          gh release create nightly dist/microsoft-foundry.zip \
             --title "Nightly build ($SHORT_SHA)" \
-            --notes "Automated build from \`main\` @ ${{ github.sha }}. Download \`foundry-agent-canvas.zip\` and unzip it into \`.github/extensions/foundry-agent-canvas/\` in your project root." \
+            --notes "Automated build from \`main\` @ ${{ github.sha }}. Download \`microsoft-foundry.zip\` and unzip it into \`.github/extensions/microsoft-foundry/\` in your project root." \
             --prerelease \
             --target "${{ github.sha }}"

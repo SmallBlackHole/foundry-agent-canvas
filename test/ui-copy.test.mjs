@@ -2,6 +2,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+test("extension branding uses Microsoft Foundry", async () => {
+    const files = await Promise.all([
+        readFile(new URL("../extension.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../src/agent-canvas-system-message.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    ]);
+    const copy = files.join("\n");
+
+    assert.match(copy, /Microsoft Foundry/);
+    assert.doesNotMatch(copy, /Foundry Agent Canvas/);
+    assert.doesNotMatch(copy, /FOUNDRY_AGENT_CANVAS/);
+});
+
 test("workflow headings use sentence case and hosted agent remains lowercase", async () => {
     const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
 

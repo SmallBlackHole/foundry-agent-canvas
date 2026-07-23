@@ -14,8 +14,8 @@ import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/work
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
 import {
-    FOUNDRY_AGENT_CANVAS_ID,
-    FOUNDRY_AGENT_CANVAS_SYSTEM_MESSAGE,
+    MICROSOFT_FOUNDRY_CANVAS_ID,
+    MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
 } from "./src/agent-canvas-system-message.mjs";
 import {
     createPendingRefreshManager,
@@ -112,7 +112,7 @@ async function startServer(instanceId, session) {
 const session = await joinSession({
     systemMessage: {
         mode: "append",
-        content: FOUNDRY_AGENT_CANVAS_SYSTEM_MESSAGE,
+        content: MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
     },
     hooks: {
         onSessionStart: (input) => {
@@ -124,8 +124,8 @@ const session = await joinSession({
     },
     canvases: [
         createCanvas({
-            id: FOUNDRY_AGENT_CANVAS_ID,
-            displayName: "Foundry Agent Canvas",
+            id: MICROSOFT_FOUNDRY_CANVAS_ID,
+            displayName: "Microsoft Foundry",
             description:
                 "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, then deploy it as a Foundry hosted agent.",
             inputSchema: {
@@ -219,7 +219,7 @@ const session = await joinSession({
                 }
                 openInstances.add(ctx.instanceId);
                 applyInput(entry.state, ctx.input);
-                return { title: "Foundry Agent Canvas", url: entry.url, status: "Build" };
+                return { title: "Microsoft Foundry", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
                 // Keep the loopback server alive for this provider process. The

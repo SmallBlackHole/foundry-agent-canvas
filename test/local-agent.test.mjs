@@ -12,7 +12,7 @@ import {
 } from "../src/local-agent.mjs";
 
 async function testWorkspace(t) {
-    const root = await mkdtemp(join(tmpdir(), "foundry-agent-canvas-"));
+    const root = await mkdtemp(join(tmpdir(), "microsoft-foundry-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     return root;
 }

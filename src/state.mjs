@@ -16,7 +16,7 @@ import {
 } from "../public/selection-state.js";
 
 const COPILOT_HOME = process.env.COPILOT_HOME || join(homedir(), ".copilot");
-const STATE_DIR = join(COPILOT_HOME, "extension-state", "foundry-agent-canvas");
+const STATE_DIR = join(COPILOT_HOME, "plugin-data", "microsoft-foundry");
 const STATE_FILE = join(STATE_DIR, "state.json");
 
 export function loadSelection() {

@@ -1,4 +1,4 @@
-// Standalone browser preview for the Foundry Agent Canvas.
+// Standalone browser preview for the Microsoft Foundry canvas.
 //
 // This intentionally does not import extension.mjs: the real extension entry
 // depends on @github/copilot-sdk/extension, which is provided by the Copilot
@@ -593,7 +593,7 @@ const server = createServer(handle);
 server.listen(PORT, HOST, () => {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : PORT;
-    console.log(`Foundry Agent Canvas preview: http://${HOST}:${port}/`);
+    console.log(`Microsoft Foundry canvas preview: http://${HOST}:${port}/`);
     console.log("Preview mode stubs Copilot chat, Azure sign-in, Foundry writes, and Agent Inspector startup.");
     if (SSE_HEARTBEAT_MS === 0) {
         console.log("[preview] SSE heartbeat DISABLED (--sse-heartbeat 0) — idle /events may be dropped.");

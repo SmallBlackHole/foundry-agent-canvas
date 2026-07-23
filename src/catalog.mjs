@@ -1,4 +1,4 @@
-// Catalog data + chat-prompt templates for the Foundry Agent Canvas canvas.
+// Catalog data + chat-prompt templates for the Microsoft Foundry canvas.
 // Kept separate from the wiring so the renderer/server can stay focused.
 
 // Picking a model that already has a deployment in the selected project.

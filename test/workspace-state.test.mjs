@@ -8,7 +8,7 @@ import vm from "node:vm";
 import { flushPendingWorkspaceState, refreshWorkspaceState } from "../src/workspace-state.mjs";
 
 async function testDirectory(t) {
-    const root = await mkdtemp(join(tmpdir(), "foundry-agent-canvas-state-"));
+    const root = await mkdtemp(join(tmpdir(), "microsoft-foundry-state-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     return root;
 }
