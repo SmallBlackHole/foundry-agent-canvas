@@ -11,7 +11,14 @@
         "deployed",
         "agentMetadata",
         "agentError",
+        "regionSupported",
     ];
+
+    const initialUrl = new URL(window.location.href);
+    if (initialUrl.searchParams.has("region")) {
+        initialUrl.searchParams.delete("region");
+        window.history.replaceState(null, "", initialUrl);
+    }
 
     const originalFetch = window.fetch.bind(window);
 
@@ -68,6 +75,7 @@
             deployed: boolValue(params, "deployed"),
             agentMetadata: boolValue(params, "agentMetadata"),
             agentError: params.get("agentError") === "true",
+            regionSupported: boolValue(params, "regionSupported"),
         };
     }
 
@@ -159,7 +167,7 @@
         summary.textContent =
             `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
             `agentInput=${cfg.agentInput}, az=${cfg.az}, azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
-            `metadata=${cfg.agentMetadata}, error=${cfg.agentError}`;
+            `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
@@ -179,6 +187,7 @@
                 checkbox("azd", "Azure Developer CLI available", cfg.azd),
             ]),
             section("Hosted agent", [
+                checkbox("regionSupported", "Hosted agents available in region", cfg.regionSupported),
                 checkbox("deployed", "Agent deployed", cfg.deployed),
                 checkbox("agentMetadata", "Portal metadata available", cfg.agentMetadata),
                 checkbox("agentError", "Deployment lookup error", cfg.agentError),

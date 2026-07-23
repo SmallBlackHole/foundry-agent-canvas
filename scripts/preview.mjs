@@ -477,12 +477,16 @@ function createPreviewApiServices() {
         },
         getRegionSupport({ url }) {
             const project = mockSelection(url).project;
+            const supported = project
+                ? url.searchParams.get("regionSupported") !== "false"
+                : null;
+            const location = supported === false ? "eastus" : project?.location || "";
             return {
                 ok: true,
                 docsUrl: hostedAgentRegionsDoc,
-                location: project?.location || "",
+                location,
                 regions: hostedAgentRegions,
-                supported: project ? true : null,
+                supported,
             };
         },
         signIn({ url }) {

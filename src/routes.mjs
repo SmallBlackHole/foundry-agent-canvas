@@ -101,6 +101,25 @@ export function createRuntimeApiServices(instanceId, {
     const getEntry = () => servers.get(instanceId);
     const getSelection = () => getEntry()?.state.selection ?? emptySelection();
     const getEndpoint = () => getSelection().project?.endpoint || "";
+    const reportedRegionWarnings = new Set();
+
+    async function reportUnsupportedRegion(selection, location) {
+        const project = selection.project;
+        const key = `${project?.endpoint || project?.name || ""}|${location}`;
+        if (!key || reportedRegionWarnings.has(key)) return;
+
+        reportedRegionWarnings.add(key);
+        const region = location ? ` (${location})` : "";
+        try {
+            await session.log(
+                `Hosted agents aren't available in this project's region${region}. `
+                    + "Select a project in a supported region before deploying.",
+                { level: "warning" },
+            );
+        } catch {
+            reportedRegionWarnings.delete(key);
+        }
+    }
 
     return {
         async getState() {
@@ -247,10 +266,14 @@ export function createRuntimeApiServices(instanceId, {
                     location = "";
                 }
             }
+            const supported = isHostedAgentRegionSupported(location);
+            if (supported === false) {
+                await reportUnsupportedRegion(selection, location);
+            }
             return {
                 ok: true,
                 location,
-                supported: isHostedAgentRegionSupported(location),
+                supported,
                 regions: HOSTED_AGENT_REGIONS,
                 docsUrl: HOSTED_AGENT_REGIONS_DOC,
             };
