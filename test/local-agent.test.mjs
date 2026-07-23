@@ -8,6 +8,7 @@ import {
     findHostedAgentManifest,
     inspectHostedAgentWorkspace,
     resolveHostedAgentName,
+    resolveHostedAgentProject,
 } from "../src/local-agent.mjs";
 
 async function testWorkspace(t) {
@@ -57,6 +58,78 @@ test("detects a hosted agent from a nested azure.ai.agent service", async (t) =>
         hasAgent: true,
         manifestPath: manifest,
     });
+});
+
+test("prefers the root hosted-agent project over nested projects", async (t) => {
+    const root = await testWorkspace(t);
+    const nested = join(root, "apps", "alpha");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+        join(root, "azure.yaml"),
+        ["services:", "  root-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+    await writeFile(
+        join(nested, "azure.yaml"),
+        ["services:", "  nested-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+
+    const result = await resolveHostedAgentProject(root);
+    assert.equal(result.projectDir, root);
+    assert.equal(result.manifestPath, join(root, "azure.yaml"));
+    assert.deepEqual(
+        result.projects.map(({ projectDir }) => projectDir),
+        [root, nested],
+    );
+});
+
+test("selects nested hosted-agent projects by depth then folder name", async (t) => {
+    const root = await testWorkspace(t);
+    const alpha = join(root, "apps", "alpha");
+    const zeta = join(root, "apps", "zeta");
+    const deeper = join(root, "a-first", "nested", "agent");
+    for (const directory of [zeta, deeper, alpha]) {
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+            join(directory, "azure.yaml"),
+            ["services:", `  ${directory === alpha ? "alpha" : "agent"}:`, "    host: azure.ai.agent", ""].join("\n"),
+        );
+    }
+
+    const result = await resolveHostedAgentProject(root);
+    assert.equal(result.projectDir, alpha);
+    assert.deepEqual(
+        result.projects.map(({ projectDir }) => projectDir),
+        [alpha, zeta, deeper],
+    );
+});
+
+test("does not use a legacy agent manifest as an azd project", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(join(root, "agent.yaml"), "name: legacy-agent\n");
+
+    assert.deepEqual(await resolveHostedAgentProject(root), {
+        projectDir: "",
+        manifestPath: "",
+        projects: [],
+    });
+});
+
+test("selects a nested hosted agent when the root azure project is generic", async (t) => {
+    const root = await testWorkspace(t);
+    const nested = join(root, "apps", "support");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+        join(root, "azure.yaml"),
+        ["services:", "  web:", "    host: appservice", ""].join("\n"),
+    );
+    await writeFile(
+        join(nested, "azure.yaml"),
+        ["services:", "  support-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+
+    const result = await resolveHostedAgentProject(root);
+    assert.equal(result.projectDir, nested);
+    assert.equal(result.manifestPath, join(nested, "azure.yaml"));
 });
 
 test("resolves the configured hosted agent name from nested azure.yml", async (t) => {

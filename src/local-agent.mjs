@@ -66,6 +66,7 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
             ...workspaceResult(),
             agentCandidates: [],
             azureCandidates: [],
+            hostedAzureProjects: [],
         };
     }
     const pending = [workspaceRoot];
@@ -74,6 +75,7 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
     let hostedAzureManifest = "";
     const agentCandidates = [];
     const azureCandidates = [];
+    const hostedAzureProjects = [];
 
     for (let index = 0; index < pending.length; index += 1) {
         const dir = pending[index];
@@ -109,6 +111,16 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
                 if (candidates.length) {
                     hostedAzureManifest ||= file;
                     azureCandidates.push(...candidates);
+                    if (!hostedAzureProjects.some((project) => project.projectDir === dir)) {
+                        hostedAzureProjects.push({
+                            projectDir: dir,
+                            manifestPath: file,
+                            services: candidates.map(({ agentName, serviceKey }) => ({
+                                agentName,
+                                serviceKey,
+                            })),
+                        });
+                    }
                 }
             }
         }
@@ -127,6 +139,7 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
         manifestPath: hostedAzureManifest || agentManifest,
         agentCandidates: uniqueCandidates(agentCandidates),
         azureCandidates: uniqueCandidates(azureCandidates),
+        hostedAzureProjects,
     };
 }
 
@@ -170,6 +183,17 @@ export async function resolveHostedAgentName(workspaceRoot, explicitName = "") {
         manifestPath: candidate.manifestPath,
         serviceKey: candidate.serviceKey,
         source: candidate.source,
+    };
+}
+
+export async function resolveHostedAgentProject(workspaceRoot) {
+    const result = await scanHostedAgentWorkspace(workspaceRoot);
+    const projects = result.hostedAzureProjects;
+    const selected = projects[0];
+    return {
+        projectDir: selected?.projectDir || "",
+        manifestPath: selected?.manifestPath || "",
+        projects,
     };
 }
 

@@ -42,7 +42,11 @@ import { serveFile, serveStatic, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
 import { initialBuildSections } from "./build-sections.mjs";
-import { inspectHostedAgentWorkspace, resolveHostedAgentName } from "./local-agent.mjs";
+import {
+    inspectHostedAgentWorkspace,
+    resolveHostedAgentName,
+    resolveHostedAgentProject,
+} from "./local-agent.mjs";
 import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
 import { flushPendingWorkspaceState } from "./workspace-state.mjs";
 
@@ -97,6 +101,11 @@ export function createRuntimeApiServices(instanceId, {
     },
     clearResourceCache = clearFoundryCache,
     clearSavedSelection = clearSelection,
+    localInspector = {
+        ensureProxy: ensureInspectorProxy,
+        launchTerminal: launchAgentTerminal,
+        resolveProject: resolveHostedAgentProject,
+    },
 }) {
     const getEntry = () => servers.get(instanceId);
     const getSelection = () => getEntry()?.state.selection ?? emptySelection();
@@ -323,14 +332,15 @@ export function createRuntimeApiServices(instanceId, {
             return { ready: await isAgentReachable() };
         },
         async startInspector() {
-            const proxyUrl = await ensureInspectorProxy(inspectorUiDir);
+            const project = await localInspector.resolveProject(await workspaceRootFn());
+            const proxyUrl = await localInspector.ensureProxy(inspectorUiDir);
             if (!proxyUrl) {
                 return {
                     ok: false,
                     error: "Inspector failed to start. Check the extension logs for details.",
                 };
             }
-            const terminal = await launchAgentTerminal(session);
+            const terminal = await localInspector.launchTerminal(session, project);
             if (!terminal?.ok) {
                 return {
                     ok: false,
