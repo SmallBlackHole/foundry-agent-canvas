@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
     GITHUB_COPILOT_APP_AGENT,
+    MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE,
     MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
     isGitHubCopilotAppEnvironment,
 } from "../src/agent-canvas-system-message.mjs";
@@ -31,22 +32,44 @@ test("workflow headings use sentence case and hosted agent remains lowercase", a
     assert.doesNotMatch(html, /Hosted Agents|Hosted Agent|Deploy &amp; Test/);
 });
 
-test("canvas routing and registration are limited to the GitHub Copilot App", async () => {
+test("canvas registration and session activity are app-only while routing trusts capability over profile", async () => {
     const extensionSource = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const gatedRegistration = extensionSource.match(
+        /\.\.\.\(isGitHubCopilotApp\s*\?\s*\{[\s\S]*?\}\s*:\s*\{\}\),/,
+    )?.[0];
+    const gatedSessionActivity = extensionSource.match(
+        /if \(isGitHubCopilotApp\) \{[\s\S]*?\} else \{\s*\/\/ The extension is canvas-only\.[\s\S]*?markWorkspaceRootReady\(\);\s*\}/,
+    )?.[0];
 
     assert.equal(isGitHubCopilotAppEnvironment({ AI_AGENT: GITHUB_COPILOT_APP_AGENT }), true);
     assert.equal(isGitHubCopilotAppEnvironment({ AI_AGENT: "github_copilot_cli" }), false);
     assert.equal(isGitHubCopilotAppEnvironment({}), false);
+    assert.ok(gatedRegistration);
+    assert.match(gatedRegistration, /systemMessage:/);
+    assert.match(gatedRegistration, /hooks:/);
+    assert.match(gatedRegistration, /onSessionStart:/);
+    assert.match(gatedRegistration, /onUserPromptSubmitted:/);
     assert.match(extensionSource, /const isGitHubCopilotApp = isGitHubCopilotAppEnvironment\(\);/);
     assert.match(extensionSource, /canvases: isGitHubCopilotApp \? \[/);
-    assert.match(extensionSource, /\.\.\.\(isGitHubCopilotApp[\s\S]*?systemMessage:/);
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /only in the GitHub Copilot App/);
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Never open or invoke this canvas from GitHub Copilot CLI/);
+    assert.ok(gatedSessionActivity);
+    assert.match(gatedSessionActivity, /session\.on\("session\.idle"/);
+    assert.match(gatedSessionActivity, /initializeWorkspaceRoot\(session, workspaceRoot\)/);
+    assert.match(gatedSessionActivity, /setInspectorSession\(session\)/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Apply the rest of this routing only when canvas "agent-builder" is registered and open_canvas is available/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /a GitHub Copilot CLI profile must not by itself prevent this routing/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /If either capability is unavailable, ignore the rest of this routing and follow the normal workflow/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /explicit canvas opt-outs such as "skip the canvas" or "use the CLI"/);
+    assert.doesNotMatch(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Never open or invoke this canvas from GitHub Copilot CLI/);
 });
 
-test("canvas handoff guide names the visible section and Start action", () => {
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Expand 'Create new hosted agents' if it is collapsed/);
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /click Start to continue/);
+test("canvas handoff guide is formatted as a readable Markdown checklist", () => {
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /^\*\*The Microsoft Foundry canvas is ready\.\*\*/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n\n1\. Sign in and select a subscription and Foundry project\./);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n2\. Expand \*\*Create new hosted agents\*\* if it is collapsed\./);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n3\. Choose or edit a starter prompt\./);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n4\. Click \*\*Start\*\* to continue\.$/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /respond with the following Markdown exactly/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Click \*\*Start\*\* to continue/);
     assert.doesNotMatch(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /click Send/);
 });
 

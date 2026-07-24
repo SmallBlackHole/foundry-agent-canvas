@@ -118,16 +118,16 @@ const session = await joinSession({
                 mode: "append",
                 content: MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
             },
+            hooks: {
+                onSessionStart: (input) => {
+                    workspaceRoot.update(input.workingDirectory);
+                },
+                onUserPromptSubmitted: (input) => {
+                    workspaceRoot.update(input.workingDirectory);
+                },
+            },
         }
         : {}),
-    hooks: {
-        onSessionStart: (input) => {
-            workspaceRoot.update(input.workingDirectory);
-        },
-        onUserPromptSubmitted: (input) => {
-            workspaceRoot.update(input.workingDirectory);
-        },
-    },
     canvases: isGitHubCopilotApp ? [
         createCanvas({
             id: MICROSOFT_FOUNDRY_CANVAS_ID,
@@ -244,29 +244,35 @@ const session = await joinSession({
     ] : [],
 });
 
-// Subscribe before workspace hydration so an early canvas request cannot finish
-// while no idle listener is registered. The refresh manager waits for
-// workspaceRootReady when it needs the resolved workspace.
-session.on("session.idle", () => {
-    pendingRefresh.handleSessionIdle().catch(async (err) => {
-        try {
-            await session.log(`session.idle refresh handler failed: ${err?.message ?? err}`, { level: "error" });
-        } catch {
-            /* logging must not surface an unhandled rejection */
-        }
+if (isGitHubCopilotApp) {
+    // Subscribe before workspace hydration so an early canvas request cannot
+    // finish while no idle listener is registered. The refresh manager waits
+    // for workspaceRootReady when it needs the resolved workspace.
+    session.on("session.idle", () => {
+        pendingRefresh.handleSessionIdle().catch(async (err) => {
+            try {
+                await session.log(`session.idle refresh handler failed: ${err?.message ?? err}`, { level: "error" });
+            } catch {
+                /* logging must not surface an unhandled rejection */
+            }
+        });
     });
-});
 
-try {
-    await initializeWorkspaceRoot(session, workspaceRoot);
-} catch (err) {
     try {
-        await session.log(`Active workspace detection failed: ${err?.message ?? err}`, { level: "error" });
-    } catch {
-        /* logging must not prevent the canvas provider from becoming ready */
+        await initializeWorkspaceRoot(session, workspaceRoot);
+    } catch (err) {
+        try {
+            await session.log(`Active workspace detection failed: ${err?.message ?? err}`, { level: "error" });
+        } catch {
+            /* logging must not prevent the canvas provider from becoming ready */
+        }
+    } finally {
+        markWorkspaceRootReady();
     }
-} finally {
+
+    setInspectorSession(session);
+} else {
+    // The extension is canvas-only. In regular Copilot CLI sessions the SDK
+    // handshake is retained, but no hooks or background listeners are active.
     markWorkspaceRootReady();
 }
-
-setInspectorSession(session);
