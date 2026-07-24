@@ -91,10 +91,12 @@ test("deploy click resets the deployment state so the playground link is hidden"
     assert.match(reset, /renderHostedAgentDeployment\(\)/);
 });
 
-test("SPA maps deployment frames to the Test in Playground state", async () => {
+test("SPA maps deployment frames to the Foundry Portal state", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function hostedAgentDeploymentFromResult\(result\) \{[\s\S]*?\n\}/)?.[0];
+    const descriptionSource = source.match(/function hostedAgentDeploymentDescription\(deployment\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
+    assert.ok(descriptionSource);
     assert.match(source, /msg\.type === "deploymentState" && msg\.deployment/);
     const context = {
         deployment: {
@@ -118,6 +120,8 @@ test("SPA maps deployment frames to the Test in Playground state", async () => {
         version: "4",
         reason: "",
     });
+    vm.runInNewContext(`${descriptionSource}\ndescription = hostedAgentDeploymentDescription(result);`, context);
+    assert.equal(context.description, "Deployed as example-agent, version 4.");
 
     context.deployment = {
         ok: false,
@@ -128,4 +132,6 @@ test("SPA maps deployment frames to the Test in Playground state", async () => {
     vm.runInNewContext("result = hostedAgentDeploymentFromResult(deployment);", context);
     assert.equal(context.result.available, false);
     assert.equal(context.result.portalUrl, "");
+    vm.runInNewContext("description = hostedAgentDeploymentDescription(result);", context);
+    assert.equal(context.description, "");
 });

@@ -16,6 +16,7 @@ import { refreshDeploymentState } from "./src/deployment-state.mjs";
 import {
     MICROSOFT_FOUNDRY_CANVAS_ID,
     MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
+    isGitHubCopilotAppEnvironment,
 } from "./src/agent-canvas-system-message.mjs";
 import {
     createPendingRefreshManager,
@@ -26,6 +27,7 @@ const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
+const isGitHubCopilotApp = isGitHubCopilotAppEnvironment();
 const openInstances = new Set();
 const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
 let markWorkspaceRootReady;
@@ -110,10 +112,14 @@ async function startServer(instanceId, session) {
 }
 
 const session = await joinSession({
-    systemMessage: {
-        mode: "append",
-        content: MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
-    },
+    ...(isGitHubCopilotApp
+        ? {
+            systemMessage: {
+                mode: "append",
+                content: MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
+            },
+        }
+        : {}),
     hooks: {
         onSessionStart: (input) => {
             workspaceRoot.update(input.workingDirectory);
@@ -122,7 +128,7 @@ const session = await joinSession({
             workspaceRoot.update(input.workingDirectory);
         },
     },
-    canvases: [
+    canvases: isGitHubCopilotApp ? [
         createCanvas({
             id: MICROSOFT_FOUNDRY_CANVAS_ID,
             displayName: "Microsoft Foundry",
@@ -235,7 +241,7 @@ const session = await joinSession({
                 }
             },
         }),
-    ],
+    ] : [],
 });
 
 // Subscribe before workspace hydration so an early canvas request cannot finish

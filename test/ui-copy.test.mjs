@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import {
+    GITHUB_COPILOT_APP_AGENT,
+    MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
+    isGitHubCopilotAppEnvironment,
+} from "../src/agent-canvas-system-message.mjs";
+
 test("extension branding uses Microsoft Foundry", async () => {
     const files = await Promise.all([
         readFile(new URL("../extension.mjs", import.meta.url), "utf8"),
@@ -23,6 +29,33 @@ test("workflow headings use sentence case and hosted agent remains lowercase", a
     assert.match(html, />Build current hosted agent</);
     assert.match(html, />Deploy &amp; test</);
     assert.doesNotMatch(html, /Hosted Agents|Hosted Agent|Deploy &amp; Test/);
+});
+
+test("canvas routing and registration are limited to the GitHub Copilot App", async () => {
+    const extensionSource = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+
+    assert.equal(isGitHubCopilotAppEnvironment({ AI_AGENT: GITHUB_COPILOT_APP_AGENT }), true);
+    assert.equal(isGitHubCopilotAppEnvironment({ AI_AGENT: "github_copilot_cli" }), false);
+    assert.equal(isGitHubCopilotAppEnvironment({}), false);
+    assert.match(extensionSource, /const isGitHubCopilotApp = isGitHubCopilotAppEnvironment\(\);/);
+    assert.match(extensionSource, /canvases: isGitHubCopilotApp \? \[/);
+    assert.match(extensionSource, /\.\.\.\(isGitHubCopilotApp[\s\S]*?systemMessage:/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /only in the GitHub Copilot App/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Never open or invoke this canvas from GitHub Copilot CLI/);
+});
+
+test("canvas handoff guide names the visible section and Start action", () => {
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Expand 'Create new hosted agents' if it is collapsed/);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /click Start to continue/);
+    assert.doesNotMatch(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /click Send/);
+});
+
+test("deployment section identifies the remote portal and has a live description", async () => {
+    const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+
+    assert.match(html, /id="deployDescription" hidden/);
+    assert.match(html, />Test in Foundry Portal</);
+    assert.doesNotMatch(html, />Test in Playground</);
 });
 
 test("starter options can wrap without clipping their labels", async () => {
