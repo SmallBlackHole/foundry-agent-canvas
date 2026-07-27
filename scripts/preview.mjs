@@ -114,6 +114,7 @@ function initialSelection() {
 
 const state = {
     agentName: "Preview Agent",
+    selectedAgent: "",
     selection: initialSelection(),
     model: { name: "gpt-5", color: "#10a37f" },
 };
@@ -161,9 +162,31 @@ function mockAgentInput(url) {
     return mockBool(url, "agentInput", true);
 }
 
+function mockMultiAgent(url) {
+    return url.searchParams.get("multiAgent") === "true";
+}
+
+const previewAgentNames = ["Preview Agent", "support-agent", "research-agent"];
+
+async function mockHostedAgents(url) {
+    if (!(await projectInit(url)).hasAgent) return [];
+    const names = mockMultiAgent(url) ? previewAgentNames : previewAgentNames.slice(0, 1);
+    return names.map((agentName) => {
+        const slug = agentName.replace(/\s+/g, "-").toLowerCase();
+        return {
+            agentName,
+            manifestPath: `preview/${slug}/azure.yaml`,
+            projectDir: `preview/${slug}`,
+        };
+    });
+}
+
 async function mockResolvedAgentName(url) {
-    if (mockAgentInput(url)) return state.agentName;
-    return (await projectInit(url)).hasAgent ? "Preview Agent" : "";
+    const agents = await mockHostedAgents(url);
+    const explicit = state.selectedAgent || (mockAgentInput(url) ? state.agentName : "");
+    if (!explicit) return agents[0]?.agentName || "";
+    const match = agents.find((agent) => agent.agentName.toLowerCase() === explicit.toLowerCase());
+    return match ? match.agentName : explicit;
 }
 
 function mockIdentity(url) {
@@ -399,6 +422,17 @@ function createPreviewApiServices() {
         },
         getHostedAgentDeployment({ url }) {
             return mockHostedAgentDeployment(url);
+        },
+        async listHostedAgents({ url }) {
+            return {
+                ok: true,
+                selected: await mockResolvedAgentName(url),
+                agents: await mockHostedAgents(url),
+            };
+        },
+        selectHostedAgent({ body }) {
+            state.selectedAgent = String(body?.agentName || "").trim();
+            return { ok: true, selected: state.selectedAgent };
         },
         async getHostedAgentPlayground({ url }) {
             const result = await mockHostedAgentDeployment(url);

@@ -44,6 +44,7 @@ import { launchAgentTerminal } from "./agent-terminal.mjs";
 import { initialBuildSections } from "./build-sections.mjs";
 import {
     inspectHostedAgentWorkspace,
+    listHostedAgents,
     resolveHostedAgentName,
     resolveHostedAgentProject,
 } from "./local-agent.mjs";
@@ -57,17 +58,6 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
         await workspaceRootFn(),
         entry ? entry.state.agentName : "",
     );
-    if (agent.ambiguous) {
-        return {
-            ok: false,
-            deployed: false,
-            available: false,
-            portalUrl: "",
-            agentName: "",
-            version: "",
-            reason: "ambiguous_agent",
-        };
-    }
     return resolveHostedAgentPortalAction(
         {
             endpoint: project?.endpoint || "",
@@ -84,6 +74,19 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
 function liveItems(result, mapItem) {
     if (result.ok) return { ok: true, items: result.data.map(mapItem) };
     return { ok: false, reason: result.reason, items: [] };
+}
+
+// The hosted agent the deploy/test actions target: the user's explicit pick when
+// it is still present in the workspace, otherwise the first agent found. An
+// explicit pick that no longer matches any workspace agent is kept as-is because
+// it can come from the canvas open input.
+export function selectedHostedAgentName(entry, agents) {
+    const explicit = String(entry?.state.agentName || "").trim();
+    if (!explicit) return agents[0]?.agentName || "";
+    const match = agents.find(
+        (agent) => agent.agentName.toLowerCase() === explicit.toLowerCase(),
+    );
+    return match ? match.agentName : explicit;
 }
 
 export function createRuntimeApiServices(instanceId, {
@@ -104,6 +107,7 @@ export function createRuntimeApiServices(instanceId, {
     localInspector = {
         ensureProxy: ensureInspectorProxy,
         launchTerminal: launchAgentTerminal,
+        listAgents: listHostedAgents,
         resolveProject: resolveHostedAgentProject,
     },
 }) {
@@ -136,6 +140,26 @@ export function createRuntimeApiServices(instanceId, {
         },
         getHostedAgentDeployment() {
             return selectedHostedAgentPortalAction(getEntry(), workspaceRootFn);
+        },
+        // Powers the "Deploy & test" agent picker. The canvas only shows the
+        // picker for workspaces with more than one hosted agent.
+        async listHostedAgents() {
+            const agents = await localInspector.listAgents(await workspaceRootFn());
+            return {
+                ok: true,
+                selected: selectedHostedAgentName(getEntry(), agents),
+                agents: agents.map(({ agentName, manifestPath, projectDir }) => ({
+                    agentName,
+                    manifestPath,
+                    projectDir,
+                })),
+            };
+        },
+        async selectHostedAgent({ body }) {
+            const agentName = String(body?.agentName || "").trim();
+            const entry = getEntry();
+            if (entry) entry.state.agentName = agentName;
+            return { ok: true, selected: agentName };
         },
         async getHostedAgentPlayground() {
             const result = await selectedHostedAgentPortalAction(getEntry(), workspaceRootFn);
@@ -332,7 +356,10 @@ export function createRuntimeApiServices(instanceId, {
             return { ready: await isAgentReachable() };
         },
         async startInspector() {
-            const project = await localInspector.resolveProject(await workspaceRootFn());
+            const root = await workspaceRootFn();
+            const agents = await localInspector.listAgents(root);
+            const agentName = selectedHostedAgentName(getEntry(), agents);
+            const project = await localInspector.resolveProject(root, agentName);
             const proxyUrl = await localInspector.ensureProxy(inspectorUiDir);
             if (!proxyUrl) {
                 return {

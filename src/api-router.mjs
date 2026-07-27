@@ -97,6 +97,17 @@ route("GET", "/api/hosted-agent-playground", "getHostedAgentPlayground", {
         };
     },
 });
+route("GET", "/api/hosted-agents", "listHostedAgents");
+route("POST", "/api/select-hosted-agent", "selectHostedAgent", {
+    parseBody: true,
+    handle: ({ services, url, body }) => services.selectHostedAgent({
+        url,
+        body: {
+            ...body,
+            agentName: requiredString(body, "agentName", "agentName"),
+        },
+    }),
+});
 route("GET", "/api/deployments", "listDeployments");
 route("GET", "/api/toolboxes", "listToolboxes");
 route("GET", "/api/skills", "listSkills");

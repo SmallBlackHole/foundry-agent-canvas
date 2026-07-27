@@ -6,6 +6,7 @@
         "project",
         "agent",
         "agentInput",
+        "multiAgent",
         "az",
         "azd",
         "deployed",
@@ -70,6 +71,7 @@
             project: signedIn && boolValue(params, "project"),
             agent,
             agentInput: boolValue(params, "agentInput"),
+            multiAgent: params.get("multiAgent") === "true",
             az: boolValue(params, "az"),
             azd: boolValue(params, "azd"),
             deployed: boolValue(params, "deployed"),
@@ -166,7 +168,8 @@
         summary.className = "preview-mock-summary";
         summary.textContent =
             `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
-            `agentInput=${cfg.agentInput}, az=${cfg.az}, azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
+            `multiAgent=${cfg.multiAgent}, agentInput=${cfg.agentInput}, az=${cfg.az}, ` +
+            `azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
             `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}`;
 
         const hint = document.createElement("div");
@@ -180,6 +183,7 @@
             ]),
             section("Workspace", [
                 checkbox("agent", "Hosted agent exists", cfg.agent),
+                checkbox("multiAgent", "Multiple hosted agents", cfg.multiAgent),
                 checkbox("agentInput", "Canvas agent name provided", cfg.agentInput),
             ]),
             section("Local tools", [

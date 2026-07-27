@@ -46,6 +46,10 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Timestamp (ms) of the last time we issued the run command into the terminal.
 let commandSentAt = 0;
 let lastCommand = "";
+// azd project directory of the agent we last launched. Lets a later click on a
+// different hosted agent recognise that the process listening on the agent port
+// belongs to the previous selection.
+let lastProjectDir = "";
 
 // Cached extension id of the host terminal canvas (resolved once via list()).
 // `undefined` = not yet resolved; string ("" allowed) = resolved.
@@ -159,6 +163,16 @@ export function buildAgentRunCommand(projectDir, platform = process.platform) {
     return `azd --cwd ${cwd} ai agent run --no-inspector`;
 }
 
+// Only one agent can own the agent port, so switching hosted agents means
+// waiting for the previous run to let go of it before starting the new one.
+async function waitForAgentPortRelease(agentReachable, { attempts = 16, delayMs = 250 } = {}) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (!(await agentReachable())) return true;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return false;
+}
+
 /**
  * Ensure the Foundry hosted agent is running locally in the integrated terminal,
  * reusing an existing terminal/agent when possible.
@@ -168,7 +182,7 @@ export function buildAgentRunCommand(projectDir, platform = process.platform) {
  * @param {object} dependencies - Optional test dependencies plus the id of the
  *   builder canvas instance that focus is handed back to.
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>}
- *   status is one of: reused | already-running | starting | restarted | launched.
+ *   status is one of: reused | already-running | starting | restarted | launched | switched.
  */
 export async function launchAgentTerminal(
     session,
@@ -179,6 +193,7 @@ export async function launchAgentTerminal(
         terminalRunning = isAgentTerminalRunning,
         sleep = defaultSleep,
         builderInstanceId = "",
+        waitForPortRelease = waitForAgentPortRelease,
     } = {},
 ) {
     if (!session?.rpc?.canvas?.open) {
@@ -194,9 +209,18 @@ export async function launchAgentTerminal(
         resolveTerminalExtensionId(session),
     ]);
 
+    // A different hosted agent than the one we last launched: the running agent
+    // owns the port, so it has to stop before the newly selected one can start.
+    const previousProjectDir = lastProjectDir;
+    const switching = !!(
+        project.projectDir
+        && previousProjectDir
+        && project.projectDir !== previousProjectDir
+    );
+
     // Agent already answering on AGENT_PORT — never re-run the command (that
     // would collide on the port). Just reuse whatever is already running.
-    if (ready) {
+    if (ready && !switching) {
         const status = mounted ? "reused" : "already-running";
         logTerminal(session, `agent already running — ${status}`);
         return { ok: true, status };
@@ -211,7 +235,7 @@ export async function launchAgentTerminal(
         };
     }
 
-    // Agent not up yet.
+    // Agent not up yet, or up for a different hosted agent.
     try {
         const command = buildAgentRunCommand(project.projectDir);
         logTerminal(
@@ -227,7 +251,24 @@ export async function launchAgentTerminal(
             );
         }
 
-        if (mounted) {
+        if (switching) {
+            logTerminal(
+                session,
+                `hosted agent changed from ${previousProjectDir} to ${project.projectDir}`
+                    + " — stopping the previously selected agent",
+            );
+            // Closing the terminal canvas stops the previous `azd` run and frees
+            // the agent port for the newly selected agent.
+            await closeAgentTerminal(session);
+            if (ready && !(await waitForPortRelease(agentReachable))) {
+                return {
+                    ok: false,
+                    error:
+                        "The previously selected agent is still using the local agent port. "
+                        + "Stop it in the Foundry agent terminal, then try Inspect locally again.",
+                };
+            }
+        } else if (mounted) {
             const recentlySent =
                 lastCommand === command
                 && commandSentAt
@@ -244,6 +285,7 @@ export async function launchAgentTerminal(
             await sendRunCommand(session, command);
             commandSentAt = now();
             lastCommand = command;
+            lastProjectDir = project.projectDir;
             logTerminal(session, `re-ran agent command from ${project.projectDir}`);
             return { ok: true, status: "restarted" };
         }
@@ -267,11 +309,12 @@ export async function launchAgentTerminal(
         await sendRunCommand(session, command);
         commandSentAt = now();
         lastCommand = command;
+        lastProjectDir = project.projectDir;
         logTerminal(session, `opened terminal and launched agent from ${project.projectDir}`);
         // Focusing the terminal took the user off the inspector, so put them
         // back. Cosmetic, and never allowed to fail the launch.
         await restoreBuilderFocus(session, builderInstanceId);
-        return { ok: true, status: "launched" };
+        return { ok: true, status: switching ? "switched" : "launched" };
     } catch (err) {
         const error = String(err?.message ?? err);
         logTerminal(session, `failed to launch agent terminal: ${error}`, "error");
@@ -320,6 +363,7 @@ export async function closeAgentTerminal(session) {
     // Reset regardless so a future launch doesn't think it "just launched".
     commandSentAt = 0;
     lastCommand = "";
+    lastProjectDir = "";
     if (!session?.rpc?.canvas?.close) return;
     try {
         if (!(await terminalIsOpen(session))) return;

@@ -135,3 +135,44 @@ test("SPA maps deployment frames to the Foundry Portal state", async () => {
     vm.runInNewContext("description = hostedAgentDeploymentDescription(result);", context);
     assert.equal(context.description, "");
 });
+
+test("a failed agent-list refresh keeps the picker instead of collapsing it", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const loadSource = source.match(/async function loadHostedAgents\(force\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(loadSource);
+    // Opening the menu must reuse the cached list; only explicit refreshes refetch.
+    assert.match(source, /if \(willOpen\) loadHostedAgents\(false\);/);
+
+    const renders = [];
+    const context = {
+        state: {
+            hostedAgents: {
+                status: "ready",
+                items: [{ agentName: "alpha" }, { agentName: "beta" }],
+                selected: "alpha",
+            },
+        },
+        getJSON() {
+            throw new Error("canvas server restarting");
+        },
+        renderHostedAgentPicker() {
+            renders.push(context.state.hostedAgents.items.length);
+        },
+    };
+    vm.createContext(context);
+
+    // Cached: an unforced load while ready must not even hit the network.
+    await vm.runInContext(`${loadSource}\nloadHostedAgents(false);`, context);
+    assert.deepEqual(renders, []);
+
+    await vm.runInContext("loadHostedAgents(true);", context);
+
+    assert.equal(context.state.hostedAgents.status, "error");
+    assert.deepEqual(
+        context.state.hostedAgents.items.map((a) => a.agentName),
+        ["alpha", "beta"],
+        "a failed refresh must keep the known agents so the picker stays visible",
+    );
+    assert.equal(context.state.hostedAgents.selected, "alpha");
+    assert.deepEqual(renders, [2]);
+});

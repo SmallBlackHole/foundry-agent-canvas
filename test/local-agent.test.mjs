@@ -7,6 +7,7 @@ import test from "node:test";
 import {
     findHostedAgentManifest,
     inspectHostedAgentWorkspace,
+    listHostedAgents,
     resolveHostedAgentName,
     resolveHostedAgentProject,
 } from "../src/local-agent.mjs";
@@ -154,6 +155,7 @@ test("resolves the configured hosted agent name from nested azure.yml", async (t
         ambiguous: false,
         candidates: ["customer-support-agent"],
         manifestPath: manifest,
+        projectDir: nested,
         serviceKey: "customer-support-service",
         source: "azure_service_name",
     });
@@ -197,12 +199,13 @@ test("explicit canvas input wins over ambiguous workspace services", async (t) =
         ambiguous: false,
         candidates: ["selected-agent"],
         manifestPath: "",
+        projectDir: "",
         serviceKey: "",
         source: "canvas_input",
     });
 });
 
-test("reports multiple hosted services as ambiguous instead of guessing", async (t) => {
+test("defaults to the first hosted service and reports the alternatives", async (t) => {
     const root = await testWorkspace(t);
     await writeFile(
         join(root, "azure.yaml"),
@@ -217,9 +220,90 @@ test("reports multiple hosted services as ambiguous instead of guessing", async 
     );
 
     const result = await resolveHostedAgentName(root);
-    assert.equal(result.agentName, "");
+    assert.equal(result.agentName, "first-agent");
     assert.equal(result.ambiguous, true);
     assert.deepEqual(result.candidates, ["first-agent", "second-agent"]);
+});
+
+test("lists every hosted agent with the azd project that runs it", async (t) => {
+    const root = await testWorkspace(t);
+    const support = join(root, "apps", "support");
+    const research = join(root, "apps", "research");
+    await mkdir(support, { recursive: true });
+    await mkdir(research, { recursive: true });
+    await writeFile(
+        join(support, "azure.yaml"),
+        ["services:", "  support-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+    await writeFile(
+        join(research, "azure.yaml"),
+        [
+            "services:",
+            "  research-service:",
+            "    host: azure.ai.agent",
+            "    name: research-agent",
+            "  web:",
+            "    host: appservice",
+            "",
+        ].join("\n"),
+    );
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "research-agent",
+            manifestPath: join(research, "azure.yaml"),
+            projectDir: research,
+            serviceKey: "research-service",
+            source: "azure_service_name",
+        },
+        {
+            agentName: "support-agent",
+            manifestPath: join(support, "azure.yaml"),
+            projectDir: support,
+            serviceKey: "support-agent",
+            source: "azure_service_key",
+        },
+    ]);
+});
+
+test("lists legacy agent manifests only without a hosted Azure service", async (t) => {
+    const root = await testWorkspace(t);
+    const manifest = join(root, "agent.yaml");
+    await writeFile(manifest, "name: legacy-agent\n");
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "legacy-agent",
+            manifestPath: manifest,
+            projectDir: "",
+            serviceKey: "",
+            source: "agent_manifest_name",
+        },
+    ]);
+});
+
+test("runs the azd project that declares the selected hosted agent", async (t) => {
+    const root = await testWorkspace(t);
+    const alpha = join(root, "apps", "alpha");
+    const zeta = join(root, "apps", "zeta");
+    await mkdir(alpha, { recursive: true });
+    await mkdir(zeta, { recursive: true });
+    await writeFile(
+        join(alpha, "azure.yaml"),
+        ["services:", "  alpha-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+    await writeFile(
+        join(zeta, "azure.yaml"),
+        ["services:", "  zeta-service:", "    host: azure.ai.agent", "    name: zeta-agent", ""].join("\n"),
+    );
+
+    const selected = await resolveHostedAgentProject(root, "zeta-agent");
+    assert.equal(selected.projectDir, zeta);
+    assert.equal(selected.manifestPath, join(zeta, "azure.yaml"));
+
+    // An unknown selection falls back to the first project rather than failing.
+    assert.equal((await resolveHostedAgentProject(root, "missing-agent")).projectDir, alpha);
+    assert.equal((await resolveHostedAgentProject(root)).projectDir, alpha);
 });
 
 test("uses a legacy agent manifest name only without a hosted Azure service", async (t) => {
@@ -241,6 +325,7 @@ test("uses a legacy agent manifest name only without a hosted Azure service", as
         ambiguous: false,
         candidates: ["legacy-agent"],
         manifestPath: manifest,
+        projectDir: "",
         serviceKey: "",
         source: "agent_manifest_name",
     });

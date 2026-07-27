@@ -11,14 +11,22 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
         manifestPath: "C:\\workspace\\apps\\support\\azure.yaml",
         projects: [],
     };
+    const agents = [
+        { agentName: "support-agent", projectDir: project.projectDir, manifestPath: project.manifestPath },
+        { agentName: "research-agent", projectDir: "C:\\workspace\\apps\\research", manifestPath: "" },
+    ];
     const session = { log: async () => {}, send: async () => {} };
     const services = createRuntimeApiServices("inspect-project-test", {
         session,
         inspectorUiDir: "inspector-ui",
         workspaceRootFn: async () => "C:\\workspace",
         localInspector: {
-            async resolveProject(root) {
-                calls.push(["resolve", root]);
+            async listAgents(root) {
+                calls.push(["list", root]);
+                return agents;
+            },
+            async resolveProject(root, agentName) {
+                calls.push(["resolve", root, agentName]);
                 return project;
             },
             async ensureProxy(directory) {
@@ -32,13 +40,15 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
         },
     });
 
+    // Without an explicit pick the inspector targets the first workspace agent.
     assert.deepEqual(await services.startInspector(), {
         ok: true,
         url: "http://127.0.0.1:1234",
         terminal: { ok: true, status: "launched" },
     });
     assert.deepEqual(calls, [
-        ["resolve", "C:\\workspace"],
+        ["list", "C:\\workspace"],
+        ["resolve", "C:\\workspace", "support-agent"],
         ["proxy", "inspector-ui"],
         // The builder instance id lets the launcher hand focus back after it
         // has forced the terminal to mount.
@@ -54,4 +64,44 @@ test("relaunching or closing the inspector retires the previous readiness poll",
     assert.match(source, /const token = inspectorPollToken;/);
     assert.match(source, /if \(token !== inspectorPollToken\) return;/);
     assert.match(source, /inspectorPollToken \+= 1; \/\/ stop any in-flight readiness poll/);
+});
+
+test("lists workspace agents and inspects the one the picker selected", async () => {
+    const resolved = [];
+    const agents = [
+        { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml", serviceKey: "support-agent", source: "azure_service_key" },
+        { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml", serviceKey: "research", source: "azure_service_name" },
+    ];
+    const services = createRuntimeApiServices("agent-picker-test", {
+        session: { log: async () => {}, send: async () => {} },
+        inspectorUiDir: "inspector-ui",
+        workspaceRootFn: async () => "/w",
+        localInspector: {
+            listAgents: async () => agents,
+            async resolveProject(root, agentName) {
+                resolved.push(agentName);
+                return { projectDir: `/w/${agentName}`, manifestPath: "", projects: [] };
+            },
+            ensureProxy: async () => "http://127.0.0.1:1234",
+            launchTerminal: async () => ({ ok: true, status: "launched" }),
+        },
+    });
+
+    assert.deepEqual(await services.listHostedAgents(), {
+        ok: true,
+        selected: "support-agent",
+        agents: [
+            { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml" },
+            { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml" },
+        ],
+    });
+
+    // No canvas instance is registered for this id, so the pick is a no-op the
+    // service still acknowledges.
+    assert.deepEqual(
+        await services.selectHostedAgent({ body: { agentName: " research-agent " } }),
+        { ok: true, selected: "research-agent" },
+    );
+    await services.startInspector();
+    assert.deepEqual(resolved, ["support-agent"]);
 });

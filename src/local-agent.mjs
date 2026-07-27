@@ -26,7 +26,7 @@ function uniqueCandidates(candidates) {
     });
 }
 
-function hostedAgentCandidates(manifest, manifestPath) {
+function hostedAgentCandidates(manifest, manifestPath, projectDir = "") {
     const services = manifest && typeof manifest === "object" ? manifest.services : null;
     if (!services || typeof services !== "object" || Array.isArray(services)) return [];
     return Object.entries(services)
@@ -41,6 +41,7 @@ function hostedAgentCandidates(manifest, manifestPath) {
             return {
                 agentName: configuredName || serviceKey,
                 manifestPath,
+                projectDir,
                 serviceKey,
                 source: configuredName ? "azure_service_name" : "azure_service_key",
             };
@@ -100,6 +101,9 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
                     agentCandidates.push({
                         agentName,
                         manifestPath: file,
+                        // Legacy agent manifests are not azd projects, so they
+                        // have nothing the inspector can run.
+                        projectDir: "",
                         serviceKey: "",
                         source: "agent_manifest_name",
                     });
@@ -107,7 +111,7 @@ async function scanHostedAgentWorkspace(workspaceRoot) {
             }
             if (AZURE_MANIFESTS.has(name)) {
                 azureManifest ||= file;
-                const candidates = hostedAgentCandidates(await readManifest(file), file);
+                const candidates = hostedAgentCandidates(await readManifest(file), file, dir);
                 if (candidates.length) {
                     hostedAzureManifest ||= file;
                     azureCandidates.push(...candidates);
@@ -148,6 +152,24 @@ export async function inspectHostedAgentWorkspace(workspaceRoot) {
     return workspaceResult(result.hasAzure, result.hasAgent, result.manifestPath);
 }
 
+// The hosted agents a workspace offers, in scan order (root first, then by depth
+// and folder name). azure.yaml is the active azd project contract, so legacy
+// agent manifests only participate when no hosted Azure service is present.
+function hostedAgentList(result) {
+    const candidates = result.azureCandidates.length ? result.azureCandidates : result.agentCandidates;
+    return candidates.map(({ agentName, manifestPath, projectDir, serviceKey, source }) => ({
+        agentName,
+        manifestPath,
+        projectDir,
+        serviceKey,
+        source,
+    }));
+}
+
+export async function listHostedAgents(workspaceRoot) {
+    return hostedAgentList(await scanHostedAgentWorkspace(workspaceRoot));
+}
+
 export async function resolveHostedAgentName(workspaceRoot, explicitName = "") {
     const selectedName = cleanName(explicitName);
     if (selectedName) {
@@ -156,40 +178,51 @@ export async function resolveHostedAgentName(workspaceRoot, explicitName = "") {
             ambiguous: false,
             candidates: [selectedName],
             manifestPath: "",
+            projectDir: "",
             serviceKey: "",
             source: "canvas_input",
         };
     }
 
     const result = await scanHostedAgentWorkspace(workspaceRoot);
-    // azure.yaml is the active azd project contract. Legacy agent manifests
-    // only participate when no hosted Azure service is present.
-    const candidates = result.azureCandidates.length ? result.azureCandidates : result.agentCandidates;
-    if (candidates.length !== 1) {
+    const candidates = hostedAgentList(result);
+    if (!candidates.length) {
         return {
             agentName: "",
-            ambiguous: candidates.length > 1,
-            candidates: candidates.map((candidate) => candidate.agentName),
+            ambiguous: false,
+            candidates: [],
             manifestPath: result.manifestPath,
+            projectDir: "",
             serviceKey: "",
             source: "",
         };
     }
+    // Several hosted agents is a normal workspace layout, so fall back to the
+    // first one. `ambiguous` stays as a signal that the canvas should let the
+    // user pick a different agent.
     const [candidate] = candidates;
     return {
         agentName: candidate.agentName,
-        ambiguous: false,
-        candidates: [candidate.agentName],
+        ambiguous: candidates.length > 1,
+        candidates: candidates.map((item) => item.agentName),
         manifestPath: candidate.manifestPath,
+        projectDir: candidate.projectDir,
         serviceKey: candidate.serviceKey,
         source: candidate.source,
     };
 }
 
-export async function resolveHostedAgentProject(workspaceRoot) {
+// The azd project the inspector should run. `agentName` selects the project that
+// declares that hosted agent; without a match the first project is used.
+export async function resolveHostedAgentProject(workspaceRoot, agentName = "") {
     const result = await scanHostedAgentWorkspace(workspaceRoot);
     const projects = result.hostedAzureProjects;
-    const selected = projects[0];
+    const wanted = cleanName(agentName).toLowerCase();
+    const match = wanted
+        ? projects.find((project) =>
+            project.services.some((service) => service.agentName.toLowerCase() === wanted))
+        : null;
+    const selected = match || projects[0];
     return {
         projectDir: selected?.projectDir || "",
         manifestPath: selected?.manifestPath || "",

@@ -155,8 +155,50 @@ test("validates and dispatches canonical selection writes", async () => {
     });
 });
 
-test("passes resource query parameters through the shared route", async () => {
+test("serves the hosted agent list and validates picker writes", async () => {
+    const picked = [];
     await withRouter({
+        listHostedAgents: () => ({
+            ok: true,
+            selected: "support-agent",
+            agents: [
+                { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml" },
+                { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml" },
+            ],
+        }),
+        selectHostedAgent: ({ body }) => {
+            picked.push(body.agentName);
+            return { ok: true, selected: body.agentName };
+        },
+    }, async (base) => {
+        const listed = await json(await fetch(`${base}/api/hosted-agents`));
+        assert.equal(listed.status, 200);
+        assert.deepEqual(listed.body.agents.map((agent) => agent.agentName), [
+            "support-agent",
+            "research-agent",
+        ]);
+
+        assert.deepEqual(await json(await fetch(`${base}/api/select-hosted-agent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentName: " research-agent " }),
+        })), {
+            status: 200,
+            body: { ok: true, selected: "research-agent" },
+        });
+
+        assert.deepEqual(await json(await fetch(`${base}/api/select-hosted-agent`, {
+            method: "POST",
+            body: JSON.stringify({ agentName: "  " }),
+        })), {
+            status: 400,
+            body: { ok: false, error: "Missing agentName" },
+        });
+        assert.deepEqual(picked, ["research-agent"]);
+    });
+});
+
+test("passes resource query parameters through the shared route", async () => {    await withRouter({
         listToolboxTools: ({ url }) => ({
             ok: true,
             items: [{

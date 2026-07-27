@@ -178,6 +178,80 @@ test("collapses a rapid second click while the agent is still coming up", async 
     }
 });
 
+test("switching hosted agents stops the previous run before starting the new one", async () => {
+    let mounted = false;
+    let running = false;
+    const closed = [];
+    const sent = [];
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: mounted
+                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            : [],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {
+                    mounted = true;
+                },
+                action: {
+                    async invoke(params) {
+                        if (params.actionName === "send_terminal_input") sent.push(params.input.input);
+                    },
+                },
+                async close(params) {
+                    closed.push(params);
+                    mounted = false;
+                    running = false;
+                },
+            },
+        },
+    };
+    const alpha = { projectDir: resolve("workspace", "apps", "alpha"), manifestPath: "" };
+    const zeta = { projectDir: resolve("workspace", "apps", "zeta"), manifestPath: "" };
+    const dependencies = {
+        agentReachable: async () => running,
+        terminalRunning: async () => mounted,
+        sleep: async () => {},
+        now: () => 1_000,
+    };
+
+    try {
+        assert.deepEqual(
+            await launchAgentTerminal(session, alpha, dependencies),
+            { ok: true, status: "launched" },
+        );
+        running = true;
+
+        // Same agent: the running process is reused rather than restarted.
+        assert.deepEqual(
+            await launchAgentTerminal(session, alpha, dependencies),
+            { ok: true, status: "reused" },
+        );
+        assert.deepEqual(sent, [buildAgentRunCommand(alpha.projectDir)]);
+
+        assert.deepEqual(
+            await launchAgentTerminal(session, zeta, dependencies),
+            { ok: true, status: "switched" },
+        );
+        // The previous run is closed so it lets go of the agent port, then the
+        // newly selected agent is started in a fresh terminal.
+        assert.deepEqual(closed, [{ instanceId: "foundry-agent-run" }]);
+        assert.deepEqual(sent, [
+            buildAgentRunCommand(alpha.projectDir),
+            buildAgentRunCommand(zeta.projectDir),
+        ]);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
 test("reports a terminal that never starts instead of sending into the void", async () => {
     const invoked = [];
     const session = {
@@ -214,6 +288,59 @@ test("reports a terminal that never starts instead of sending into the void", as
         assert.equal(result.ok, false);
         assert.match(result.error, /terminal did not start/);
         assert.equal(invoked.length, 0);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
+test("reports when the previously selected agent keeps holding the agent port", async () => {
+    let mounted = false;
+    let launched = false;
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: mounted
+                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            : [],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {
+                    if (launched) throw new Error("must not start a second agent on a busy port");
+                    mounted = true;
+                },
+                action: { async invoke() {} },
+                async close() {
+                    mounted = false;
+                },
+            },
+        },
+    };
+    const alpha = { projectDir: resolve("workspace", "apps", "alpha"), manifestPath: "" };
+    const zeta = { projectDir: resolve("workspace", "apps", "zeta"), manifestPath: "" };
+
+    try {
+        await launchAgentTerminal(session, alpha, {
+            agentReachable: async () => false,
+            terminalRunning: async () => mounted,
+            sleep: async () => {},
+            now: () => 1_000,
+        });
+        launched = true;
+        const result = await launchAgentTerminal(session, zeta, {
+            agentReachable: async () => true,
+            terminalRunning: async () => mounted,
+            sleep: async () => {},
+            now: () => 9_000,
+            waitForPortRelease: async () => false,
+        });
+        assert.equal(result.ok, false);
+        assert.match(result.error, /still using the local agent port/);
     } finally {
         await closeAgentTerminal(session);
     }

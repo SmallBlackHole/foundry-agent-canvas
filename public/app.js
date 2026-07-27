@@ -49,6 +49,9 @@ const state = {
         version: "",
         reason: "",
     },
+    // Hosted agents found in the workspace. The picker only appears when there
+    // is more than one, so single-agent workspaces keep the implicit behavior.
+    hostedAgents: { status: "idle", items: [], selected: "" },
 };
 
 const root = document.getElementById("root");
@@ -224,6 +227,7 @@ function renderBuild() {
     renderFolds();
     renderRegionSupport();
     renderHostedAgentDeployment();
+    renderHostedAgentPicker();
 }
 
 // Apply a collapsible card's open/closed state to the DOM. Mirrors the
@@ -313,7 +317,7 @@ function hasAvailableHostedAgentDeployment(deployment) {
 
 function isDefinitiveHostedAgentResult(result) {
     if (result?.ok === true) return true;
-    return ["ambiguous_agent", "no_agent", "no_project"].includes(result?.reason);
+    return ["no_agent", "no_project"].includes(result?.reason);
 }
 
 function hostedAgentDeploymentFromResult(result) {
@@ -376,6 +380,127 @@ async function loadHostedAgentDeployment() {
     return state.hostedAgentDeployment;
 }
 
+// ------------------------------------------------- Hosted agent picker
+// The agents the picker offers. An explicit selection that no longer matches a
+// workspace agent (e.g. one supplied through the canvas input) is kept as the
+// first entry so the user can still see what the actions target.
+function hostedAgentOptions() {
+    const { items, selected } = state.hostedAgents;
+    const options = items.filter((agent) => agent.agentName);
+    if (selected && !options.some((a) => a.agentName.toLowerCase() === selected.toLowerCase())) {
+        return [{ agentName: selected, manifestPath: "" }, ...options];
+    }
+    return options;
+}
+
+function selectedHostedAgentOption(options) {
+    const selected = String(state.hostedAgents.selected || "").toLowerCase();
+    return options.find((a) => a.agentName.toLowerCase() === selected) || options[0];
+}
+
+function renderHostedAgentPicker() {
+    const row = document.getElementById("deployAgentRow");
+    const current = document.getElementById("deployAgentCurrent");
+    const host = document.getElementById("deployAgentList");
+    if (!row || !current || !host) return;
+    const options = hostedAgentOptions();
+    // One agent (or none) keeps the existing implicit behavior — no picker.
+    row.hidden = options.length < 2;
+    if (row.hidden) {
+        closeHostedAgentMenu();
+        current.textContent = "";
+        host.replaceChildren();
+        return;
+    }
+
+    const active = selectedHostedAgentOption(options);
+    current.textContent = active.agentName;
+    // The trigger shows only the name, so spell the role out for screen readers.
+    const trigger = document.getElementById("deployAgentTrigger");
+    if (trigger) trigger.setAttribute("aria-label", "Hosted agent: " + active.agentName);
+
+    host.replaceChildren();
+    for (const agent of options) {
+        const isActive = agent.agentName === active.agentName;
+        const item = document.createElement("button");
+        item.className = "menu-item" + (isActive ? " is-active" : "");
+        item.type = "button";
+        item.setAttribute("role", "menuitemradio");
+        item.setAttribute("aria-checked", String(isActive));
+        if (agent.manifestPath) item.title = agent.manifestPath;
+
+        item.appendChild(fluentIcon("agent"));
+
+        const name = document.createElement("span");
+        name.className = "item-name";
+        name.textContent = agent.agentName;
+        item.appendChild(name);
+
+        if (isActive) item.appendChild(fluentIcon("check", "item-check"));
+
+        item.addEventListener("click", () => {
+            closeHostedAgentMenu();
+            selectHostedAgent(agent.agentName);
+        });
+        host.appendChild(item);
+    }
+}
+
+function closeHostedAgentMenu() {
+    const menu = document.getElementById("deployAgentMenu");
+    const btn = document.getElementById("deployAgentTrigger");
+    if (menu) menu.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function toggleHostedAgentMenu() {
+    const menu = document.getElementById("deployAgentMenu");
+    const btn = document.getElementById("deployAgentTrigger");
+    if (!menu) return;
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    if (btn) btn.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) loadHostedAgents(false);
+}
+
+async function loadHostedAgents(force) {
+    const st = state.hostedAgents;
+    if (!force && (st.status === "loading" || st.status === "ready")) return st;
+    st.status = "loading";
+    try {
+        const data = await getJSON("/api/hosted-agents");
+        st.items = Array.isArray(data.agents) ? data.agents : [];
+        st.selected = data.selected || "";
+        st.status = "ready";
+    } catch {
+        // Keep the last known agents: a failed refresh must not collapse the
+        // picker out from under an open menu.
+        st.status = "error";
+    }
+    renderHostedAgentPicker();
+    return st;
+}
+
+async function selectHostedAgent(agentName) {
+    const previous = state.hostedAgents.selected;
+    if (!agentName || agentName === previous) return;
+    state.hostedAgents.selected = agentName;
+    renderHostedAgentPicker();
+    try {
+        await postJSON("/api/select-hosted-agent", { agentName });
+    } catch {
+        state.hostedAgents.selected = previous;
+        renderHostedAgentPicker();
+        toast("Couldn\u2019t switch agent.");
+        return;
+    }
+    state.agentName = agentName;
+    // Deployment state is per-agent, so the portal link has to be re-resolved.
+    closeInspector();
+    loadHostedAgentDeployment();
+    toast("Agent: " + agentName);
+}
+
 // Fetch hosted-agent region support for the selected project and update the UI.
 async function loadRegionSupport() {
     state.hostedRegion.status = "loading";
@@ -417,6 +542,8 @@ function applyWorkspaceTransition(info) {
     state.folds.resources = info.sections.resourcesOpen === true;
     state.folds.deploy = info.sections.deployOpen === true;
     renderFolds();
+    // Agent code just appeared in the workspace — refresh what the picker offers.
+    loadHostedAgents(true);
     return true;
 }
 
@@ -1649,6 +1776,10 @@ root.addEventListener("click", async (e) => {
         loadSkills(true);
         return;
     }
+    if (e.target.closest("#deployAgentTrigger")) {
+        toggleHostedAgentMenu();
+        return;
+    }
     if (e.target.closest("#projectSwitch")) {
         toggleProjectMenu();
         return;
@@ -1801,6 +1932,7 @@ document.addEventListener("click", (e) => {
     if (!e.target.closest(".tool-select")) closeToolMenu();
     if (!e.target.closest(".skill-select")) closeSkillMenu();
     if (!e.target.closest(".guardrail-select")) closeGuardrailMenu();
+    if (!e.target.closest(".agent-select")) closeHostedAgentMenu();
     if (!e.target.closest(".project-switch")) closeProjectMenu();
 });
 
@@ -1863,6 +1995,7 @@ async function init() {
         /* fail open — leave Deploy enabled */
     }
 
+    await loadHostedAgents();
     await loadHostedAgentDeployment();
 
     // Subscribe to server-sent canvas updates (agent-driven idea / workspace /
@@ -1885,6 +2018,9 @@ async function init() {
                             ? { ...previous, status: "ready", reason: msg.deployment.reason || "refresh_failed" }
                             : refreshed;
                     renderHostedAgentDeployment();
+                    // The chat agent may have added or removed agent code while
+                    // it worked, so keep the picker's options in sync.
+                    loadHostedAgents(true);
                 }
             } catch {
                 /* ignore malformed frames */

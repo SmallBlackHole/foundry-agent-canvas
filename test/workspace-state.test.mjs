@@ -136,6 +136,9 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
         renderFolds() {
             calls.push(["folds"]);
         },
+        loadHostedAgents() {
+            calls.push(["agents"]);
+        },
     };
 
     vm.runInNewContext(`${functionSource}\nresult = applyWorkspaceTransition(info);`, context);
@@ -143,7 +146,7 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
     assert.equal(context.result, true);
     assert.equal(context.state.init.open, true);
     assert.deepEqual(context.state.folds, { resources: true, deploy: true });
-    assert.deepEqual(calls, [["folds"]]);
+    assert.deepEqual(calls, [["folds"], ["agents"]]);
 });
 
 test("creation prompt no longer asks Copilot to invoke a canvas action", async () => {
