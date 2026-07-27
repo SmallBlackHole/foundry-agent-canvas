@@ -5,6 +5,7 @@ import test from "node:test";
 import {
     buildAgentRunCommand,
     closeAgentTerminal,
+    isAgentTerminalRunning,
     launchAgentTerminal,
 } from "../src/agent-terminal.mjs";
 
@@ -41,8 +42,8 @@ test("rejects relative project directories", () => {
     );
 });
 
-test("opens and retries the terminal with the selected nested project", async () => {
-    let open = false;
+test("mounts the terminal by focusing it, then sends the run command and restores focus", async () => {
+    let mounted = false;
     const opened = [];
     const invoked = [];
     const logs = [];
@@ -54,7 +55,7 @@ test("opens and retries the terminal with the selected nested project", async ()
             canvas: {
                 async listOpen() {
                     return {
-                        openCanvases: open
+                        openCanvases: mounted
                             ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
                             : [],
                     };
@@ -64,7 +65,8 @@ test("opens and retries the terminal with the selected nested project", async ()
                 },
                 async open(params) {
                     opened.push(params);
-                    open = true;
+                    // The host only starts the shell once the panel is focused.
+                    if (params.canvasId === "terminal" && params.input?.placement?.focus) mounted = true;
                 },
                 action: {
                     async invoke(params) {
@@ -72,7 +74,7 @@ test("opens and retries the terminal with the selected nested project", async ()
                     },
                 },
                 async close() {
-                    open = false;
+                    mounted = false;
                 },
             },
         },
@@ -86,30 +88,132 @@ test("opens and retries the terminal with the selected nested project", async ()
             { projectDir: resolve("workspace", "apps", "zeta") },
         ],
     };
+    const command = buildAgentRunCommand(alphaProjectDir);
+    const dependencies = {
+        agentReachable: async () => false,
+        terminalRunning: async () => mounted,
+        sleep: async () => {},
+        builderInstanceId: "foundry-agent-builder",
+        now: () => 1_000,
+    };
 
     try {
         assert.deepEqual(
-            await launchAgentTerminal(session, project, {
-                agentReachable: async () => false,
-                now: () => 1_000,
-            }),
+            await launchAgentTerminal(session, project, dependencies),
             { ok: true, status: "launched" },
         );
-        assert.equal(
-            opened[0].input.command,
-            buildAgentRunCommand(alphaProjectDir),
-        );
-        assert.equal(opened[0].extensionId, "terminal-ext");
 
+        // The terminal is focused to mount it, and deliberately carries no
+        // `command` because the host races it against the shell's startup.
+        assert.equal(opened[0].canvasId, "terminal");
+        assert.equal(opened[0].extensionId, "terminal-ext");
+        assert.equal(opened[0].input.placement.focus, true);
+        assert.equal(opened[0].input.command, undefined);
+        // The command arrives as terminal input, once the shell is confirmed up.
+        assert.equal(invoked.at(-1).actionName, "send_terminal_input");
+        assert.equal(invoked.at(-1).input.input, command);
+        // Focus goes back to the builder canvas.
+        assert.equal(opened[1].canvasId, "agent-builder");
+        assert.equal(opened[1].instanceId, "foundry-agent-builder");
+        assert.equal(opened[1].input, undefined);
+        assert.ok(logs.some(({ options }) => options?.level === "warn"));
+
+        // Terminal is live now, so a later click re-sends in place instead of
+        // stealing focus again.
+        const openCount = opened.length;
         assert.deepEqual(
-            await launchAgentTerminal(session, project, {
-                agentReachable: async () => false,
-                now: () => 6_000,
-            }),
+            await launchAgentTerminal(session, project, { ...dependencies, now: () => 6_000 }),
             { ok: true, status: "restarted" },
         );
-        assert.equal(invoked[0].input.input, opened[0].input.command);
-        assert.ok(logs.some(({ options }) => options?.level === "warn"));
+        assert.equal(opened.length, openCount);
+        assert.equal(invoked.at(-1).input.input, command);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
+test("collapses a rapid second click while the agent is still coming up", async () => {
+    const invoked = [];
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return { openCanvases: [] };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {},
+                action: {
+                    async invoke(params) {
+                        invoked.push(params);
+                    },
+                },
+                async close() {},
+            },
+        },
+    };
+    const project = { projectDir: resolve("workspace", "apps", "alpha"), projects: [] };
+    const dependencies = {
+        agentReachable: async () => false,
+        terminalRunning: async () => true,
+        sleep: async () => {},
+    };
+
+    try {
+        assert.deepEqual(
+            await launchAgentTerminal(session, project, { ...dependencies, now: () => 1_000 }),
+            { ok: true, status: "restarted" },
+        );
+        assert.equal(invoked.length, 1);
+        // Within the debounce window nothing else is sent.
+        assert.deepEqual(
+            await launchAgentTerminal(session, project, { ...dependencies, now: () => 2_000 }),
+            { ok: true, status: "starting" },
+        );
+        assert.equal(invoked.length, 1);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
+test("reports a terminal that never starts instead of sending into the void", async () => {
+    const invoked = [];
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return { openCanvases: [] };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {},
+                action: {
+                    async invoke(params) {
+                        invoked.push(params);
+                    },
+                },
+                async close() {},
+            },
+        },
+    };
+
+    try {
+        const result = await launchAgentTerminal(
+            session,
+            { projectDir: resolve("workspace", "apps", "alpha"), projects: [] },
+            {
+                agentReachable: async () => false,
+                terminalRunning: async () => false, // never mounts
+                sleep: async () => {},
+            },
+        );
+        assert.equal(result.ok, false);
+        assert.match(result.error, /terminal did not start/);
+        assert.equal(invoked.length, 0);
     } finally {
         await closeAgentTerminal(session);
     }
@@ -164,4 +268,38 @@ test("reports a missing runnable azd project before opening a terminal", async (
     assert.equal(result.ok, false);
     assert.match(result.error, /No runnable Foundry hosted agent project was found/);
     assert.equal(opened, false);
+});
+
+test("detects a terminal that the host has not mounted yet", async () => {
+    const invoked = [];
+    const running = {
+        rpc: {
+            canvas: {
+                action: {
+                    async invoke(params) {
+                        invoked.push(params);
+                        return { output: "" };
+                    },
+                },
+            },
+        },
+    };
+    const notMounted = {
+        rpc: {
+            canvas: {
+                action: {
+                    async invoke() {
+                        throw new Error("Terminal not found or not running");
+                    },
+                },
+            },
+        },
+    };
+
+    assert.equal(await isAgentTerminalRunning(running), true);
+    assert.equal(invoked[0].instanceId, "foundry-agent-run");
+    assert.equal(invoked[0].actionName, "read_terminal_output");
+    assert.equal(invoked[0].input.mode, "screen");
+    assert.equal(await isAgentTerminalRunning(notMounted), false);
+    assert.equal(await isAgentTerminalRunning({}), false);
 });

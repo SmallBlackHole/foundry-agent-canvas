@@ -340,7 +340,11 @@ export function createRuntimeApiServices(instanceId, {
                     error: "Inspector failed to start. Check the extension logs for details.",
                 };
             }
-            const terminal = await localInspector.launchTerminal(session, project);
+            // Starting the agent has to focus the terminal panel, so the launcher
+            // needs this canvas instance to hand focus back afterwards.
+            const terminal = await localInspector.launchTerminal(session, project, {
+                builderInstanceId: instanceId,
+            });
             if (!terminal?.ok) {
                 return {
                     ok: false,

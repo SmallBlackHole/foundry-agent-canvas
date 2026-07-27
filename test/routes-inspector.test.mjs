@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createRuntimeApiServices } from "../src/routes.mjs";
@@ -24,8 +25,8 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
                 calls.push(["proxy", directory]);
                 return "http://127.0.0.1:1234";
             },
-            async launchTerminal(currentSession, selectedProject) {
-                calls.push(["launch", currentSession, selectedProject]);
+            async launchTerminal(currentSession, selectedProject, options) {
+                calls.push(["launch", currentSession, selectedProject, options]);
                 return { ok: true, status: "launched" };
             },
         },
@@ -39,6 +40,18 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
     assert.deepEqual(calls, [
         ["resolve", "C:\\workspace"],
         ["proxy", "inspector-ui"],
-        ["launch", session, project],
+        // The builder instance id lets the launcher hand focus back after it
+        // has forced the terminal to mount.
+        ["launch", session, project, { builderInstanceId: "inspect-project-test" }],
     ]);
+});
+
+test("relaunching or closing the inspector retires the previous readiness poll", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+
+    // Without this, a stale loop's 2-minute deadline fires over a newer launch
+    // and reports a timeout for an inspector that is actually fine.
+    assert.match(source, /const token = inspectorPollToken;/);
+    assert.match(source, /if \(token !== inspectorPollToken\) return;/);
+    assert.match(source, /inspectorPollToken \+= 1; \/\/ stop any in-flight readiness poll/);
 });

@@ -1705,6 +1705,10 @@ root.addEventListener("click", async (e) => {
 });
 
 // ----------------------------------------------- Local Agent Inspector embed
+// Retires a previous readiness poll when the inspector is relaunched or closed,
+// so a stale loop can't hide the overlay or report a timeout over a newer one.
+let inspectorPollToken = 0;
+
 async function launchInspector(btn) {
     const view = document.getElementById("inspectorView");
     const frame = document.getElementById("inspectorFrame");
@@ -1733,9 +1737,12 @@ async function launchInspector(btn) {
             // Poll until the agent is reachable, then load the frame.
             const POLL_INTERVAL_MS = 2000;
             const POLL_TIMEOUT_MS = 120_000;
+            inspectorPollToken += 1;
+            const token = inspectorPollToken;
             const deadline = Date.now() + POLL_TIMEOUT_MS;
 
             const poll = async () => {
+                if (token !== inspectorPollToken) return;
                 if (Date.now() > deadline) {
                     if (waitingEl) waitingEl.hidden = true;
                     statusEl.textContent = "Agent did not start within 2 minutes. Check the terminal for errors.";
@@ -1745,6 +1752,7 @@ async function launchInspector(btn) {
                 }
                 try {
                     const r = await getJSON("/api/inspect/ready");
+                    if (token !== inspectorPollToken) return;
                     if (r && r.ready) {
                         if (waitingEl) waitingEl.hidden = true;
                         frame.src = data.url;
@@ -1777,6 +1785,7 @@ function closeInspector() {
     const view = document.getElementById("inspectorView");
     const frame = document.getElementById("inspectorFrame");
     const waitingEl = document.getElementById("inspectorWaiting");
+    inspectorPollToken += 1; // stop any in-flight readiness poll
     if (view) view.hidden = true;
     if (frame) frame.src = "";
     if (waitingEl) waitingEl.hidden = true;
