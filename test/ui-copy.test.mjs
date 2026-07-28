@@ -27,6 +27,7 @@ test("canvas tab is marked as preview", async () => {
     const extensionSource = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
 
     assert.match(extensionSource, /displayName: "Microsoft Foundry \(Preview\)"/);
+    assert.match(extensionSource, /return \{ title: "Microsoft Foundry \(Preview\)", url: entry\.url, status: "Build" \}/);
 });
 
 test("toolbox and skill links use the Foundry tools tabs", async () => {

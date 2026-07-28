@@ -225,7 +225,7 @@ const session = await joinSession({
                 }
                 openInstances.add(ctx.instanceId);
                 applyInput(entry.state, ctx.input);
-                return { title: "Microsoft Foundry", url: entry.url, status: "Build" };
+                return { title: "Microsoft Foundry (Preview)", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
                 // Keep the loopback server alive for this provider process. The
