@@ -9,12 +9,14 @@ import {
     selectProject as transitionProject,
     selectSubscription as transitionSubscription,
 } from "./selection-state.js";
+import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
 
 const state = {
     agentName: "",
     selection: emptySelection(),
     model: { name: "", color: "#10a37f" },
     deployPrompt: "deploy it as a Foundry hosted agent",
+    pluginVersion: "",
     // Live project data, lazily loaded when a dropdown first opens.
     // status: idle | loading | ready | error
     deploymentsState: { status: "idle", items: [], source: null, reason: null },
@@ -214,6 +216,13 @@ function renderBuild() {
     const node = clone("tpl-build");
 
     renderSelectionLabels(node);
+    const issueLink = node.querySelector("#githubIssueLink");
+    if (issueLink) {
+        issueLink.href = buildIssueReportUrl({
+            operatingSystem: detectOperatingSystem(),
+            pluginVersion: state.pluginVersion,
+        });
+    }
 
     // Set portal links for "Deploy new model" / "Add or update toolbox" / "Create new skill" / "Create new guardrail".
     const modelLink = node.querySelector("#deployNewModelLink");
@@ -2024,6 +2033,7 @@ async function init() {
         if (s.selection) state.selection = normalizeSelection(s.selection);
         if (s.model) state.model = s.model;
         if (s.deployPrompt) state.deployPrompt = s.deployPrompt;
+        if (s.pluginVersion) state.pluginVersion = s.pluginVersion;
     }
 
     // Resolve the workspace's hosted-agent signal before first paint so refresh

@@ -49,7 +49,7 @@ import {
     resolveHostedAgentProject,
 } from "./local-agent.mjs";
 import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
-import { checkPluginUpdate } from "./plugin-update.mjs";
+import { checkPluginUpdate, resolvePluginVersion } from "./plugin-update.mjs";
 import { flushPendingWorkspaceState } from "./workspace-state.mjs";
 
 export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
@@ -106,6 +106,7 @@ export function createRuntimeApiServices(instanceId, {
     },
     clearResourceCache = clearFoundryCache,
     clearSavedSelection = clearSelection,
+    pluginVersion = "",
     localInspector = {
         ensureProxy: ensureInspectorProxy,
         launchTerminal: launchAgentTerminal,
@@ -141,7 +142,11 @@ export function createRuntimeApiServices(instanceId, {
 
     return {
         async getState() {
-            return { ...(getEntry()?.state ?? defaultState()), deployPrompt: DEPLOY_PROMPT };
+            return {
+                ...(getEntry()?.state ?? defaultState()),
+                deployPrompt: DEPLOY_PROMPT,
+                pluginVersion,
+            };
         },
         getHostedAgentDeployment() {
             return selectedHostedAgentPortalAction(getEntry(), workspaceRootFn);
@@ -436,6 +441,7 @@ export function createRequestHandler(
         markPendingRefresh,
     },
 ) {
+    const pluginVersion = resolvePluginVersion(extDir);
     const handleApi = createApiRouter({
         services: createRuntimeApiServices(instanceId, {
             session,
@@ -444,6 +450,7 @@ export function createRequestHandler(
             workspaceRootFn,
             waitForFoundrySkill,
             markPendingRefresh,
+            pluginVersion,
         }),
         reportError: (error, request) => session.log(
             `${request.method} ${request.path} failed: ${error?.message ?? error}`,
@@ -465,6 +472,9 @@ export function createRequestHandler(
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
         if (method === "GET" && path === "/selection-state.js") {
             return serveStatic(res, "selection-state.js", publicDir);
+        }
+        if (method === "GET" && path === "/issue-report.js") {
+            return serveStatic(res, "issue-report.js", publicDir);
         }
         if (method === "GET" && path === "/codicons/codicon.ttf") {
             return serveStatic(res, join("codicons", "codicon.ttf"), publicDir);

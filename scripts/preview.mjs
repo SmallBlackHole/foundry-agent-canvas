@@ -22,6 +22,7 @@ import {
 import { ApiError, createApiRouter } from "../src/api-router.mjs";
 import { initialBuildSections } from "../src/build-sections.mjs";
 import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
+import { resolvePluginVersion } from "../src/plugin-update.mjs";
 import {
     emptySelection,
     normalizeSelection,
@@ -34,6 +35,7 @@ const PUBLIC_DIR = join(ROOT, "public");
 const FLUENT_ICONS_DIR = join(ROOT, "node_modules", "@fluentui", "svg-icons", "icons");
 const PREVIEW_MOCK_JS = join(ROOT, "scripts", "preview-mock.js");
 const PREVIEW_MOCK_CSS = join(ROOT, "scripts", "preview-mock.css");
+const PLUGIN_VERSION = resolvePluginVersion(ROOT);
 
 const HOST = valueFor("--host") || process.env.HOST || "127.0.0.1";
 const PORT = Number(valueFor("--port") || process.env.PORT || 0);
@@ -426,6 +428,7 @@ function createPreviewApiServices() {
                 preview: true,
                 selection: mockSelection(url),
                 deployPrompt: DEPLOY_PROMPT,
+                pluginVersion: PLUGIN_VERSION,
             };
         },
         getHostedAgentDeployment({ url }) {

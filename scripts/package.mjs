@@ -35,6 +35,7 @@ const FLUENT_ICONS = [
     "open_16_regular.svg",
     "person_16_regular.svg",
     "plug_connected_16_regular.svg",
+    "question_circle_20_regular.svg",
     "rocket_20_regular.svg",
     "send_16_regular.svg",
     "shield_checkmark_20_regular.svg",

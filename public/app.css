@@ -86,6 +86,7 @@ body {
 .update-bar-dismiss:hover { background: rgba(0,0,0,.06); color: var(--text); }
 
 /* ---------------- Project picker panel ---------------- */
+.project-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
 .project-switch { position: relative; flex: 0 0 auto; }
 .project-menu {
     position: absolute; top: calc(100% + 6px); right: 0; width: 360px; max-width: 86vw;
@@ -554,6 +555,7 @@ body {
 .fi-refresh { --fi-url: url("/fluent-icons/arrow_clockwise_16_regular.svg"); --fi-size: 18px; }
 .fi-switch { --fi-url: url("/fluent-icons/arrow_swap_16_regular.svg"); --fi-size: 18px; }
 .fi-more { --fi-url: url("/fluent-icons/more_horizontal_20_regular.svg"); --fi-size: 22px; }
+.fi-question { --fi-url: url("/fluent-icons/question_circle_20_regular.svg"); --fi-size: 20px; }
 .fi-sparkle { --fi-url: url("/fluent-icons/sparkle_20_regular.svg"); --fi-size: 22px; }
 .fi-chat { --fi-url: url("/fluent-icons/chat_multiple_20_regular.svg"); --fi-size: 22px; }
 .fi-code { --fi-url: url("/fluent-icons/code_20_regular.svg"); --fi-size: 22px; }
@@ -649,6 +651,7 @@ body {
     background: transparent;
     color: var(--fluent-fg-1);
     cursor: pointer;
+    text-decoration: none;
 }
 .icon-btn:hover,
 .icon-btn[aria-expanded="true"] {

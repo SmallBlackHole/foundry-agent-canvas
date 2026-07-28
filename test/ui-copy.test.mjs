@@ -133,6 +133,27 @@ test("the plugin update bar is informational and directs updates outside the liv
     assert.match(packageScript, /"dismiss_16_regular\.svg",/);
 });
 
+test("project header links to the Microsoft Foundry issue form", async () => {
+    const [html, css, packageSource, appSource, routesSource] = await Promise.all([
+        readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.css", import.meta.url), "utf8"),
+        readFile(new URL("../scripts/package.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+        readFile(new URL("../src/routes.mjs", import.meta.url), "utf8"),
+    ]);
+
+    assert.match(
+        html,
+        /id="githubIssueLink"[\s\S]*?href="https:\/\/github\.com\/microsoft\/foundry-toolkit\/issues\/new\?labels=canvas"/,
+    );
+    assert.match(html, /id="githubIssueLink"[\s\S]*?target="_blank"[\s\S]*?rel="noopener noreferrer"/);
+    assert.match(html, /aria-label="Report an issue or ask a question"/);
+    assert.match(css, /\.fi-question\s*\{[^}]*question_circle_20_regular\.svg/);
+    assert.match(packageSource, /"question_circle_20_regular\.svg"/);
+    assert.match(appSource, /buildIssueReportUrl\(\{[\s\S]*?operatingSystem: detectOperatingSystem\(\)[\s\S]*?pluginVersion: state\.pluginVersion/);
+    assert.match(routesSource, /path === "\/issue-report\.js"/);
+});
+
 test("preview mock exposes region availability instead of a hidden region override", async () => {
     const mock = await readFile(new URL("../scripts/preview-mock.js", import.meta.url), "utf8");
     const preview = await readFile(new URL("../scripts/preview.mjs", import.meta.url), "utf8");

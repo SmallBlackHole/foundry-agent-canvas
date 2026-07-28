@@ -75,6 +75,17 @@ export function readInstalledPlugin({ extensionDir } = {}) {
     };
 }
 
+export function resolvePluginVersion(extensionDir) {
+    const manifest = readPluginManifest(extensionDir);
+    if (manifest?.version) return manifest.version.trim();
+    try {
+        const data = JSON.parse(readFileSync(join(extensionDir, "package.json"), "utf-8"));
+        return typeof data?.version === "string" ? data.version.trim() : "";
+    } catch {
+        return "";
+    }
+}
+
 export async function fetchLatestPluginVersion({ fetchImpl = globalThis.fetch } = {}) {
     if (typeof fetchImpl !== "function") {
         return { ok: false, reason: "fetch_unavailable", version: "" };

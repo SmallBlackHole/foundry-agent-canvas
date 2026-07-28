@@ -49,56 +49,69 @@
                                 <span id="projectName">Select a project</span>
                             </span>
                         </div>
-                        <div class="project-switch">
-                            <button class="icon-btn project-more" id="projectSwitch" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Switch project">
-                                <span class="fi fi-more" aria-hidden="true"></span>
-                            </button>
-                            <div class="project-menu" id="projectMenu" role="menu" hidden>
-                                <div class="pm-section pm-account">
-                                    <div class="pm-acc-head">
-                                        <div class="pm-id">
-                                            <span class="pm-id-avatar" id="pmAvatar">?</span>
-                                            <div class="pm-id-text">
-                                                <span class="pm-id-name" id="pmAccount">Not signed in</span>
-                                                <span class="pm-id-sub" id="pmTenant"></span>
+                        <div class="project-actions">
+                            <a
+                                class="icon-btn project-help"
+                                id="githubIssueLink"
+                                href="https://github.com/microsoft/foundry-toolkit/issues/new?labels=canvas"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Report an issue or ask a question"
+                                title="Report an issue or ask a question"
+                            >
+                                <span class="fi fi-question" aria-hidden="true"></span>
+                            </a>
+                            <div class="project-switch">
+                                <button class="icon-btn project-more" id="projectSwitch" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Switch project">
+                                    <span class="fi fi-more" aria-hidden="true"></span>
+                                </button>
+                                <div class="project-menu" id="projectMenu" role="menu" hidden>
+                                    <div class="pm-section pm-account">
+                                        <div class="pm-acc-head">
+                                            <div class="pm-id">
+                                                <span class="pm-id-avatar" id="pmAvatar">?</span>
+                                                <div class="pm-id-text">
+                                                    <span class="pm-id-name" id="pmAccount">Not signed in</span>
+                                                    <span class="pm-id-sub" id="pmTenant"></span>
+                                                </div>
                                             </div>
+                                            <button class="pm-auth-btn" id="pmAuthBtn" type="button">Sign in</button>
                                         </div>
-                                        <button class="pm-auth-btn" id="pmAuthBtn" type="button">Sign in</button>
+                                        <div class="pm-device" id="pmDevice" hidden>
+                                            <div class="pm-device-row" id="pmDeviceBody"></div>
+                                        </div>
                                     </div>
-                                    <div class="pm-device" id="pmDevice" hidden>
-                                        <div class="pm-device-row" id="pmDeviceBody"></div>
-                                    </div>
-                                </div>
 
-                                <div class="menu-sep"></div>
+                                    <div class="menu-sep"></div>
 
-                                <div class="pm-section">
-                                    <button class="pm-acc" id="pmSubAcc" data-acc="sub" type="button" aria-expanded="false">
-                                        <span class="pm-acc-label">Subscription</span>
-                                        <span class="pm-acc-value" id="pmSubValue">-</span>
-                                        <span class="fi fi-chev pm-acc-chev" aria-hidden="true"></span>
-                                    </button>
-                                    <div class="pm-body" id="pmSubBody" hidden>
-                                        <input class="pm-search" id="pmSubSearch" type="text" placeholder="Search subscriptions" autocomplete="off" />
-                                        <div class="pm-list" id="pmSubList"></div>
-                                    </div>
-                                </div>
-
-                                <div class="menu-sep"></div>
-
-                                <div class="pm-section">
-                                    <button class="pm-acc" id="pmProjAcc" data-acc="proj" type="button" aria-expanded="true">
-                                        <span class="pm-acc-label">Project</span>
-                                        <span class="pm-acc-value" id="pmProjValue">-</span>
-                                        <span class="fi fi-chev pm-acc-chev" aria-hidden="true"></span>
-                                    </button>
-                                    <div class="pm-body" id="pmProjBody">
-                                        <input class="pm-search" id="pmProjSearch" type="text" placeholder="Search projects" autocomplete="off" />
-                                        <div class="pm-list" id="pmProjList"></div>
-                                        <button class="pm-create-project" id="createProjectLink" type="button">
-                                            <span>Create new project in Microsoft Foundry</span>
-                                            <span class="fi fi-open" aria-hidden="true"></span>
+                                    <div class="pm-section">
+                                        <button class="pm-acc" id="pmSubAcc" data-acc="sub" type="button" aria-expanded="false">
+                                            <span class="pm-acc-label">Subscription</span>
+                                            <span class="pm-acc-value" id="pmSubValue">-</span>
+                                            <span class="fi fi-chev pm-acc-chev" aria-hidden="true"></span>
                                         </button>
+                                        <div class="pm-body" id="pmSubBody" hidden>
+                                            <input class="pm-search" id="pmSubSearch" type="text" placeholder="Search subscriptions" autocomplete="off" />
+                                            <div class="pm-list" id="pmSubList"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="menu-sep"></div>
+
+                                    <div class="pm-section">
+                                        <button class="pm-acc" id="pmProjAcc" data-acc="proj" type="button" aria-expanded="true">
+                                            <span class="pm-acc-label">Project</span>
+                                            <span class="pm-acc-value" id="pmProjValue">-</span>
+                                            <span class="fi fi-chev pm-acc-chev" aria-hidden="true"></span>
+                                        </button>
+                                        <div class="pm-body" id="pmProjBody">
+                                            <input class="pm-search" id="pmProjSearch" type="text" placeholder="Search projects" autocomplete="off" />
+                                            <div class="pm-list" id="pmProjList"></div>
+                                            <button class="pm-create-project" id="createProjectLink" type="button">
+                                                <span>Create new project in Microsoft Foundry</span>
+                                                <span class="fi fi-open" aria-hidden="true"></span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
