@@ -68,6 +68,10 @@ const CONTENT_TYPES = {
 
 const DEFAULT_SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000001";
 const ALT_SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000002";
+const PREVIEW_PLUGIN_NAME = "microsoft-foundry";
+const PREVIEW_PLUGIN_MARKETPLACE = "awesome-copilot";
+const PREVIEW_INSTALLED_PLUGIN_VERSION = "1.0.4";
+const PREVIEW_LATEST_PLUGIN_VERSION = "1.0.5";
 
 const identity = {
     signedIn: true,
@@ -179,6 +183,10 @@ async function mockHostedAgents(url) {
             projectDir: `preview/${slug}`,
         };
     });
+}
+
+function mockPluginUpdate(url) {
+    return mockBool(url, "pluginUpdate", false);
 }
 
 async function mockResolvedAgentName(url) {
@@ -557,6 +565,20 @@ function createPreviewApiServices() {
         },
         getInspectorReady() {
             return { ready: false };
+        },
+        getPluginUpdate({ url }) {
+            const available = mockPluginUpdate(url);
+            return {
+                ok: true,
+                name: PREVIEW_PLUGIN_NAME,
+                marketplace: PREVIEW_PLUGIN_MARKETPLACE,
+                installedVersion: PREVIEW_INSTALLED_PLUGIN_VERSION,
+                latestVersion: available
+                    ? PREVIEW_LATEST_PLUGIN_VERSION
+                    : PREVIEW_INSTALLED_PLUGIN_VERSION,
+                status: available ? "outdated" : "latest",
+                updateAvailable: available,
+            };
         },
         startInspector({ url }) {
             return {

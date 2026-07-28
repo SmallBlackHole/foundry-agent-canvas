@@ -55,6 +55,33 @@ body {
 .project-dot.is-unset { background: #8c959f; }
 .btn-switch { flex: 0 0 auto; font-size: 13px; padding: 5px 12px; }
 
+/* ---------------- Plugin update bar ---------------- */
+.update-bar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid rgba(0,0,0,.09);
+    background: var(--bg-subtle);
+    color: var(--text);
+    font-size: 12.5px; line-height: 17px;
+}
+.update-bar[hidden] { display: none; }
+/* Purely informational: the glyph must not read as a control. */
+.update-bar-ico {
+    --fi-url: url("/fluent-icons/arrow_circle_up_16_regular.svg");
+    --fi-size: 16px;
+    color: var(--accent);
+    pointer-events: none;
+}
+.update-bar-text { flex: 1; min-width: 0; }
+.update-bar-dismiss {
+    flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+    display: inline-grid; place-items: center;
+    border: 0; border-radius: 5px; background: transparent;
+    color: var(--muted); cursor: pointer;
+}
+.update-bar-dismiss:hover { background: rgba(0,0,0,.06); color: var(--text); }
+
 /* ---------------- Project picker panel ---------------- */
 .project-switch { position: relative; flex: 0 0 auto; }
 .project-menu {
@@ -542,6 +569,7 @@ body {
 .fi-person { --fi-url: url("/fluent-icons/person_16_regular.svg"); --fi-size: 18px; }
 .fi-check { --fi-url: url("/fluent-icons/checkmark_16_regular.svg"); --fi-size: 18px; }
 .fi-agent { --fi-url: url("/fluent-icons/agents_16_regular.svg"); --fi-size: 18px; }
+.fi-dismiss { --fi-url: url("/fluent-icons/dismiss_16_regular.svg"); --fi-size: 14px; }
 
 @font-face {
     font-family: "codicon";

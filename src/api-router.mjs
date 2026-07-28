@@ -154,6 +154,7 @@ route("POST", "/api/send", "sendPrompt", {
     },
 });
 route("GET", "/api/project-init", "getProjectInit");
+route("GET", "/api/plugin-update", "getPluginUpdate");
 route("GET", "/api/inspect/ready", "getInspectorReady");
 route("GET", "/api/inspect/start", "startInspector");
 

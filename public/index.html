@@ -31,6 +31,13 @@
         <template id="tpl-build">
             <section class="layout">
                 <div class="panel-shell">
+                    <div class="update-bar" id="updateBar" role="status" hidden>
+                        <span class="fi update-bar-ico" aria-hidden="true"></span>
+                        <span class="update-bar-text" id="updateBarText"></span>
+                        <button class="update-bar-dismiss" id="updateDismissBtn" type="button" title="Dismiss" aria-label="Dismiss update notice">
+                            <span class="fi fi-dismiss" aria-hidden="true"></span>
+                        </button>
+                    </div>
                     <header class="project-bar">
                         <div class="project-info">
                             <span class="project-label">Microsoft Foundry Project</span>

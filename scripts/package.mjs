@@ -15,6 +15,7 @@ const DIST_DIR = join(ROOT, "dist");
 const PKG_DIR = join(DIST_DIR, "pkg");
 const ZIP_PATH = join(DIST_DIR, "microsoft-foundry.zip");
 const FLUENT_ICONS = [
+    "arrow_circle_up_16_regular.svg",
     "arrow_clockwise_16_regular.svg",
     "arrow_swap_16_regular.svg",
     "book_20_regular.svg",
@@ -25,6 +26,7 @@ const FLUENT_ICONS = [
     "chevron_down_12_regular.svg",
     "code_20_regular.svg",
     "cube_12_regular.svg",
+    "dismiss_16_regular.svg",
     "globe_search_20_regular.svg",
     "more_horizontal_20_regular.svg",
     "number_circle_1_16_regular.svg",

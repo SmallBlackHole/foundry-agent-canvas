@@ -103,6 +103,33 @@ test("starter options can wrap without clipping their labels", async () => {
     assert.match(css, /\.option-title\s*\{[\s\S]*?white-space:\s*normal;/);
 });
 
+test("the plugin update bar is informational and directs updates outside the live provider", async () => {
+    const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+    const css = await readFile(new URL("../public/app.css", import.meta.url), "utf8");
+    const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const packageScript = await readFile(new URL("../scripts/package.mjs", import.meta.url), "utf8");
+
+    assert.match(html, /<div class="update-bar" id="updateBar" role="status" hidden>/);
+    assert.doesNotMatch(html, /id="updateBtn"/);
+    assert.match(html, /id="updateBar"[\s\S]*?<header class="project-bar">/);
+    assert.match(css, /\.update-bar\[hidden\] \{ display: none; \}/);
+    assert.match(app, /Update it from Settings \\u2192 Plugins\./);
+    assert.doesNotMatch(app, /copilot plugin update|gh copilot/);
+    assert.doesNotMatch(app, /applyPluginUpdate|Updating Microsoft Foundry|Updated\. Reopen the Canvas/);
+
+    // The status glyph must not read as a control: no shared clickable icon
+    // class and no pointer events.
+    assert.match(html, /<span class="fi update-bar-ico" aria-hidden="true"><\/span>/);
+    assert.doesNotMatch(html, /fi-refresh update-bar-ico/);
+    assert.match(css, /\.update-bar-ico \{[\s\S]*?arrow_circle_up_16_regular\.svg[\s\S]*?pointer-events: none;/);
+    assert.doesNotMatch(css, /update-bar-btn|update-spin|update-bar-ico\.is-busy/);
+
+    assert.match(html, /id="updateDismissBtn"[^>]*aria-label="Dismiss update notice"/);
+    assert.match(css, /\.update-bar-dismiss \{[\s\S]*?cursor: pointer;/);
+    assert.match(packageScript, /"arrow_circle_up_16_regular\.svg",/);
+    assert.match(packageScript, /"dismiss_16_regular\.svg",/);
+});
+
 test("preview mock exposes region availability instead of a hidden region override", async () => {
     const mock = await readFile(new URL("../scripts/preview-mock.js", import.meta.url), "utf8");
     const preview = await readFile(new URL("../scripts/preview.mjs", import.meta.url), "utf8");

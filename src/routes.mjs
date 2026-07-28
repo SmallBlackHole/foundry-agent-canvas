@@ -49,6 +49,7 @@ import {
     resolveHostedAgentProject,
 } from "./local-agent.mjs";
 import { resolveHostedAgentPortalAction } from "./hosted-agent.mjs";
+import { checkPluginUpdate } from "./plugin-update.mjs";
 import { flushPendingWorkspaceState } from "./workspace-state.mjs";
 
 export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
@@ -92,6 +93,7 @@ export function selectedHostedAgentName(entry, agents) {
 export function createRuntimeApiServices(instanceId, {
     session,
     inspectorUiDir,
+    extensionDir,
     workspaceRootFn,
     waitForFoundrySkill,
     markPendingRefresh,
@@ -109,6 +111,9 @@ export function createRuntimeApiServices(instanceId, {
         launchTerminal: launchAgentTerminal,
         listAgents: listHostedAgents,
         resolveProject: resolveHostedAgentProject,
+    },
+    pluginUpdate = {
+        check: checkPluginUpdate,
     },
 }) {
     const getEntry = () => servers.get(instanceId);
@@ -355,6 +360,12 @@ export function createRuntimeApiServices(instanceId, {
         async getInspectorReady() {
             return { ready: await isAgentReachable() };
         },
+        async getPluginUpdate({ url }) {
+            return pluginUpdate.check({
+                extensionDir,
+                force: url.searchParams.get("refresh") === "1",
+            });
+        },
         async startInspector() {
             const root = await workspaceRootFn();
             const agents = await localInspector.listAgents(root);
@@ -429,6 +440,7 @@ export function createRequestHandler(
         services: createRuntimeApiServices(instanceId, {
             session,
             inspectorUiDir,
+            extensionDir: extDir,
             workspaceRootFn,
             waitForFoundrySkill,
             markPendingRefresh,

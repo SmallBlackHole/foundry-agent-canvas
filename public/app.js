@@ -52,6 +52,15 @@ const state = {
     // Hosted agents found in the workspace. The picker only appears when there
     // is more than one, so single-agent workspaces keep the implicit behavior.
     hostedAgents: { status: "idle", items: [], selected: "" },
+    // Marketplace update for this extension's plugin, checked when the canvas
+    // opens. The canvas only reports availability; the host performs updates
+    // after it has released this provider's files.
+    pluginUpdate: {
+        status: "idle",
+        installedVersion: "",
+        latestVersion: "",
+        dismissed: false,
+    },
 };
 
 const root = document.getElementById("root");
@@ -228,6 +237,7 @@ function renderBuild() {
     renderRegionSupport();
     renderHostedAgentDeployment();
     renderHostedAgentPicker();
+    renderPluginUpdate();
 }
 
 // Apply a collapsible card's open/closed state to the DOM. Mirrors the
@@ -523,6 +533,55 @@ async function loadRegionSupport() {
         state.hostedRegion.supported = null; // fail open
     }
     renderRegionSupport();
+}
+
+// ------------------------------------------------------ Plugin update notice
+// The canvas is distributed as the microsoft-foundry plugin; when the
+// marketplace publishes a newer version the bar above the project header
+// directs users to the host-managed plugin settings.
+function pluginUpdateMessage() {
+    const update = state.pluginUpdate;
+    const available = update.latestVersion && update.installedVersion
+        ? `Microsoft Foundry update available: ${update.installedVersion} \u2192 ${update.latestVersion}`
+        : update.latestVersion
+            ? `Microsoft Foundry ${update.latestVersion} is available.`
+            : "A new version of Microsoft Foundry is available.";
+    return `${available} Update it from Settings \u2192 Plugins.`;
+}
+
+function renderPluginUpdate() {
+    const bar = document.getElementById("updateBar");
+    if (!bar) return;
+    const update = state.pluginUpdate;
+    bar.hidden = update.status === "idle" || !!update.dismissed;
+    if (bar.hidden) return;
+
+    const text = document.getElementById("updateBarText");
+    if (text) text.textContent = pluginUpdateMessage();
+}
+
+// Hides the notice for this canvas session only; reopening the canvas checks
+// the marketplace again and brings it back while the update is still pending.
+function dismissPluginUpdate() {
+    state.pluginUpdate = { ...state.pluginUpdate, dismissed: true };
+    renderPluginUpdate();
+}
+
+async function loadPluginUpdate() {
+    try {
+        const result = await getJSON("/api/plugin-update");
+        if (!result || !result.updateAvailable) return;
+        state.pluginUpdate = {
+            status: "available",
+            installedVersion: result.installedVersion || "",
+            latestVersion: result.latestVersion || "",
+            dismissed: false,
+        };
+    } catch {
+        // A failed check is silent — never block the builder on it.
+        return;
+    }
+    renderPluginUpdate();
 }
 
 // Apply the server-derived initial section state once on load. The server uses
@@ -1686,6 +1745,10 @@ function render() {
 // ----------------------------------------------------------- Event handling
 // Delegated clicks within the main area.
 root.addEventListener("click", async (e) => {
+    if (e.target.closest("#updateDismissBtn")) {
+        dismissPluginUpdate();
+        return;
+    }
     if (e.target.closest("#initToggle")) {
         const willOpen = !state.init.open;
         state.init.open = willOpen;
@@ -1974,6 +2037,10 @@ async function init() {
         if (pi && pi.ok) applyInitDefaults(pi);
     }
     render();
+
+    // Check the marketplace for a newer plugin build. Non-blocking: the bar
+    // appears once the check answers, and stays hidden when it fails.
+    loadPluginUpdate();
 
     // Resolve the signed-in identity and the persisted/default resource selection.
     try {

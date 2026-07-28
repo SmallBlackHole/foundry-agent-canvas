@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { installSkillFromGitHub } from "./skill-install.mjs";
+import { compareVersions } from "./version-compare.mjs";
 
 const USER_HOME = homedir();
 const SKILLS_SOURCE = "microsoft/azure-skills";
@@ -91,23 +92,6 @@ function readInstalledFoundrySkill() {
         lockUpdatedAt: lock?.updatedAt || "",
         installPath: USER_SKILL_DIR,
     };
-}
-
-function compareVersions(a, b) {
-    const left = String(a || "").split(/[.-]/);
-    const right = String(b || "").split(/[.-]/);
-    const len = Math.max(left.length, right.length);
-    for (let i = 0; i < len; i++) {
-        const x = left[i] || "0";
-        const y = right[i] || "0";
-        const nx = /^\d+$/.test(x) ? Number(x) : NaN;
-        const ny = /^\d+$/.test(y) ? Number(y) : NaN;
-        const cmp = Number.isNaN(nx) || Number.isNaN(ny)
-            ? x.localeCompare(y)
-            : nx - ny;
-        if (cmp !== 0) return cmp < 0 ? -1 : 1;
-    }
-    return 0;
 }
 
 function githubRepoFromSkillLock(lock) {

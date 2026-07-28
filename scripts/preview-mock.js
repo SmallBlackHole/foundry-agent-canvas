@@ -13,6 +13,7 @@
         "agentMetadata",
         "agentError",
         "regionSupported",
+        "pluginUpdate",
     ];
 
     const initialUrl = new URL(window.location.href);
@@ -78,6 +79,7 @@
             agentMetadata: boolValue(params, "agentMetadata"),
             agentError: params.get("agentError") === "true",
             regionSupported: boolValue(params, "regionSupported"),
+            pluginUpdate: boolValue(params, "pluginUpdate", false),
         };
     }
 
@@ -170,7 +172,8 @@
             `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
             `multiAgent=${cfg.multiAgent}, agentInput=${cfg.agentInput}, az=${cfg.az}, ` +
             `azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
-            `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}`;
+            `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}, ` +
+            `pluginUpdate=${cfg.pluginUpdate}`;
 
         const hint = document.createElement("div");
         hint.className = "preview-mock-hint";
@@ -195,6 +198,9 @@
                 checkbox("deployed", "Agent deployed", cfg.deployed),
                 checkbox("agentMetadata", "Portal metadata available", cfg.agentMetadata),
                 checkbox("agentError", "Deployment lookup error", cfg.agentError),
+            ]),
+            section("Canvas plugin", [
+                checkbox("pluginUpdate", "Marketplace update available", cfg.pluginUpdate),
             ]),
             summary,
             hint,
