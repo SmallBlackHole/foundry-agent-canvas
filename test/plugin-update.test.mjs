@@ -215,18 +215,17 @@ test("the bar concisely directs users to the safe host-managed update flow", asy
         return context.result;
     };
 
-    const instructions = " Update it from Settings \u2192 Plugins.";
     assert.equal(
         message({ status: "available", installedVersion: "1.0.4", latestVersion: "1.0.5" }),
-        "Microsoft Foundry update available: 1.0.4 \u2192 1.0.5" + instructions,
+        "Microsoft Foundry 1.0.5 is available.",
     );
     assert.equal(
         message({ status: "available", installedVersion: "", latestVersion: "1.0.5" }),
-        "Microsoft Foundry 1.0.5 is available." + instructions,
+        "Microsoft Foundry 1.0.5 is available.",
     );
     assert.equal(
         message({ status: "available", installedVersion: "", latestVersion: "" }),
-        "A new version of Microsoft Foundry is available." + instructions,
+        "A Microsoft Foundry update is available.",
     );
 });
 

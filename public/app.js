@@ -541,12 +541,9 @@ async function loadRegionSupport() {
 // directs users to the host-managed plugin settings.
 function pluginUpdateMessage() {
     const update = state.pluginUpdate;
-    const available = update.latestVersion && update.installedVersion
-        ? `Microsoft Foundry update available: ${update.installedVersion} \u2192 ${update.latestVersion}`
-        : update.latestVersion
-            ? `Microsoft Foundry ${update.latestVersion} is available.`
-            : "A new version of Microsoft Foundry is available.";
-    return `${available} Update it from Settings \u2192 Plugins.`;
+    return update.latestVersion
+        ? `Microsoft Foundry ${update.latestVersion} is available.`
+        : "A Microsoft Foundry update is available.";
 }
 
 function renderPluginUpdate() {

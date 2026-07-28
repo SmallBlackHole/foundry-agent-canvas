@@ -73,7 +73,10 @@ body {
     color: var(--accent);
     pointer-events: none;
 }
-.update-bar-text { flex: 1; min-width: 0; }
+.update-bar-text {
+    flex: 1; min-width: 0;
+    display: flex; flex-wrap: wrap; column-gap: 8px;
+}
 .update-bar-dismiss {
     flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
     display: inline-grid; place-items: center;

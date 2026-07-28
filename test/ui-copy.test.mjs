@@ -114,7 +114,9 @@ test("the plugin update bar is informational and directs updates outside the liv
     assert.doesNotMatch(html, /id="updateBtn"/);
     assert.match(html, /id="updateBar"[\s\S]*?<header class="project-bar">/);
     assert.match(css, /\.update-bar\[hidden\] \{ display: none; \}/);
-    assert.match(app, /Update it from Settings \\u2192 Plugins\./);
+    assert.match(html, /<span class="update-bar-text">[\s\S]*?<span id="updateBarText"><\/span>[\s\S]*?<span>Update it in Settings → Plugins\.<\/span>/);
+    assert.match(css, /\.update-bar-text \{[\s\S]*?column-gap: 8px;/);
+    assert.match(app, /Microsoft Foundry \$\{update\.latestVersion\} is available/);
     assert.doesNotMatch(app, /copilot plugin update|gh copilot/);
     assert.doesNotMatch(app, /applyPluginUpdate|Updating Microsoft Foundry|Updated\. Reopen the Canvas/);
 
