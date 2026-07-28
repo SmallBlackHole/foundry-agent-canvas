@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 import { servers, defaultState, applyInput } from "./src/state.mjs";
-import { pushFrame } from "./src/server-utils.mjs";
+import { listenLoopbackServer, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler, selectedHostedAgentPortalAction } from "./src/routes.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
@@ -105,9 +105,7 @@ async function startServer(instanceId, session) {
             markPendingRefresh: (kind) => pendingRefresh.mark(instanceId, kind),
         })
     );
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    const port = typeof address === "object" && address ? address.port : 0;
+    const port = await listenLoopbackServer(server);
     return { server, url: `http://127.0.0.1:${port}/`, state: defaultState(), sseClients: new Set() };
 }
 
@@ -228,10 +226,8 @@ const session = await joinSession({
                 return { title: "Microsoft Foundry (Preview)", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
-                // Keep the loopback server alive for this provider process. The
-                // host can later reload the cached URL for the same instance
-                // without invoking open(), so closing it here strands the iframe
-                // on a dead port. Process exit reclaims every retained server.
+                // Keep the unreferenced loopback server available for cached-URL
+                // reloads without allowing it to extend the provider lifetime.
                 openInstances.delete(ctx.instanceId);
                 // The agent terminal is shared across builder instances, so only
                 // close it (stopping the local azd agent and freeing its port)

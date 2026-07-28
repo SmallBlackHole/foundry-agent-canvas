@@ -47,8 +47,8 @@ export function clearSelection() {
     }
 }
 
-// Retained for the provider process lifetime because the host may reload a
-// cached canvas URL without invoking the provider's open handler again.
+// Retained but unreferenced for the provider process lifetime because the host
+// may reload a cached canvas URL without invoking the open handler again.
 export const servers = new Map(); // instanceId -> { server, url, state, sseClients:Set }
 
 export function defaultState() {

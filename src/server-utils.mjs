@@ -16,6 +16,22 @@ const numFromEnv = (name, fallback) => {
 
 export const SSE_HEARTBEAT_MS = numFromEnv("FOUNDRY_CANVAS_SSE_HEARTBEAT_MS", 20_000);
 
+export async function listenLoopbackServer(server) {
+    await new Promise((resolve, reject) => {
+        const onError = (error) => reject(error);
+        server.once("error", onError);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", onError);
+            resolve();
+        });
+    });
+    // Cached canvas URLs remain reachable while the provider is active, but
+    // this listener must not prevent a host-requested provider shutdown.
+    server.unref();
+    const address = server.address();
+    return typeof address === "object" && address ? address.port : 0;
+}
+
 export function sendJson(res, status, body) {
     const payload = JSON.stringify(body);
     res.writeHead(status, {
