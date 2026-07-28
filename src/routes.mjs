@@ -43,7 +43,7 @@ import { ensureInspectorProxy, isAgentReachable } from "./inspector.mjs";
 import { launchAgentTerminal } from "./agent-terminal.mjs";
 import { initialBuildSections } from "./build-sections.mjs";
 import {
-    inspectHostedAgentWorkspace,
+    discoverHostedAgentWorkspace,
     listHostedAgents,
     resolveHostedAgentName,
     resolveHostedAgentProject,
@@ -353,13 +353,19 @@ export function createRuntimeApiServices(instanceId, {
         },
         async getProjectInit() {
             const root = await workspaceRootFn();
-            const { hasAzure, hasAgent } = await inspectHostedAgentWorkspace(root);
+            const { hasAzure, hasAgent, agents } = await discoverHostedAgentWorkspace(root);
             return {
                 ok: true,
                 hasAzure,
                 hasAgent,
                 initialized: hasAzure || hasAgent,
                 sections: initialBuildSections({ hasAgent }),
+                selected: selectedHostedAgentName(getEntry(), agents),
+                agents: agents.map(({ agentName, manifestPath, projectDir }) => ({
+                    agentName,
+                    manifestPath,
+                    projectDir,
+                })),
             };
         },
         async getInspectorReady() {

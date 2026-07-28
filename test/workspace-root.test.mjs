@@ -206,5 +206,13 @@ test("project init resolves a reloaded user extension before another prompt", as
             resourcesOpen: true,
             deployOpen: true,
         },
+        selected: "agent-framework-agent-basic-responses",
+        agents: [
+            {
+                agentName: "agent-framework-agent-basic-responses",
+                manifestPath: join(agentDir, "azure.yaml"),
+                projectDir: agentDir,
+            },
+        ],
     });
 });

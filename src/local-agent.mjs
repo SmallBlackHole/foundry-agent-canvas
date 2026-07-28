@@ -153,10 +153,10 @@ export async function inspectHostedAgentWorkspace(workspaceRoot) {
 }
 
 // The hosted agents a workspace offers, in scan order (root first, then by depth
-// and folder name). azure.yaml is the active azd project contract, so legacy
-// agent manifests only participate when no hosted Azure service is present.
+// and folder name). Prefer azure.yaml entries because they identify runnable azd
+// projects, but retain agent manifests for agents that have not been deployed yet.
 function hostedAgentList(result) {
-    const candidates = result.azureCandidates.length ? result.azureCandidates : result.agentCandidates;
+    const candidates = uniqueCandidates([...result.azureCandidates, ...result.agentCandidates]);
     return candidates.map(({ agentName, manifestPath, projectDir, serviceKey, source }) => ({
         agentName,
         manifestPath,
@@ -166,8 +166,16 @@ function hostedAgentList(result) {
     }));
 }
 
+export async function discoverHostedAgentWorkspace(workspaceRoot) {
+    const result = await scanHostedAgentWorkspace(workspaceRoot);
+    return {
+        ...workspaceResult(result.hasAzure, result.hasAgent, result.manifestPath),
+        agents: hostedAgentList(result),
+    };
+}
+
 export async function listHostedAgents(workspaceRoot) {
-    return hostedAgentList(await scanHostedAgentWorkspace(workspaceRoot));
+    return (await discoverHostedAgentWorkspace(workspaceRoot)).agents;
 }
 
 export async function resolveHostedAgentName(workspaceRoot, explicitName = "") {

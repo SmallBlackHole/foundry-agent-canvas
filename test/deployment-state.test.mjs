@@ -176,3 +176,18 @@ test("a failed agent-list refresh keeps the picker instead of collapsing it", as
     assert.equal(context.state.hostedAgents.selected, "alpha");
     assert.deepEqual(renders, [2]);
 });
+
+test("startup reuses project-init agents before identity and region loading", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(
+        source,
+        /if \(Array\.isArray\(pi\.agents\)\) \{[\s\S]*?state\.hostedAgents\.status = "ready";/,
+    );
+    const initSource = source.slice(source.indexOf("async function init()"));
+    const fallbackIndex = initSource.indexOf("const hostedAgentsPromise = loadHostedAgents();");
+    const bootstrapIndex = initSource.indexOf('getJSON("/api/bootstrap")');
+    assert.ok(fallbackIndex > 0);
+    assert.ok(fallbackIndex < bootstrapIndex);
+    assert.match(source, /await hostedAgentsPromise;\s*await loadHostedAgentDeployment\(\);/);
+});

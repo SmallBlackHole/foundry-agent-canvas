@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+    discoverHostedAgentWorkspace,
     findHostedAgentManifest,
     inspectHostedAgentWorkspace,
     listHostedAgents,
@@ -278,6 +279,78 @@ test("lists legacy agent manifests only without a hosted Azure service", async (
             projectDir: "",
             serviceKey: "",
             source: "agent_manifest_name",
+        },
+    ]);
+});
+
+test("lists an undeployed agent alongside a deployed hosted agent", async (t) => {
+    const root = await testWorkspace(t);
+    const deployed = join(root, "deployed");
+    const undeployed = join(root, "undeployed");
+    await mkdir(deployed, { recursive: true });
+    await mkdir(undeployed, { recursive: true });
+    await writeFile(
+        join(deployed, "azure.yaml"),
+        ["services:", "  deployed-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+    await writeFile(join(undeployed, "agent.yaml"), "name: undeployed-agent\n");
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "deployed-agent",
+            manifestPath: join(deployed, "azure.yaml"),
+            projectDir: deployed,
+            serviceKey: "deployed-agent",
+            source: "azure_service_key",
+        },
+        {
+            agentName: "undeployed-agent",
+            manifestPath: join(undeployed, "agent.yaml"),
+            projectDir: "",
+            serviceKey: "",
+            source: "agent_manifest_name",
+        },
+    ]);
+});
+
+test("discovers workspace state and agents in one scan result", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(
+        join(root, "azure.yaml"),
+        ["services:", "  support-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+
+    assert.deepEqual(await discoverHostedAgentWorkspace(root), {
+        hasAzure: true,
+        hasAgent: true,
+        manifestPath: join(root, "azure.yaml"),
+        agents: [
+            {
+                agentName: "support-agent",
+                manifestPath: join(root, "azure.yaml"),
+                projectDir: root,
+                serviceKey: "support-agent",
+                source: "azure_service_key",
+            },
+        ],
+    });
+});
+
+test("prefers deployed project metadata when an agent manifest has the same name", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(join(root, "agent.yaml"), "name: support-agent\n");
+    await writeFile(
+        join(root, "azure.yaml"),
+        ["services:", "  support-agent:", "    host: azure.ai.agent", ""].join("\n"),
+    );
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "support-agent",
+            manifestPath: join(root, "azure.yaml"),
+            projectDir: root,
+            serviceKey: "support-agent",
+            source: "azure_service_key",
         },
     ]);
 });
