@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRuntimeApiServices } from "../src/routes.mjs";
+import { createRuntimeApiServices } from "../src/api/index.mjs";
 import { servers } from "../src/state.mjs";
 
 test("clears identity-scoped resource cache after sign-in and sign-out", async () => {

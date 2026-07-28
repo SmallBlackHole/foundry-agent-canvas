@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { createRuntimeApiServices } from "../src/routes.mjs";
+import { createRuntimeApiServices } from "../src/api/index.mjs";
 
 test("resolves the hosted agent project when Inspect locally is clicked", async () => {
     const calls = [];

@@ -6,7 +6,8 @@ import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/exte
 
 import { servers, defaultState, applyInput } from "./src/state.mjs";
 import { listenLoopbackServer, pushFrame } from "./src/server-utils.mjs";
-import { createRequestHandler, selectedHostedAgentPortalAction } from "./src/routes.mjs";
+import { createRequestHandler } from "./src/routes.mjs";
+import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selection.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
