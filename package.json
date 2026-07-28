@@ -8,7 +8,8 @@
         "build": "node scripts/build.mjs",
         "test": "node --test",
         "preview": "node scripts/preview.mjs",
-        "package": "node scripts/package.mjs"
+        "package": "node scripts/package.mjs",
+        "sync:hosted-agent-regions": "node scripts/sync-hosted-agent-regions.mjs"
     },
     "dependencies": {
         "@azure/identity": "^4.5.0",

@@ -1,0 +1,49 @@
+name: Sync hosted-agent regions
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sync regions from Microsoft Learn
+        run: npm run sync:hosted-agent-regions
+
+      - name: Open update pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/foundry.mjs; then
+            echo "Hosted-agent regions are already current."
+            exit 0
+          fi
+
+          BRANCH="automation/sync-hosted-agent-regions"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add src/foundry.mjs
+          git commit -m "Sync hosted-agent regions from Microsoft Learn"
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+
+          gh pr view "$BRANCH" >/dev/null 2>&1 || gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Sync hosted-agent regions from Microsoft Learn" \
+            --body "Updates the Hosted Agents region allowlist from the current Microsoft Learn documentation."

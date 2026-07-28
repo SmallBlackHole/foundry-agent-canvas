@@ -117,9 +117,9 @@ test("reports unsupported hosted-agent regions to the chat timeline once per pro
             selection: {
                 subscription: { id: "sub-1", name: "Subscription" },
                 project: {
-                    endpoint: "https://example.test/api/projects/east",
-                    name: "East project",
-                    location: "eastus",
+                    endpoint: "https://example.test/api/projects/unsupported-one",
+                    name: "Unsupported project",
+                    location: "antarcticnorth",
                     subscriptionId: "sub-1",
                 },
             },
@@ -138,25 +138,25 @@ test("reports unsupported hosted-agent regions to the chat timeline once per pro
         assert.equal((await services.getRegionSupport()).supported, false);
         assert.equal((await services.getRegionSupport()).supported, false);
         assert.deepEqual(logs, [{
-            message: "Hosted agents aren't available in this project's region (eastus). "
+            message: "Hosted agents aren't available in this project's region (antarcticnorth). "
                 + "Select a project in a supported region before deploying.",
             options: { level: "warning" },
         }]);
 
         entry.state.selection.project = {
             ...entry.state.selection.project,
-            endpoint: "https://example.test/api/projects/west",
-            name: "West project",
-            location: "westus",
+            endpoint: "https://example.test/api/projects/uk",
+            name: "UK project",
+            location: "uksouth",
         };
         assert.equal((await services.getRegionSupport()).supported, true);
         assert.equal(logs.length, 1);
 
         entry.state.selection.project = {
             ...entry.state.selection.project,
-            endpoint: "https://example.test/api/projects/central",
-            name: "Central project",
-            location: "centralus",
+            endpoint: "https://example.test/api/projects/unsupported-two",
+            name: "Other unsupported project",
+            location: "moonbasecentral",
         };
         assert.equal((await services.getRegionSupport()).supported, false);
         assert.equal(logs.length, 2);

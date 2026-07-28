@@ -386,35 +386,48 @@ export async function listProjects(subscriptionId) {
 
 // ─── Hosted-agent region availability ────────────────────────────────────────
 // Foundry hosted agents are only supported in a subset of Azure regions. There
-// is no clean live ARM capability API for this, so the list below is the
-// authoritative docs list, kept as normalized region codes.
+// is no public ARM or Foundry capability API for this, so the list below is
+// synced weekly from Microsoft Learn by sync-hosted-agent-regions.mjs.
 // Source: https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability
-// Last synced: 2026-07-01. Update when Microsoft adds regions.
 export const HOSTED_AGENT_REGIONS_DOC =
     "https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#region-availability";
 
+// BEGIN HOSTED_AGENT_REGIONS
+// Last synced: 2026-07-28.
 export const HOSTED_AGENT_REGIONS = [
-    "eastus2",
-    "northcentralus",
-    "swedencentral",
+    "australiaeast",
+    "brazilsouth",
     "canadacentral",
     "canadaeast",
-    "southeastasia",
-    "polandcentral",
-    "southafricanorth",
-    "koreacentral",
-    "southindia",
-    "brazilsouth",
-    "westus",
-    "westus3",
-    "norwayeast",
-    "japaneast",
+    "centralus",
+    "eastus",
+    "eastus2",
     "francecentral",
     "germanywestcentral",
-    "switzerlandnorth",
+    "italynorth",
+    "japaneast",
+    "japanwest",
+    "koreacentral",
+    "northcentralus",
+    "norwayeast",
+    "polandcentral",
+    "southafricanorth",
+    "southcentralus",
+    "southeastasia",
+    "southindia",
     "spaincentral",
-    "australiaeast",
+    "swedencentral",
+    "switzerlandnorth",
+    "switzerlandwest",
+    "uaenorth",
+    "uksouth",
+    "ukwest",
+    "westcentralus",
+    "westeurope",
+    "westus",
+    "westus3",
 ];
+// END HOSTED_AGENT_REGIONS
 
 const _hostedRegionSet = new Set(HOSTED_AGENT_REGIONS);
 
