@@ -23,6 +23,20 @@ test("extension branding uses Microsoft Foundry", async () => {
     assert.doesNotMatch(copy, /FOUNDRY_AGENT_CANVAS/);
 });
 
+test("canvas tab is marked as preview", async () => {
+    const extensionSource = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+
+    assert.match(extensionSource, /displayName: "Microsoft Foundry \(Preview\)"/);
+});
+
+test("toolbox and skill links use the Foundry tools tabs", async () => {
+    const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(app, /openPortalPage\("build\/tools\?tab=toolboxes"\)/);
+    assert.match(app, /openPortalPage\("build\/tools\?tab=skills"\)/);
+    assert.doesNotMatch(app, /openPortalPage\("build\/toolboxes"\)/);
+});
+
 test("workflow headings use sentence case and hosted agent remains lowercase", async () => {
     const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
 

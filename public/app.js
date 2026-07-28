@@ -212,8 +212,8 @@ function renderBuild() {
     const skillLink = node.querySelector("#createSkillLink");
     const guardrailLink = node.querySelector("#createGuardrailLink");
     if (modelLink) modelLink.addEventListener("click", () => { closeModelMenu(); openPortalPage("build/models/deployments"); });
-    if (toolLink) toolLink.addEventListener("click", () => { closeToolMenu(); openPortalPage("build/toolboxes"); });
-    if (skillLink) skillLink.addEventListener("click", () => { closeSkillMenu(); openPortalPage("build/tools"); });
+    if (toolLink) toolLink.addEventListener("click", () => { closeToolMenu(); openPortalPage("build/tools?tab=toolboxes"); });
+    if (skillLink) skillLink.addEventListener("click", () => { closeSkillMenu(); openPortalPage("build/tools?tab=skills"); });
     if (guardrailLink) guardrailLink.addEventListener("click", () => { closeGuardrailMenu(); openPortalPage("build/guardrails/list"); });
 
     root.replaceChildren(node);

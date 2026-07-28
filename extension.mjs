@@ -131,7 +131,7 @@ const session = await joinSession({
     canvases: isGitHubCopilotApp ? [
         createCanvas({
             id: MICROSOFT_FOUNDRY_CANVAS_ID,
-            displayName: "Microsoft Foundry",
+            displayName: "Microsoft Foundry (Preview)",
             description:
                 "Create, build, or design a Foundry agent — use this whenever the user wants to make, set up, or scaffold a new agent: pick a model, add tools, skills, then deploy it as a Foundry hosted agent.",
             inputSchema: {
