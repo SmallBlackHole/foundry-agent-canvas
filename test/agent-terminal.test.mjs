@@ -4,10 +4,13 @@ import test from "node:test";
 
 import {
     buildAgentRunCommand,
+    buildShellProbe,
     closeAgentTerminal,
     isAgentTerminalRunning,
     launchAgentTerminal,
+    parseShellProbe,
 } from "../src/agent-terminal.mjs";
+import { GITHUB_COPILOT_APP_AGENT } from "../src/agent-canvas-system-message.mjs";
 
 test("builds an azd command with a native absolute project directory", () => {
     const projectDir = resolve("workspace", "Agent Projects", "support");
@@ -39,6 +42,86 @@ test("rejects relative project directories", () => {
     assert.throws(
         () => buildAgentRunCommand("relative-agent", "linux"),
         /must be an absolute path/,
+    );
+});
+
+test("detects CMD, PowerShell, and Bash probe output", () => {
+    const token = "abc123";
+    assert.equal(
+        buildShellProbe("win32", token),
+        "echo __FA_abc123__$($PSVersionTable.PSEdition)%COMSPEC%",
+    );
+    assert.equal(
+        parseShellProbe(
+            "C:\\>echo __FA_abc123__$($PSVersionTable.PSEdition)%COMSPEC%\r\n"
+                + "__FA_abc123__$($PSVersionTable.PSEdition)"
+                + "C:\\Windows\\System32\\cmd.exe\r\n",
+            "win32",
+            token,
+        ),
+        "cmd",
+    );
+    assert.equal(
+        parseShellProbe(
+            "PS C:\\> echo __FA_abc123__$($PSVersionTable.PSEdition)%COMSPEC%\r\n"
+                + "__FA_abc123__Core%COMSPEC%\r\n",
+            "win32",
+            token,
+        ),
+        "powershell",
+    );
+    assert.equal(
+        buildShellProbe("linux", token),
+        "printf '__FA_abc123__%s\\n' \"$BASH_VERSION\"",
+    );
+    assert.equal(
+        parseShellProbe("__FA_abc123__5.2.26(1)-release\n", "linux", token),
+        "bash",
+    );
+});
+
+test("treats unsupported or ambiguous shell probes as unknown", () => {
+    assert.equal(parseShellProbe("__FA_abc123__\n", "darwin", "abc123"), "");
+    assert.equal(parseShellProbe("__FA_abc123__/bin/fish\n", "win32", "abc123"), "");
+    assert.equal(
+        parseShellProbe("__FA_abc123__%COMSPEC%\n", "win32", "abc123"),
+        "",
+    );
+    assert.equal(buildShellProbe("freebsd", "abc123"), "");
+});
+
+test("builds shell-scoped App commands and leaves unknown shells unmarked", () => {
+    const environment = { AI_AGENT: GITHUB_COPILOT_APP_AGENT };
+    assert.equal(
+        buildAgentRunCommand("/workspace/support", "linux", { environment, shell: "bash" }),
+        "AI_AGENT='github_copilot_app_agent' "
+            + "azd --cwd '/workspace/support' ai agent run --no-inspector",
+    );
+    assert.equal(
+        buildAgentRunCommand("C:\\workspace\\support", "win32", { environment, shell: "cmd" }),
+        "cmd.exe /d /s /c \"set \"AI_AGENT=github_copilot_app_agent\" && "
+            + "azd --cwd \"C:\\workspace\\support\" ai agent run --no-inspector\"",
+    );
+    assert.equal(
+        buildAgentRunCommand(
+            "C:\\workspace\\customer's support",
+            "win32",
+            { environment, shell: "powershell" },
+        ),
+        "$env:AI_AGENT='github_copilot_app_agent'; "
+            + "& azd --cwd 'C:\\workspace\\customer''s support' ai agent run --no-inspector",
+    );
+    assert.equal(
+        buildAgentRunCommand("/workspace/support", "linux", { environment, shell: "" }),
+        "azd --cwd '/workspace/support' ai agent run --no-inspector",
+    );
+    assert.equal(
+        buildAgentRunCommand(
+            "/workspace/support",
+            "linux",
+            { environment: { AI_AGENT: "github_copilot_cli" }, shell: "bash" },
+        ),
+        "azd --cwd '/workspace/support' ai agent run --no-inspector",
     );
 });
 
@@ -95,6 +178,7 @@ test("mounts the terminal by focusing it, then sends the run command and restore
         sleep: async () => {},
         builderInstanceId: "foundry-agent-builder",
         now: () => 1_000,
+        environment: {},
     };
 
     try {
@@ -132,6 +216,146 @@ test("mounts the terminal by focusing it, then sends the run command and restore
     }
 });
 
+test("detects CMD in a new App terminal before launching azd with attribution", async () => {
+    let mounted = false;
+    const sent = [];
+    const token = "abc123";
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: mounted
+                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            : [],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {
+                    mounted = true;
+                },
+                action: {
+                    async invoke(params) {
+                        if (params.actionName === "send_terminal_input") {
+                            sent.push(params.input.input);
+                            return {};
+                        }
+                        if (params.actionName === "read_terminal_output") {
+                            return {
+                                result: {
+                                    output:
+                                        `__FA_${token}__$($PSVersionTable.PSEdition)`
+                                        + "C:\\Windows\\System32\\cmd.exe\r\n",
+                                },
+                            };
+                        }
+                        return {};
+                    },
+                },
+                async close() {
+                    mounted = false;
+                },
+            },
+        },
+    };
+    const projectDir = resolve("workspace", "apps", "alpha");
+    const environment = { AI_AGENT: GITHUB_COPILOT_APP_AGENT };
+
+    try {
+        assert.deepEqual(
+            await launchAgentTerminal(
+                session,
+                { projectDir, projects: [] },
+                {
+                    agentReachable: async () => false,
+                    terminalRunning: async () => mounted,
+                    sleep: async () => {},
+                    environment,
+                    platform: "win32",
+                    shellProbeToken: token,
+                },
+            ),
+            { ok: true, status: "launched" },
+        );
+        assert.deepEqual(sent, [
+            buildShellProbe("win32", token),
+            buildAgentRunCommand(projectDir, "win32", { environment, shell: "cmd" }),
+        ]);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
+test("falls back to an unmarked command when the App terminal shell is unknown", async () => {
+    let mounted = false;
+    const sent = [];
+    const token = "unknown123";
+    const session = {
+        log() {},
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: mounted
+                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            : [],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {
+                    mounted = true;
+                },
+                action: {
+                    async invoke(params) {
+                        if (params.actionName === "send_terminal_input") {
+                            sent.push(params.input.input);
+                            return {};
+                        }
+                        return {
+                            result: {
+                                output: `__FA_${token}__/bin/fish\n`,
+                            },
+                        };
+                    },
+                },
+                async close() {
+                    mounted = false;
+                },
+            },
+        },
+    };
+    const projectDir = resolve("workspace", "apps", "alpha");
+
+    try {
+        assert.deepEqual(
+            await launchAgentTerminal(
+                session,
+                { projectDir, projects: [] },
+                {
+                    agentReachable: async () => false,
+                    terminalRunning: async () => mounted,
+                    sleep: async () => {},
+                    environment: { AI_AGENT: GITHUB_COPILOT_APP_AGENT },
+                    platform: "win32",
+                    shellProbeToken: token,
+                },
+            ),
+            { ok: true, status: "launched" },
+        );
+        assert.deepEqual(sent, [
+            buildShellProbe("win32", token),
+            buildAgentRunCommand(projectDir, "win32", { environment: {}, shell: "" }),
+        ]);
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
 test("collapses a rapid second click while the agent is still coming up", async () => {
     const invoked = [];
     const session = {
@@ -159,6 +383,7 @@ test("collapses a rapid second click while the agent is still coming up", async 
         agentReachable: async () => false,
         terminalRunning: async () => true,
         sleep: async () => {},
+        environment: {},
     };
 
     try {
@@ -220,6 +445,7 @@ test("switching hosted agents stops the previous run before starting the new one
         terminalRunning: async () => mounted,
         sleep: async () => {},
         now: () => 1_000,
+        environment: {},
     };
 
     try {
@@ -330,6 +556,7 @@ test("reports when the previously selected agent keeps holding the agent port", 
             terminalRunning: async () => mounted,
             sleep: async () => {},
             now: () => 1_000,
+            environment: {},
         });
         launched = true;
         const result = await launchAgentTerminal(session, zeta, {
@@ -338,6 +565,7 @@ test("reports when the previously selected agent keeps holding the agent port", 
             sleep: async () => {},
             now: () => 9_000,
             waitForPortRelease: async () => false,
+            environment: {},
         });
         assert.equal(result.ok, false);
         assert.match(result.error, /still using the local agent port/);

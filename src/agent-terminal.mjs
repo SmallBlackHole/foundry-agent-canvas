@@ -14,9 +14,14 @@
 // So we focus the terminal to mount it, wait for the shell, send the run
 // command as terminal input, then hand focus back to the builder canvas.
 
+import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 
-import { MICROSOFT_FOUNDRY_CANVAS_ID } from "./agent-canvas-system-message.mjs";
+import {
+    GITHUB_COPILOT_APP_AGENT,
+    MICROSOFT_FOUNDRY_CANVAS_ID,
+    isGitHubCopilotAppEnvironment,
+} from "./agent-canvas-system-message.mjs";
 import { isAgentReachable } from "./inspector.mjs";
 
 // Stable instance id for our agent terminal so re-opening focuses the same
@@ -30,6 +35,8 @@ const TERMINAL_TITLE = "Foundry agent (local)";
 // budget mostly covers slow shell profiles.
 const MOUNT_TIMEOUT_MS = 8_000;
 const MOUNT_POLL_INTERVAL_MS = 250;
+const SHELL_PROBE_ATTEMPTS = 8;
+const SHELL_PROBE_INTERVAL_MS = 100;
 
 // Short window that only collapses rapid duplicate clicks so we don't stack the
 // run command onto a launch we issued moments ago. It is intentionally small:
@@ -50,6 +57,8 @@ let lastCommand = "";
 // different hosted agent recognise that the process listening on the agent port
 // belongs to the previous selection.
 let lastProjectDir = "";
+let terminalShell = "";
+let launchQueue = Promise.resolve();
 
 // Cached extension id of the host terminal canvas (resolved once via list()).
 // `undefined` = not yet resolved; string ("" allowed) = resolved.
@@ -104,6 +113,79 @@ async function sendRunCommand(session, command) {
     });
 }
 
+function shellProbeMarker(token) {
+    return `__FA_${token}__`;
+}
+
+export function buildShellProbe(platform, token) {
+    if (!/^[a-z0-9]+$/i.test(token)) throw new Error("Invalid shell probe token.");
+    const marker = shellProbeMarker(token);
+    if (platform === "win32") {
+        return `echo ${marker}$($PSVersionTable.PSEdition)%COMSPEC%`;
+    }
+    if (platform === "darwin" || platform === "linux") {
+        return `printf '${marker}%s\\n' "$BASH_VERSION"`;
+    }
+    return "";
+}
+
+export function parseShellProbe(output, platform, token) {
+    const marker = shellProbeMarker(token);
+    const result = String(output || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .map((line) =>
+            line.startsWith("\"") && line.endsWith("\"") ? line.slice(1, -1) : line)
+        .find((line) => line.startsWith(marker));
+    if (!result) return "";
+
+    const value = result.slice(marker.length);
+    if (platform === "win32") {
+        if (/^(Desktop|Core)%COMSPEC%$/.test(value)) return "powershell";
+        if (
+            value.startsWith("$($PSVersionTable.PSEdition)")
+            && /[\\/]cmd\.exe$/i.test(value)
+        ) return "cmd";
+        return "";
+    }
+    if ((platform === "darwin" || platform === "linux") && value) return "bash";
+    return "";
+}
+
+async function detectMountedTerminalShell(
+    session,
+    {
+        platform,
+        sleep,
+        token = randomUUID().slice(0, 8),
+        attempts = SHELL_PROBE_ATTEMPTS,
+        intervalMs = SHELL_PROBE_INTERVAL_MS,
+    },
+) {
+    const probe = buildShellProbe(platform, token);
+    if (!probe) return "";
+    try {
+        await sendRunCommand(session, probe);
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+            const result = await session.rpc.canvas.action.invoke({
+                instanceId: TERMINAL_INSTANCE_ID,
+                actionName: "read_terminal_output",
+                input: { mode: "since_last_input", tail_lines: 20 },
+            });
+            const shell = parseShellProbe(
+                result?.result?.output ?? result?.output,
+                platform,
+                token,
+            );
+            if (shell) return shell;
+            await sleep(intervalMs);
+        }
+    } catch {
+        return "";
+    }
+    return "";
+}
+
 // Poll until the host reports a live shell, so the run command is only sent to a
 // terminal that can actually receive it.
 async function waitForTerminalMount(
@@ -149,7 +231,15 @@ function quoteWindowsArgument(value) {
     return `"${text}"`;
 }
 
-export function buildAgentRunCommand(projectDir, platform = process.platform) {
+function quotePowerShellArgument(value) {
+    return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+export function buildAgentRunCommand(
+    projectDir,
+    platform = process.platform,
+    { environment = process.env, shell = "" } = {},
+) {
     if (!projectDir || !isAbsolute(projectDir)) {
         throw new Error("The hosted agent project directory must be an absolute path.");
     }
@@ -160,7 +250,21 @@ export function buildAgentRunCommand(projectDir, platform = process.platform) {
     // the integrated terminal's shell or current directory. Keep the older
     // `--no-inspector` alias for compatibility with azure.ai.agents beta.4;
     // newer extension versions still accept it.
-    return `azd --cwd ${cwd} ai agent run --no-inspector`;
+    const command = `azd --cwd ${cwd} ai agent run --no-inspector`;
+    if (!isGitHubCopilotAppEnvironment(environment)) return command;
+
+    if (shell === "bash" && (platform === "darwin" || platform === "linux")) {
+        return `AI_AGENT=${quotePosixArgument(GITHUB_COPILOT_APP_AGENT)} ${command}`;
+    }
+    if (shell === "cmd" && platform === "win32") {
+        return `cmd.exe /d /s /c "set "AI_AGENT=${GITHUB_COPILOT_APP_AGENT}" && ${command}"`;
+    }
+    if (shell === "powershell" && platform === "win32") {
+        const invocation =
+            `& azd --cwd ${quotePowerShellArgument(projectDir)} ai agent run --no-inspector`;
+        return `$env:AI_AGENT='${GITHUB_COPILOT_APP_AGENT}'; ${invocation}`;
+    }
+    return command;
 }
 
 // Only one agent can own the agent port, so switching hosted agents means
@@ -184,7 +288,7 @@ async function waitForAgentPortRelease(agentReachable, { attempts = 16, delayMs 
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>}
  *   status is one of: reused | already-running | starting | restarted | launched | switched.
  */
-export async function launchAgentTerminal(
+async function launchAgentTerminalOnce(
     session,
     project = {},
     {
@@ -194,6 +298,9 @@ export async function launchAgentTerminal(
         sleep = defaultSleep,
         builderInstanceId = "",
         waitForPortRelease = waitForAgentPortRelease,
+        environment = process.env,
+        platform = process.platform,
+        shellProbeToken = "",
     } = {},
 ) {
     if (!session?.rpc?.canvas?.open) {
@@ -237,7 +344,6 @@ export async function launchAgentTerminal(
 
     // Agent not up yet, or up for a different hosted agent.
     try {
-        const command = buildAgentRunCommand(project.projectDir);
         logTerminal(
             session,
             `selected hosted agent project: ${project.manifestPath || project.projectDir}`,
@@ -269,6 +375,10 @@ export async function launchAgentTerminal(
                 };
             }
         } else if (mounted) {
+            const command = buildAgentRunCommand(project.projectDir, platform, {
+                environment,
+                shell: terminalShell,
+            });
             const recentlySent =
                 lastCommand === command
                 && commandSentAt
@@ -306,6 +416,24 @@ export async function launchAgentTerminal(
                     + "agent there, then try Inspect locally again.",
             };
         }
+        if (isGitHubCopilotAppEnvironment(environment)) {
+            terminalShell = await detectMountedTerminalShell(session, {
+                platform,
+                sleep,
+                ...(shellProbeToken ? { token: shellProbeToken } : {}),
+            });
+            logTerminal(
+                session,
+                terminalShell
+                    ? `detected integrated terminal shell: ${terminalShell}`
+                    : "integrated terminal shell was not recognized; launching without App attribution",
+                terminalShell ? "info" : "warn",
+            );
+        }
+        const command = buildAgentRunCommand(project.projectDir, platform, {
+            environment,
+            shell: terminalShell,
+        });
         await sendRunCommand(session, command);
         commandSentAt = now();
         lastCommand = command;
@@ -320,6 +448,14 @@ export async function launchAgentTerminal(
         logTerminal(session, `failed to launch agent terminal: ${error}`, "error");
         return { ok: false, error };
     }
+}
+
+// Serialize clicks so a second request cannot send an unattributed command while
+// the first request is still mounting and probing the dedicated terminal.
+export function launchAgentTerminal(session, project = {}, dependencies = {}) {
+    const launch = launchQueue.then(() => launchAgentTerminalOnce(session, project, dependencies));
+    launchQueue = launch.catch(() => {});
+    return launch;
 }
 
 /**
@@ -364,6 +500,7 @@ export async function closeAgentTerminal(session) {
     commandSentAt = 0;
     lastCommand = "";
     lastProjectDir = "";
+    terminalShell = "";
     if (!session?.rpc?.canvas?.close) return;
     try {
         if (!(await terminalIsOpen(session))) return;
