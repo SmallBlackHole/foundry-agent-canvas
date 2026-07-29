@@ -90,13 +90,17 @@ test("treats unsupported or ambiguous shell probes as unknown", () => {
     assert.equal(buildShellProbe("freebsd", "abc123"), "");
 });
 
-test("builds shell-scoped App commands and leaves unknown shells unmarked", () => {
+test("builds Bash-scoped App commands", { skip: process.platform === "win32" }, () => {
     const environment = { AI_AGENT: GITHUB_COPILOT_APP_AGENT };
     assert.equal(
         buildAgentRunCommand("/workspace/support", "linux", { environment, shell: "bash" }),
         "AI_AGENT='github_copilot_app_agent' "
             + "azd --cwd '/workspace/support' ai agent run --no-inspector",
     );
+});
+
+test("builds Windows shell-scoped App commands", { skip: process.platform !== "win32" }, () => {
+    const environment = { AI_AGENT: GITHUB_COPILOT_APP_AGENT };
     assert.equal(
         buildAgentRunCommand("C:\\workspace\\support", "win32", { environment, shell: "cmd" }),
         "cmd.exe /d /s /c \"set \"AI_AGENT=github_copilot_app_agent\" && "
@@ -111,17 +115,30 @@ test("builds shell-scoped App commands and leaves unknown shells unmarked", () =
         "$env:AI_AGENT='github_copilot_app_agent'; "
             + "& azd --cwd 'C:\\workspace\\customer''s support' ai agent run --no-inspector",
     );
+});
+
+test("leaves unknown shells and non-App launches unmarked", () => {
+    const projectDir = resolve("workspace", "support");
+    const platform = process.platform;
+    const quotedProjectDir = platform === "win32"
+        ? `"${projectDir}"`
+        : `'${projectDir}'`;
+    const command =
+        `azd --cwd ${quotedProjectDir} ai agent run --no-inspector`;
+
     assert.equal(
-        buildAgentRunCommand("/workspace/support", "linux", { environment, shell: "" }),
-        "azd --cwd '/workspace/support' ai agent run --no-inspector",
+        buildAgentRunCommand(projectDir, platform, {
+            environment: { AI_AGENT: GITHUB_COPILOT_APP_AGENT },
+            shell: "",
+        }),
+        command,
     );
     assert.equal(
-        buildAgentRunCommand(
-            "/workspace/support",
-            "linux",
-            { environment: { AI_AGENT: "github_copilot_cli" }, shell: "bash" },
-        ),
-        "azd --cwd '/workspace/support' ai agent run --no-inspector",
+        buildAgentRunCommand(projectDir, platform, {
+            environment: { AI_AGENT: "github_copilot_cli" },
+            shell: platform === "win32" ? "cmd" : "bash",
+        }),
+        command,
     );
 });
 
