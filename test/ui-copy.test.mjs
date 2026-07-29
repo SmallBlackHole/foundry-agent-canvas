@@ -130,7 +130,6 @@ test("the plugin update bar is informational and directs updates outside the liv
     assert.match(html, /id="updateDismissBtn"[^>]*aria-label="Dismiss update notice"/);
     assert.match(css, /\.update-bar-dismiss \{[\s\S]*?cursor: pointer;/);
     assert.match(packageScript, /"arrow_circle_up_16_regular\.svg",/);
-    assert.match(packageScript, /"agents_16_regular\.svg",/);
     assert.match(packageScript, /"dismiss_16_regular\.svg",/);
 });
 

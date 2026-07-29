@@ -136,6 +136,39 @@ test("SPA maps deployment frames to the Foundry Portal state", async () => {
     assert.equal(context.description, "");
 });
 
+test("deployment description follows the rendered Deploy fold state", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function syncDeployDescriptionVisibility\(open = state\.folds\.deploy\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+    assert.match(source, /if \(blockId === "deployBlock"\) syncDeployDescriptionVisibility\(open\);/);
+
+    const description = {
+        textContent: "Deployed as example-agent, version 4.",
+        hidden: false,
+    };
+    const context = {
+        description,
+        document: {
+            getElementById(id) {
+                return id === "deployDescription" ? description : null;
+            },
+        },
+    };
+    vm.createContext(context);
+
+    vm.runInContext(`${functionSource}\nsyncDeployDescriptionVisibility(false);`, context);
+    assert.equal(description.hidden, true);
+
+    vm.runInContext("syncDeployDescriptionVisibility(true);", context);
+    assert.equal(description.hidden, false);
+
+    description.textContent = "";
+    vm.runInContext("syncDeployDescriptionVisibility(true);", context);
+    assert.equal(description.hidden, true);
+});
+
 test("a failed agent-list refresh keeps the picker instead of collapsing it", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const loadSource = source.match(/async function loadHostedAgents\(force\) \{[\s\S]*?\n\}/)?.[0];
