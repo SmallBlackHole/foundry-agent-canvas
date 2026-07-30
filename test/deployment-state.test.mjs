@@ -169,6 +169,96 @@ test("deployment description follows the rendered Deploy fold state", async () =
     assert.equal(description.hidden, true);
 });
 
+test("New Agent mode suppresses the previous deployment description and portal link", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function renderHostedAgentDeployment\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+
+    const description = { textContent: "", hidden: false };
+    const row = {
+        hasPlayground: true,
+        classList: {
+            toggle(_name, value) {
+                row.hasPlayground = value;
+            },
+        },
+    };
+    const link = {
+        hidden: false,
+        href: "https://ai.azure.com/old",
+        title: "Old deployment",
+        closest() {
+            return row;
+        },
+        removeAttribute(name) {
+            delete this[name];
+        },
+    };
+    const context = {
+        state: {
+            folds: { deploy: true },
+            hostedAgents: { creatingNew: true },
+            hostedAgentDeployment: {
+                deployed: true,
+                available: true,
+                portalUrl: "https://ai.azure.com/example",
+                agentName: "example-agent",
+                version: "4",
+            },
+        },
+        document: {
+            getElementById(id) {
+                if (id === "testPlaygroundLink") return link;
+                if (id === "deployDescription") return description;
+                return null;
+            },
+        },
+        hasAvailableHostedAgentDeployment(deployment) {
+            return !!(deployment.deployed && deployment.available && deployment.portalUrl);
+        },
+        hostedAgentDeploymentDescription(deployment) {
+            return deployment.deployed
+                ? "Deployed as example-agent, version 4."
+                : "";
+        },
+        emptyHostedAgentDeployment() {
+            return {
+                deployed: false,
+                available: false,
+                portalUrl: "",
+                agentName: "",
+                version: "",
+            };
+        },
+        syncDeployDescriptionVisibility() {
+            description.hidden =
+                !context.state.folds.deploy || !description.textContent.trim();
+        },
+    };
+    vm.createContext(context);
+
+    vm.runInContext(`${functionSource}\nrenderHostedAgentDeployment();`, context);
+
+    assert.equal(description.textContent, "");
+    assert.equal(description.hidden, true);
+    assert.equal(link.hidden, true);
+    assert.equal(link.href, undefined);
+    assert.equal(link.title, "");
+    assert.equal(row.hasPlayground, false);
+
+    context.state.hostedAgents.creatingNew = false;
+    vm.runInContext("renderHostedAgentDeployment();", context);
+
+    assert.equal(description.textContent, "Deployed as example-agent, version 4.");
+    assert.equal(description.hidden, false);
+    assert.equal(link.hidden, false);
+    assert.equal(link.href, "https://ai.azure.com/example");
+    assert.equal(link.title, "Test example-agent version 4 in Microsoft Foundry Portal");
+    assert.equal(row.hasPlayground, true);
+});
+
 test("a failed agent-list refresh keeps the picker instead of collapsing it", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const loadSource = source.match(/async function loadHostedAgents\(force\) \{[\s\S]*?\n\}/)?.[0];

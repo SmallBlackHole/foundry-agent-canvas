@@ -45,7 +45,7 @@ test("picker visibility counts workspace agents rather than a fallback selection
 
 test("New starts an explicit render state and opens only Create", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-    const functionSource = source.match(/function beginNewHostedAgent\(\) \{[\s\S]*?\n\}/)?.[0];
+    const functionSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     const calls = [];
     const context = {
@@ -54,26 +54,17 @@ test("New starts an explicit render state and opens only Create", async () => {
             init: { open: false },
             folds: { resources: true, deploy: true },
         },
-        closeHostedAgentMenu() {
-            calls.push("close");
-        },
-        renderHostedAgentPicker() {
-            calls.push("picker");
-        },
-        renderInit() {
-            calls.push("init");
-        },
-        renderFolds() {
-            calls.push("folds");
+        render() {
+            calls.push("render");
         },
     };
 
-    vm.runInNewContext(`${functionSource}\nbeginNewHostedAgent();`, context);
+    vm.runInNewContext(`${functionSource}\nshowNewAgent();`, context);
 
     assert.equal(context.state.hostedAgents.creatingNew, true);
     assert.equal(context.state.init.open, true);
     assert.deepEqual(context.state.folds, { resources: false, deploy: false });
-    assert.deepEqual(calls, ["close", "picker", "init", "folds"]);
+    assert.deepEqual(calls, ["render"]);
     assert.match(source, /const renderedName = creatingNew \? "New Agent" : active\.agentName;/);
     assert.match(source, /newButton\.hidden = creatingNew;/);
 });
@@ -102,6 +93,9 @@ test("selecting the current agent exits New without rewriting the selection", as
         renderFolds() {
             calls.push("folds");
         },
+        renderHostedAgentDeployment() {
+            calls.push("deployment");
+        },
         toast(message) {
             calls.push(message);
         },
@@ -113,7 +107,18 @@ test("selecting the current agent exits New without rewriting the selection", as
     assert.equal(context.state.hostedAgents.creatingNew, false);
     assert.equal(context.state.init.open, false);
     assert.deepEqual(context.state.folds, { resources: true, deploy: true });
-    assert.deepEqual(calls, ["init", "folds", "picker", "Agent: Preview Agent"]);
+    assert.deepEqual(calls, ["init", "folds", "picker", "deployment", "Agent: Preview Agent"]);
+});
+
+test("Inspect Locally asks for an existing agent while New Agent is active", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const handler = source.match(
+        /if \(e\.target\.closest\("#inspectBtn"\)\) \{[\s\S]*?\n    \}/,
+    )?.[0];
+    assert.ok(handler);
+    assert.match(handler, /if \(state\.hostedAgents\.creatingNew\)/);
+    assert.match(handler, /toast\("Select an existing agent to inspect locally\."\)/);
+    assert.match(handler, /else \{\s*launchInspector\(e\.target\.closest\("#inspectBtn"\)\);/);
 });
 
 test("the packaged icon set includes Add without the retired agent glyph", async () => {

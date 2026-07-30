@@ -170,27 +170,41 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
 
 test("canvas-provided user request bypasses the generated inspiration prompt", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const modeSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];
     const functionSource = source.match(/function setInitUserPrompt\(prompt\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(modeSource);
     assert.ok(functionSource);
     const original =
         "build a foundry agent to run the powershell scripts under queries folder 7am every day, then follow the analysis methodolgy markdown files";
-    const state = { init: { idea: "old idea", open: false, promptText: "", promptDirty: false } };
+    const state = {
+        init: { idea: "old idea", open: false, promptText: "", promptDirty: false },
+        hostedAgents: { creatingNew: false },
+        folds: { resources: true, deploy: true },
+    };
     const context = {
         state,
         setInitPreviewPrompt(text) {
             state.init.promptText = text;
             state.init.promptDirty = true;
         },
-        renderInit() {},
+        render() {
+            state.rendered = true;
+        },
         toast() {},
     };
 
-    vm.runInNewContext(`${functionSource}\nsetInitUserPrompt(original);`, { ...context, original });
+    vm.runInNewContext(
+        `${modeSource}\n${functionSource}\nsetInitUserPrompt(original);`,
+        { ...context, original },
+    );
 
     assert.equal(context.state.init.promptText, original);
     assert.equal(context.state.init.promptDirty, true);
     assert.equal(context.state.init.idea, "");
     assert.equal(context.state.init.open, true);
+    assert.equal(context.state.hostedAgents.creatingNew, true);
+    assert.deepEqual(context.state.folds, { resources: false, deploy: false });
+    assert.equal(context.state.rendered, true);
 });
 
 test("the client sends the create prompt without a pending workspace refresh", async () => {
