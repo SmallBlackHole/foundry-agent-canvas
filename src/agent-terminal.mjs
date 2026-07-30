@@ -24,10 +24,8 @@ import {
 } from "./agent-canvas-system-message.mjs";
 import { isAgentReachable } from "./inspector.mjs";
 
-// Stable instance id for our agent terminal so re-opening focuses the same
-// panel instead of creating a new one each click.
 const TERMINAL_CANVAS_ID = "terminal";
-const TERMINAL_INSTANCE_ID = "foundry-agent-run";
+const TERMINAL_INSTANCE_ID_PREFIX = "foundry-agent-run";
 const TERMINAL_TITLE = "Foundry agent (local)";
 
 // How long to give the host to mount a freshly focused terminal before we give
@@ -59,10 +57,10 @@ let lastCommand = "";
 let lastProjectDir = "";
 let terminalShell = "";
 let launchQueue = Promise.resolve();
+let terminalInstanceId = "";
 
-// Cached extension id of the host terminal canvas (resolved once via list()).
-// `undefined` = not yet resolved; string ("" allowed) = resolved.
-let terminalExtensionId;
+// Provider ids are session-scoped and may change when the host reconnects.
+const terminalExtensionIds = new WeakMap();
 
 function logTerminal(session, msg, level = "info") {
     try {
@@ -72,42 +70,72 @@ function logTerminal(session, msg, level = "info") {
     }
 }
 
-// Whether our agent terminal canvas instance is currently open.
-async function terminalIsOpen(session) {
+function allocateTerminalInstanceId(uuid = randomUUID) {
+    terminalInstanceId = `${TERMINAL_INSTANCE_ID_PREFIX}-${uuid()}`;
+    return terminalInstanceId;
+}
+
+function isOwnedTerminalCanvas(canvas, extensionId) {
+    return canvas?.canvasId === TERMINAL_CANVAS_ID
+        && (!extensionId || canvas.extensionId === extensionId);
+}
+
+async function terminalOwnership(session, extensionId) {
     try {
         const { openCanvases } = await session.rpc.canvas.listOpen();
-        return (openCanvases || []).some(
-            (c) => c.instanceId === TERMINAL_INSTANCE_ID && c.canvasId === TERMINAL_CANVAS_ID,
-        );
+        const canvas = (openCanvases || []).find((c) => c.instanceId === terminalInstanceId);
+        if (!canvas) return "available";
+        return isOwnedTerminalCanvas(canvas, extensionId) ? "owned" : "conflict";
     } catch {
-        return false;
+        return "unknown";
     }
+}
+
+async function ensureTerminalInstanceId(session, extensionId, uuid = randomUUID) {
+    if (!terminalInstanceId) allocateTerminalInstanceId(uuid);
+    if (await terminalOwnership(session, extensionId) !== "conflict") return terminalInstanceId;
+
+    const conflictedId = terminalInstanceId;
+    const replacementId = allocateTerminalInstanceId(uuid);
+    logTerminal(
+        session,
+        `canvas instance ${conflictedId} belongs to another provider; using ${replacementId}`,
+        "warn",
+    );
+    return replacementId;
+}
+
+// Whether our tracked terminal canvas is open and still owned by its provider.
+async function terminalIsOpen(session, extensionId) {
+    return terminalInstanceId
+        ? await terminalOwnership(session, extensionId) === "owned"
+        : false;
 }
 
 // Resolve (and cache) the terminal canvas provider id so open() can disambiguate
 // if more than one provider registers a "terminal" canvas. Absence is tolerated:
 // canvasId is usually unique, so open() still works without it.
 async function resolveTerminalExtensionId(session) {
-    if (terminalExtensionId !== undefined) return terminalExtensionId;
+    if (terminalExtensionIds.has(session)) return terminalExtensionIds.get(session);
+    let extensionId = "";
     try {
         const { canvases } = await session.rpc.canvas.list();
         const term = (canvases || []).find((c) => c.canvasId === TERMINAL_CANVAS_ID);
-        terminalExtensionId = term?.extensionId || "";
-    } catch {
-        terminalExtensionId = "";
-    }
-    return terminalExtensionId;
+        extensionId = term?.extensionId || "";
+    } catch {}
+    terminalExtensionIds.set(session, extensionId);
+    return extensionId;
 }
 
 function openParams(extensionId, input) {
-    const params = { canvasId: TERMINAL_CANVAS_ID, instanceId: TERMINAL_INSTANCE_ID, input };
+    const params = { canvasId: TERMINAL_CANVAS_ID, instanceId: terminalInstanceId, input };
     if (extensionId) params.extensionId = extensionId;
     return params;
 }
 
 async function sendRunCommand(session, command) {
     await session.rpc.canvas.action.invoke({
-        instanceId: TERMINAL_INSTANCE_ID,
+        instanceId: terminalInstanceId,
         actionName: "send_terminal_input",
         input: { input: command, append_newline: true },
     });
@@ -168,7 +196,7 @@ async function detectMountedTerminalShell(
         await sendRunCommand(session, probe);
         for (let attempt = 0; attempt < attempts; attempt += 1) {
             const result = await session.rpc.canvas.action.invoke({
-                instanceId: TERMINAL_INSTANCE_ID,
+                instanceId: terminalInstanceId,
                 actionName: "read_terminal_output",
                 input: { mode: "since_last_input", tail_lines: 20 },
             });
@@ -301,19 +329,21 @@ async function launchAgentTerminalOnce(
         environment = process.env,
         platform = process.platform,
         shellProbeToken = "",
+        instanceIdFactory = randomUUID,
     } = {},
 ) {
     if (!session?.rpc?.canvas?.open) {
         return { ok: false, error: "Integrated terminal is not available in this host." };
     }
 
-    const [ready, mounted, extensionId] = await Promise.all([
+    const extensionId = await resolveTerminalExtensionId(session);
+    await ensureTerminalInstanceId(session, extensionId, instanceIdFactory);
+    const [ready, mounted] = await Promise.all([
         agentReachable(),
         // Mount state, not `listOpen`: a terminal the host never mounted is
         // reported as open but cannot accept input, and treating it as usable
         // would leave every retry sending commands into the void.
         terminalRunning(session),
-        resolveTerminalExtensionId(session),
     ]);
 
     // A different hosted agent than the one we last launched: the running agent
@@ -474,10 +504,16 @@ export function launchAgentTerminal(session, project = {}, dependencies = {}) {
  * @returns {Promise<boolean>}
  */
 export async function isAgentTerminalRunning(session) {
-    if (!session?.rpc?.canvas?.action?.invoke) return false;
+    if (
+        !session?.rpc?.canvas?.action?.invoke
+        || !session?.rpc?.canvas?.listOpen
+    ) return false;
     try {
+        const extensionId = await resolveTerminalExtensionId(session);
+        await ensureTerminalInstanceId(session, extensionId);
+        if (!(await terminalIsOpen(session, extensionId))) return false;
         await session.rpc.canvas.action.invoke({
-            instanceId: TERMINAL_INSTANCE_ID,
+            instanceId: terminalInstanceId,
             actionName: "read_terminal_output",
             input: { mode: "screen", tail_lines: 1 },
         });
@@ -503,8 +539,15 @@ export async function closeAgentTerminal(session) {
     terminalShell = "";
     if (!session?.rpc?.canvas?.close) return;
     try {
-        if (!(await terminalIsOpen(session))) return;
-        await session.rpc.canvas.close({ instanceId: TERMINAL_INSTANCE_ID });
+        const extensionId = await resolveTerminalExtensionId(session);
+        const ownership = await terminalOwnership(session, extensionId);
+        if (ownership === "available" || ownership === "conflict") {
+            terminalInstanceId = "";
+            return;
+        }
+        if (ownership !== "owned") return;
+        await session.rpc.canvas.close({ instanceId: terminalInstanceId });
+        terminalInstanceId = "";
         logTerminal(session, "closed agent terminal");
     } catch (err) {
         logTerminal(session, `close agent terminal failed: ${String(err?.message ?? err)}`, "warn");

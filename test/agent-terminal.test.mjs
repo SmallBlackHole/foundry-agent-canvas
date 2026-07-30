@@ -12,6 +12,22 @@ import {
 } from "../src/agent-terminal.mjs";
 import { GITHUB_COPILOT_APP_AGENT } from "../src/agent-canvas-system-message.mjs";
 
+async function resetAgentTerminalState() {
+    await closeAgentTerminal({
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return { openCanvases: [] };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async close() {},
+            },
+        },
+    });
+}
+
 test("builds an azd command with a native absolute project directory", () => {
     const projectDir = resolve("workspace", "Agent Projects", "support");
     const quotedProjectDir = process.platform === "win32"
@@ -156,7 +172,11 @@ test("mounts the terminal by focusing it, then sends the run command and restore
                 async listOpen() {
                     return {
                         openCanvases: mounted
-                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            ? [{
+                                canvasId: "terminal",
+                                extensionId: "terminal-ext",
+                                instanceId: opened[0].instanceId,
+                            }]
                             : [],
                     };
                 },
@@ -208,6 +228,7 @@ test("mounts the terminal by focusing it, then sends the run command and restore
         // `command` because the host races it against the shell's startup.
         assert.equal(opened[0].canvasId, "terminal");
         assert.equal(opened[0].extensionId, "terminal-ext");
+        assert.match(opened[0].instanceId, /^foundry-agent-run-[0-9a-f-]{36}$/);
         assert.equal(opened[0].input.placement.focus, true);
         assert.equal(opened[0].input.command, undefined);
         // The command arrives as terminal input, once the shell is confirmed up.
@@ -233,8 +254,76 @@ test("mounts the terminal by focusing it, then sends the run command and restore
     }
 });
 
+test("allocates a new terminal id when the tracked id belongs to another provider", async () => {
+    await resetAgentTerminalState();
+    let mounted = false;
+    let opened;
+    const logs = [];
+    const ids = ["collision", "replacement"];
+    const session = {
+        log(message, options) {
+            logs.push({ message, options });
+        },
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    if (mounted) {
+                        return {
+                            openCanvases: [{
+                                canvasId: "terminal",
+                                extensionId: "terminal-ext",
+                                instanceId: opened.instanceId,
+                            }],
+                        };
+                    }
+                    return {
+                        openCanvases: [{
+                            canvasId: "terminal",
+                            extensionId: "other-terminal-ext",
+                            instanceId: "foundry-agent-run-collision",
+                        }],
+                    };
+                },
+                async list() {
+                    return { canvases: [{ canvasId: "terminal", extensionId: "terminal-ext" }] };
+                },
+                async open(params) {
+                    opened = params;
+                    mounted = true;
+                },
+                action: { async invoke() {} },
+                async close() {
+                    mounted = false;
+                },
+            },
+        },
+    };
+
+    try {
+        const result = await launchAgentTerminal(
+            session,
+            { projectDir: resolve("workspace", "apps", "alpha") },
+            {
+                agentReachable: async () => false,
+                terminalRunning: async () => mounted,
+                sleep: async () => {},
+                instanceIdFactory: () => ids.shift(),
+                environment: {},
+            },
+        );
+
+        assert.deepEqual(result, { ok: true, status: "launched" });
+        assert.equal(opened.instanceId, "foundry-agent-run-replacement");
+        assert.ok(logs.some(({ message, options }) =>
+            message.includes("belongs to another provider") && options?.level === "warn"));
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
 test("detects CMD in a new App terminal before launching azd with attribution", async () => {
     let mounted = false;
+    let terminalInstanceId = "";
     const sent = [];
     const token = "abc123";
     const session = {
@@ -244,14 +333,15 @@ test("detects CMD in a new App terminal before launching azd with attribution", 
                 async listOpen() {
                     return {
                         openCanvases: mounted
-                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            ? [{ canvasId: "terminal", instanceId: terminalInstanceId }]
                             : [],
                     };
                 },
                 async list() {
                     return { canvases: [] };
                 },
-                async open() {
+                async open(params) {
+                    terminalInstanceId = params.instanceId;
                     mounted = true;
                 },
                 action: {
@@ -308,6 +398,7 @@ test("detects CMD in a new App terminal before launching azd with attribution", 
 
 test("falls back to an unmarked command when the App terminal shell is unknown", async () => {
     let mounted = false;
+    let terminalInstanceId = "";
     const sent = [];
     const token = "unknown123";
     const session = {
@@ -317,14 +408,15 @@ test("falls back to an unmarked command when the App terminal shell is unknown",
                 async listOpen() {
                     return {
                         openCanvases: mounted
-                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            ? [{ canvasId: "terminal", instanceId: terminalInstanceId }]
                             : [],
                     };
                 },
                 async list() {
                     return { canvases: [] };
                 },
-                async open() {
+                async open(params) {
+                    terminalInstanceId = params.instanceId;
                     mounted = true;
                 },
                 action: {
@@ -423,6 +515,7 @@ test("collapses a rapid second click while the agent is still coming up", async 
 test("switching hosted agents stops the previous run before starting the new one", async () => {
     let mounted = false;
     let running = false;
+    let terminalInstanceId = "";
     const closed = [];
     const sent = [];
     const session = {
@@ -432,14 +525,15 @@ test("switching hosted agents stops the previous run before starting the new one
                 async listOpen() {
                     return {
                         openCanvases: mounted
-                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            ? [{ canvasId: "terminal", instanceId: terminalInstanceId }]
                             : [],
                     };
                 },
                 async list() {
                     return { canvases: [] };
                 },
-                async open() {
+                async open(params) {
+                    terminalInstanceId = params.instanceId;
                     mounted = true;
                 },
                 action: {
@@ -485,7 +579,9 @@ test("switching hosted agents stops the previous run before starting the new one
         );
         // The previous run is closed so it lets go of the agent port, then the
         // newly selected agent is started in a fresh terminal.
-        assert.deepEqual(closed, [{ instanceId: "foundry-agent-run" }]);
+        assert.equal(closed.length, 1);
+        assert.match(closed[0].instanceId, /^foundry-agent-run-[0-9a-f-]{36}$/);
+        assert.notEqual(closed[0].instanceId, terminalInstanceId);
         assert.deepEqual(sent, [
             buildAgentRunCommand(alpha.projectDir),
             buildAgentRunCommand(zeta.projectDir),
@@ -539,6 +635,7 @@ test("reports a terminal that never starts instead of sending into the void", as
 test("reports when the previously selected agent keeps holding the agent port", async () => {
     let mounted = false;
     let launched = false;
+    let terminalInstanceId = "";
     const session = {
         log() {},
         rpc: {
@@ -546,15 +643,16 @@ test("reports when the previously selected agent keeps holding the agent port", 
                 async listOpen() {
                     return {
                         openCanvases: mounted
-                            ? [{ canvasId: "terminal", instanceId: "foundry-agent-run" }]
+                            ? [{ canvasId: "terminal", instanceId: terminalInstanceId }]
                             : [],
                     };
                 },
                 async list() {
                     return { canvases: [] };
                 },
-                async open() {
+                async open(params) {
                     if (launched) throw new Error("must not start a second agent on a busy port");
+                    terminalInstanceId = params.instanceId;
                     mounted = true;
                 },
                 action: { async invoke() {} },
@@ -643,10 +741,23 @@ test("reports a missing runnable azd project before opening a terminal", async (
 });
 
 test("detects a terminal that the host has not mounted yet", async () => {
+    await resetAgentTerminalState();
     const invoked = [];
+    const instanceId = "foundry-agent-run-test";
     const running = {
         rpc: {
             canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: [{ canvasId: "terminal", instanceId }],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open() {
+                    throw new Error("should not open an owned terminal");
+                },
                 action: {
                     async invoke(params) {
                         invoked.push(params);
@@ -659,6 +770,14 @@ test("detects a terminal that the host has not mounted yet", async () => {
     const notMounted = {
         rpc: {
             canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: [{ canvasId: "terminal", instanceId }],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
                 action: {
                     async invoke() {
                         throw new Error("Terminal not found or not running");
@@ -668,8 +787,16 @@ test("detects a terminal that the host has not mounted yet", async () => {
         },
     };
 
+    await launchAgentTerminal(
+        running,
+        { projectDir: resolve("workspace", "apps", "alpha") },
+        {
+            agentReachable: async () => true,
+            instanceIdFactory: () => "test",
+        },
+    );
     assert.equal(await isAgentTerminalRunning(running), true);
-    assert.equal(invoked[0].instanceId, "foundry-agent-run");
+    assert.equal(invoked[0].instanceId, instanceId);
     assert.equal(invoked[0].actionName, "read_terminal_output");
     assert.equal(invoked[0].input.mode, "screen");
     assert.equal(await isAgentTerminalRunning(notMounted), false);
