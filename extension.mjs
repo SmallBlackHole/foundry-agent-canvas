@@ -41,6 +41,13 @@ const resolveWorkspaceRoot = async () => {
     return workspaceRoot.resolve();
 };
 
+function notifyHostedAgentRefresh() {
+    for (const instanceId of openInstances) {
+        const entry = servers.get(instanceId);
+        if (entry) pushFrame(entry, { type: "hostedAgentsChanged" });
+    }
+}
+
 // Drives the automatic canvas refresh after a canvas-originated deployment.
 // The client marks the pending kind when it sends the prompt; on session.idle we
 // verify real state and refresh the relevant open canvas instance.
@@ -246,6 +253,7 @@ if (isGitHubCopilotApp) {
     // finish while no idle listener is registered. The refresh manager waits
     // for workspaceRootReady when it needs the resolved workspace.
     session.on("session.idle", () => {
+        notifyHostedAgentRefresh();
         pendingRefresh.handleSessionIdle().catch(async (err) => {
             try {
                 await session.log(`session.idle refresh handler failed: ${err?.message ?? err}`, { level: "error" });

@@ -252,3 +252,30 @@ test("canvas retains the workspace refresh action as a manual/recovery path", as
     assert.match(source, /return refreshWorkspaceState\(entry, resolveWorkspaceRoot\)/);
     assert.doesNotMatch(source, /refreshWorkspace: refreshWorkspaceState/);
 });
+
+test("session idle asks every open canvas to refresh hosted agents", async () => {
+    const source = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function notifyHostedAgentRefresh\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+    assert.match(
+        source,
+        /session\.on\("session\.idle", \(\) => \{\s*notifyHostedAgentRefresh\(\);/,
+    );
+
+    const frames = [];
+    const context = {
+        openInstances: new Set(["canvas-1", "missing"]),
+        servers: new Map([["canvas-1", { id: "canvas-1" }]]),
+        pushFrame(entry, frame) {
+            frames.push({ entry, frame });
+        },
+    };
+    vm.runInNewContext(`${functionSource}\nnotifyHostedAgentRefresh();`, context);
+
+    assert.deepEqual(JSON.parse(JSON.stringify(frames)), [{
+        entry: { id: "canvas-1" },
+        frame: { type: "hostedAgentsChanged" },
+    }]);
+});

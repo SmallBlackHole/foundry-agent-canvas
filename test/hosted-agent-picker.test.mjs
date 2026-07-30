@@ -121,6 +121,52 @@ test("Inspect Locally asks for an existing agent while New Agent is active", asy
     assert.match(handler, /else \{\s*launchInspector\(e\.target\.closest\("#inspectBtn"\)\);/);
 });
 
+test("session idle refresh selects the sole newly created agent", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /async function refreshHostedAgentsAfterSession\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+    assert.match(
+        source,
+        /msg\.type === "hostedAgentsChanged"\) refreshHostedAgentsAfterSession\(\)/,
+    );
+
+    const state = {
+        hostedAgents: {
+            creatingNew: true,
+            items: [{ agentName: "alpha" }, { agentName: "beta" }],
+        },
+    };
+    const selected = [];
+    const context = {
+        state,
+        workspaceHostedAgentOptions() {
+            return state.hostedAgents.items;
+        },
+        async loadHostedAgents() {
+            state.hostedAgents.items = [
+                { agentName: "alpha" },
+                { agentName: "beta" },
+                { agentName: "new-agent" },
+            ];
+        },
+        async selectHostedAgent(agentName) {
+            selected.push(agentName);
+            state.hostedAgents.creatingNew = false;
+        },
+    };
+    vm.createContext(context);
+
+    await vm.runInContext(
+        `${functionSource}\nrefreshHostedAgentsAfterSession();`,
+        context,
+    );
+
+    assert.deepEqual(selected, ["new-agent"]);
+    assert.equal(state.hostedAgents.creatingNew, false);
+});
+
 test("the packaged icon set includes Add without the retired agent glyph", async () => {
     const [app, css, packageSource] = await Promise.all([
         readFile(new URL("../public/app.js", import.meta.url), "utf8"),

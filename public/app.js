@@ -534,6 +534,20 @@ async function loadHostedAgents(force) {
     return st;
 }
 
+async function refreshHostedAgentsAfterSession() {
+    const previousNames = new Set(
+        workspaceHostedAgentOptions().map((agent) => agent.agentName.toLowerCase()),
+    );
+    const wasCreatingNew = state.hostedAgents.creatingNew === true;
+    await loadHostedAgents(true);
+    if (!wasCreatingNew || !state.hostedAgents.creatingNew) return;
+
+    const added = workspaceHostedAgentOptions().filter(
+        (agent) => !previousNames.has(agent.agentName.toLowerCase()),
+    );
+    if (added.length === 1) await selectHostedAgent(added[0].agentName);
+}
+
 function showNewAgent(prompt = "") {
     const nextPrompt = String(prompt || "").trim();
     if (nextPrompt) {
@@ -2174,6 +2188,7 @@ async function init() {
                 const msg = JSON.parse(ev.data);
                 if (msg.type === "setPrompt" && msg.prompt) setInitUserPrompt(msg.prompt);
                 else if (msg.type === "workspaceState") applyWorkspaceTransition(msg);
+                else if (msg.type === "hostedAgentsChanged") refreshHostedAgentsAfterSession();
                 else if (msg.type === "deploymentState" && msg.deployment) {
                     hostedAgentDeploymentRequest += 1;
                     const previous = state.hostedAgentDeployment;
