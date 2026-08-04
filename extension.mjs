@@ -12,6 +12,7 @@ import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
 import { ensureManagedPocSkillForSession } from "./src/managed-poc-skill.mjs";
+import { managedAgentPromptHook } from "./src/managed-prompt-context.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
@@ -142,6 +143,7 @@ const session = await joinSession({
                 },
                 onUserPromptSubmitted: (input) => {
                     workspaceRoot.update(input.workingDirectory);
+                    return managedAgentPromptHook(input.prompt);
                 },
             },
         }

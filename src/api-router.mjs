@@ -1,4 +1,5 @@
 import { sendJson } from "./server-utils.mjs";
+import { MANAGED_AGENT_ACTIONS } from "./managed-prompt-context.mjs";
 
 const DEFAULT_BODY_LIMIT = 1_000_000;
 
@@ -66,6 +67,14 @@ function requiredString(body, field, label) {
 
 function optionalString(body, field) {
     return typeof body[field] === "string" ? body[field].trim() : "";
+}
+
+function optionalManagedAction(body) {
+    const action = optionalString(body, "managedAction");
+    if (action && !MANAGED_AGENT_ACTIONS.includes(action)) {
+        throw new ApiError(400, "Invalid managedAction");
+    }
+    return action;
 }
 
 function direct(serviceMethod) {
@@ -150,9 +159,14 @@ route("POST", "/api/send", "sendPrompt", {
     parseBody: true,
     handle: async ({ services, url, body }) => {
         const prompt = requiredString(body, "prompt", "prompt");
+        const managedAction = optionalManagedAction(body);
         const result = await services.sendPrompt({
             url,
-            body: { ...body, prompt },
+            body: {
+                ...body,
+                prompt,
+                ...(managedAction ? { managedAction } : {}),
+            },
         });
         return { ok: true, ...result };
     },

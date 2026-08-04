@@ -238,6 +238,32 @@ test("validates prompt handoff and preserves pending refresh metadata", async ()
 
         assert.deepEqual(await json(await fetch(`${base}/api/send`, {
             method: "POST",
+            body: JSON.stringify({
+                prompt: "  create an incident agent  ",
+                managedAction: "create",
+            }),
+        })), {
+            status: 200,
+            body: { ok: true, preview: true },
+        });
+        assert.deepEqual(sent[1], {
+            prompt: "create an incident agent",
+            managedAction: "create",
+        });
+
+        assert.deepEqual(await json(await fetch(`${base}/api/send`, {
+            method: "POST",
+            body: JSON.stringify({
+                prompt: "deploy it",
+                managedAction: "unsupported",
+            }),
+        })), {
+            status: 400,
+            body: { ok: false, error: "Invalid managedAction" },
+        });
+
+        assert.deepEqual(await json(await fetch(`${base}/api/send`, {
+            method: "POST",
             body: JSON.stringify({ prompt: " " }),
         })), {
             status: 400,

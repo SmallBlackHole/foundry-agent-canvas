@@ -47,27 +47,34 @@ test("workflow headings use sentence case and hosted agent remains lowercase", a
     assert.doesNotMatch(html, /Hosted Agents|Deploy &amp; Test/);
 });
 
-test("Create defaults to Hosted Agent and offers the Managed Agent preview flow", async () => {
-    const [html, app] = await Promise.all([
+test("Create defaults to Hosted Agent and keeps Managed Agent prompts user-facing", async () => {
+    const [html, app, extensionSource, hookSource] = await Promise.all([
         readFile(new URL("../public/index.html", import.meta.url), "utf8"),
         readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+        readFile(new URL("../extension.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../src/managed-prompt-context.mjs", import.meta.url), "utf8"),
     ]);
 
     assert.match(html, /class="agent-type-switch"[^>]*role="radiogroup"/);
     assert.match(html, /id="hostedAgentType"[^>]*aria-checked="true"[\s\S]*?>\s*Hosted Agent/);
     assert.match(html, /id="managedAgentType"[^>]*aria-checked="false"[\s\S]*?>\s*Managed Agent/);
     assert.match(app, /state\.agentType = HOSTED_AGENT_TYPE;/);
-    assert.match(app, /Managed Agent private-preview workflow/);
-    assert.match(app, /selected existing Foundry project/);
-    assert.match(app, /West US 2 \(westus2\)/);
-    assert.match(app, /preview azure\.ai\.agents azd extension/);
-    assert.match(app, /declarative instructions and skills/);
-    assert.match(app, /deploy the agent remotely/);
-    assert.match(app, /smoke invoke the deployed agent/);
-    assert.match(app, /const MANAGED_POC_SLASH_COMMAND = "\/microsoft-foundry-managed-poc";/);
-    assert.match(app, /\$\{MANAGED_POC_SLASH_COMMAND\}\\n\\n\$\{contextualPrompt\}/);
-    assert.match(app, /Do not ask for "/);
-    assert.match(app, /or perform a local run/);
+    assert.match(
+        app,
+        /const MANAGED_CREATE_INSTRUCTION =\s*"Create a Microsoft Foundry managed agent for this task\.";/,
+    );
+    assert.match(
+        app,
+        /const MANAGED_DEPLOY_PROMPT =\s*"Deploy my selected managed agent to Microsoft Foundry\.";/,
+    );
+    assert.doesNotMatch(app, /MANAGED_POC_SLASH_COMMAND/);
+    assert.match(extensionSource, /return managedAgentPromptHook\(input\.prompt\);/);
+    assert.match(hookSource, /"\/microsoft-foundry-managed-poc"/);
+    assert.match(hookSource, /West US 2 \(westus2\)/);
+    assert.match(hookSource, /private-preview azure\.ai\.agents azd extension flow/);
+    assert.match(hookSource, /declarative instructions and skills/);
+    assert.match(hookSource, /smoke invoke the deployed agent/);
+    assert.match(hookSource, /Do not ask for or perform a local run/);
     assert.match(app, /inspect\.hidden = managed;/);
     assert.match(app, /for \(const id of \["toolboxResource", "guardrailResource"\]\)/);
     assert.match(

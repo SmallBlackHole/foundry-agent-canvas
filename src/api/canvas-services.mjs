@@ -1,4 +1,5 @@
 import { DEPLOY_PROMPT } from "../catalog.mjs";
+import { markManagedAgentPrompt } from "../managed-prompt-context.mjs";
 import { checkPluginUpdate } from "../plugin-update.mjs";
 import { bootstrapInstance, defaultState } from "../state.mjs";
 
@@ -40,7 +41,9 @@ export function createCanvasServices({
                 markPendingRefresh?.(body.refresh);
             }
             await waitForFoundrySkill?.();
-            await session.send({ prompt: body.prompt });
+            await session.send({
+                prompt: markManagedAgentPrompt(body.prompt, body.managedAction),
+            });
             return {};
         },
         async getPluginUpdate({ url }) {

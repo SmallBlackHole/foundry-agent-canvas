@@ -13,21 +13,13 @@ import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
 
 const HOSTED_AGENT_TYPE = "hosted";
 const MANAGED_AGENT_TYPE = "managed";
-const MANAGED_POC_SLASH_COMMAND = "/microsoft-foundry-managed-poc";
 const MANAGED_DEPLOY_PROMPT =
-    "Use the managed-agent private-preview workflow to deploy my selected managed agent " +
-    "to my selected existing Foundry project in West US 2 (westus2). Use the preview " +
-    "azure.ai.agents azd extension, preserve the declarative instructions and skills, " +
-    "deploy it remotely, and smoke invoke the deployed agent. Do not ask for a local run.";
+    "Deploy my selected managed agent to Microsoft Foundry.";
 const HOSTED_CREATE_INSTRUCTION =
     "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, " +
     "and the Responses protocol. Then run it locally to make sure it runs successfully.";
 const MANAGED_CREATE_INSTRUCTION =
-    "Use the Managed Agent private-preview workflow to create a declarative Foundry managed " +
-    "agent for this task in my selected existing Foundry project. Use West US 2 (westus2) " +
-    "and the preview azure.ai.agents azd extension. Author declarative instructions and " +
-    "skills, deploy the agent remotely, and smoke invoke the deployed agent. Do not ask for " +
-    "or perform a local run.";
+    "Create a Microsoft Foundry managed agent for this task.";
 
 const state = {
     agentName: "",
@@ -168,12 +160,19 @@ async function postJSON(url, body) {
     return res.json();
 }
 
-async function sendToChat(prompt, refresh) {
+async function sendToChat(
+    prompt,
+    refresh,
+    managedAction = currentAgentType() === MANAGED_AGENT_TYPE ? "update" : "",
+) {
     try {
+        const body = { prompt };
+        if (refresh) body.refresh = refresh;
+        if (managedAction) body.managedAction = managedAction;
         const res = await fetch("/api/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(refresh ? { prompt, refresh } : { prompt }),
+            body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
         toast("Sent to chat \u2713");
@@ -213,10 +212,7 @@ function withActionContext(prompt) {
         context.push(`Use my selected Foundry ${parts.join(" ")}.`);
     }
 
-    const contextualPrompt = context.length ? `${prompt}\n\n${context.join("\n")}` : prompt;
-    return currentAgentType() === MANAGED_AGENT_TYPE
-        ? `${MANAGED_POC_SLASH_COMMAND}\n\n${contextualPrompt}`
-        : contextualPrompt;
+    return context.length ? `${prompt}\n\n${context.join("\n")}` : prompt;
 }
 
 function normalizeAgentType(value) {
@@ -2333,7 +2329,8 @@ root.addEventListener("click", async (e) => {
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) {
-            sendToChat(withActionContext(text));
+            const managedAction = currentAgentType() === MANAGED_AGENT_TYPE ? "create" : "";
+            sendToChat(withActionContext(text), undefined, managedAction);
             showBuildSections();
         }
         return;
@@ -2456,7 +2453,11 @@ root.addEventListener("click", async (e) => {
         }
         if (!managed) resetHostedAgentDeployment();
         const prompt = managed ? MANAGED_DEPLOY_PROMPT : state.deployPrompt;
-        sendToChat(withActionContext(prompt), managed ? undefined : "deployment");
+        sendToChat(
+            withActionContext(prompt),
+            managed ? undefined : "deployment",
+            managed ? "deploy" : "",
+        );
         return;
     }
     if (e.target.closest("#inspectBtn")) {

@@ -176,16 +176,12 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
     assert.match(context.result, /Then run it locally to make sure it runs successfully/);
 });
 
-test("managed creation prompt is explicit about the private-preview remote workflow", async () => {
+test("managed creation prompt keeps implementation directives out of the editable text", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
-    const managedInstruction = [
-        "Use the Managed Agent private-preview workflow to create a declarative Foundry managed agent ",
-        "for this task in my selected existing Foundry project. Use West US 2 (westus2) and the preview ",
-        "azure.ai.agents azd extension. Author declarative instructions and skills, deploy the agent ",
-        "remotely, and smoke invoke the deployed agent. Do not ask for or perform a local run.",
-    ].join("");
+    const managedInstruction =
+        "Create a Microsoft Foundry managed agent for this task.";
     const context = {
         state: { init: { idea: "triage service incidents" } },
         MANAGED_AGENT_TYPE: "managed",
@@ -201,14 +197,14 @@ test("managed creation prompt is explicit about the private-preview remote workf
 
     vm.runInNewContext(`${functionSource}\nresult = initPromptText();`, context);
 
-    assert.match(context.result, /Managed Agent private-preview workflow/);
-    assert.match(context.result, /selected existing Foundry project/);
-    assert.match(context.result, /West US 2 \(westus2\)/);
-    assert.match(context.result, /preview azure\.ai\.agents azd extension/);
-    assert.match(context.result, /declarative instructions and skills/);
-    assert.match(context.result, /deploy the agent remotely/);
-    assert.match(context.result, /smoke invoke the deployed agent/);
-    assert.doesNotMatch(context.result, /run it locally/i);
+    assert.equal(
+        context.result,
+        "Triage service incidents. Create a Microsoft Foundry managed agent for this task.",
+    );
+    assert.doesNotMatch(
+        context.result,
+        /private-preview|westus2|azure\.ai\.agents|declarative|deploy|smoke invoke|local run/i,
+    );
 });
 
 test("canvas-provided user request bypasses the generated inspiration prompt", async () => {
@@ -255,7 +251,14 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
 
 test("the client sends the create prompt without a pending workspace refresh", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-    assert.match(source, /sendToChat\(withActionContext\(text\)\)/);
+    assert.match(
+        source,
+        /sendToChat\(withActionContext\(text\), undefined, managedAction\)/,
+    );
+    assert.match(
+        source,
+        /const managedAction = currentAgentType\(\) === MANAGED_AGENT_TYPE \? "create" : "";/,
+    );
     assert.doesNotMatch(source, /sendToChat\(withActionContext\(text\), "workspace"\)/);
 });
 
@@ -267,7 +270,7 @@ test("the client opens the build sections immediately after sending", async () =
     assert.ok(functionSource);
     assert.match(
         handler,
-        /sendToChat\(withActionContext\(text\)\);\s*showBuildSections\(\);/,
+        /sendToChat\(withActionContext\(text\), undefined, managedAction\);\s*showBuildSections\(\);/,
     );
 
     const calls = [];

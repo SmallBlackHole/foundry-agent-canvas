@@ -67,7 +67,6 @@ test("chat actions append the selected workspace agent and Foundry project", asy
             },
         },
         MANAGED_AGENT_TYPE: "managed",
-        MANAGED_POC_SLASH_COMMAND: "/microsoft-foundry-managed-poc",
         currentAgentType() {
             return context.state.agentType;
         },
@@ -96,15 +95,14 @@ test("chat actions append the selected workspace agent and Foundry project", asy
 
     context.state.agentType = "managed";
     vm.runInContext('result = withActionContext("create a managed agent");', context);
-    assert.match(context.result, /^\/microsoft-foundry-managed-poc\n\n/);
-    assert.doesNotMatch(context.result, /Use the `microsoft-foundry-managed-poc` skill/);
-    assert.doesNotMatch(context.result, /Do not use or modify the official/);
+    assert.doesNotMatch(context.result, /microsoft-foundry-managed-poc/);
+    assert.match(context.result, /Use my selected Foundry project "Agent Project"/);
 
     assert.match(source, /sendToChat\(withActionContext\(m\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(t\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(g\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(s\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(prompt\), managed \? undefined : "deployment"\)/);
+    assert.match(source, /managed \? "deploy" : ""/);
 });
 
 test("New starts an explicit render state and opens only Create", async () => {
