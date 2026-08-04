@@ -163,7 +163,7 @@ route("POST", "/api/managed-agent/playground/stream", "streamManagedAgent", {
         url,
         body: {
             agentName: requiredString(body, "agentName", "agentName"),
-            agentVersion: requiredString(body, "agentVersion", "agentVersion"),
+            agentVersion: optionalString(body, "agentVersion"),
             message: requiredString(body, "message", "message"),
             conversationId: optionalString(body, "conversationId"),
         },

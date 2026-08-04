@@ -91,7 +91,7 @@ const projects = [
         account: "preview-foundry",
         endpoint: "https://preview.services.ai.azure.com/api/projects/preview-project",
         id: "/subscriptions/preview/resourceGroups/preview/providers/Microsoft.CognitiveServices/accounts/preview/projects/preview-project",
-        location: "eastus2",
+        location: "westus2",
         name: "Preview Project",
         project: "Preview Project",
         rg: "preview-rg",
@@ -172,6 +172,10 @@ function mockMultiAgent(url) {
     return url.searchParams.get("multiAgent") === "true";
 }
 
+function mockManagedAgent(url) {
+    return url.searchParams.get("managedAgent") === "true";
+}
+
 const previewAgentNames = ["Preview Agent", "support-agent", "research-agent"];
 
 async function mockHostedAgents(url) {
@@ -183,6 +187,7 @@ async function mockHostedAgents(url) {
             agentName,
             manifestPath: `preview/${slug}/azure.yaml`,
             projectDir: `preview/${slug}`,
+            agentType: mockManagedAgent(url) ? "managed" : "hosted",
         };
     });
 }
@@ -275,6 +280,7 @@ const hostedAgentRegions = [
     "southindia",
     "brazilsouth",
     "westus",
+    "westus2",
     "westus3",
     "norwayeast",
     "japaneast",
@@ -435,10 +441,14 @@ function createPreviewApiServices() {
             return mockHostedAgentDeployment(url);
         },
         async listHostedAgents({ url }) {
+            const agents = await mockHostedAgents(url);
+            const selected = await mockResolvedAgentName(url);
+            const selectedAgent = agents.find((agent) => agent.agentName === selected);
             return {
                 ok: true,
-                selected: await mockResolvedAgentName(url),
-                agents: await mockHostedAgents(url),
+                selected,
+                agentType: selectedAgent?.agentType || "",
+                agents,
             };
         },
         selectHostedAgent({ body }) {
@@ -558,6 +568,36 @@ function createPreviewApiServices() {
             sentPrompts.push({ prompt: body.prompt, at: new Date().toISOString() });
             console.log("\n[preview] prompt-to-chat stub\n" + body.prompt + "\n");
             return { preview: true };
+        },
+        streamManagedAgent({ body }) {
+            return {
+                stream: "ndjson",
+                async run({ emit }) {
+                    const conversationId = body.conversationId || "preview-conversation";
+                    await emit({
+                        type: "agent",
+                        agentName: body.agentName,
+                        agentVersion: body.agentVersion || "3",
+                    });
+                    await emit({ type: "conversation", conversationId });
+                    for (const delta of [
+                        "Preview response from ",
+                        body.agentName,
+                        ": ",
+                        body.message,
+                    ]) {
+                        await emit({ type: "delta", delta });
+                    }
+                    await emit({
+                        type: "done",
+                        conversationId,
+                        agentVersion: body.agentVersion || "3",
+                    });
+                },
+            };
+        },
+        resetManagedAgentConversation() {
+            return { ok: true, deleted: true };
         },
         async getProjectInit({ url }) {
             return {

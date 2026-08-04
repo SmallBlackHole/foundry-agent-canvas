@@ -334,6 +334,23 @@
                                     <span>Inspect Locally</span>
                                 </button>
                             </div>
+                            <section class="managed-playground" id="managedPlayground" aria-label="Managed agent playground" hidden>
+                                <header class="managed-playground-header">
+                                    <span class="managed-playground-title">Agent playground</span>
+                                    <span class="managed-playground-badge">Private preview</span>
+                                    <button class="managed-playground-reset" id="managedPlaygroundReset" type="button" aria-label="Reset conversation" title="Reset conversation">
+                                        <span class="fi fi-refresh" aria-hidden="true"></span>
+                                    </button>
+                                </header>
+                                <div class="managed-playground-messages" id="managedPlaygroundMessages" aria-live="polite"></div>
+                                <form class="managed-playground-form" id="managedPlaygroundForm">
+                                    <textarea id="managedPlaygroundInput" rows="2" maxlength="8000" placeholder="Message managed agent"></textarea>
+                                    <button class="managed-playground-send" id="managedPlaygroundSend" type="submit" aria-label="Send message" title="Send message">
+                                        <span class="fi fi-send" aria-hidden="true"></span>
+                                    </button>
+                                </form>
+                                <div class="managed-playground-status" id="managedPlaygroundStatus" role="status" hidden></div>
+                            </section>
                         </div>
                     </section>
                 </div>

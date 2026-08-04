@@ -54,6 +54,7 @@ function parseTarEntries(decompressed, pathFilter) {
  * @param {string} opts.lockFile    - Path to .skill-lock.json
  * @param {string} opts.skillName   - Skill name key in the lock file
  * @param {string} opts.source      - Source repo identifier (e.g. "microsoft/azure-skills")
+ * @param {string} [opts.sourceRef] - Source branch or ref recorded in the lock file
  * @param {number} [opts.timeoutMs] - Fetch timeout in milliseconds (default 60000)
  * @returns {Promise<{ok: boolean, count?: number, error?: string}>}
  */
@@ -65,6 +66,7 @@ export async function installSkillFromGitHub(opts) {
         lockFile,
         skillName,
         source,
+        sourceRef = "",
         timeoutMs = 60_000,
     } = opts;
 
@@ -117,6 +119,7 @@ export async function installSkillFromGitHub(opts) {
         source,
         sourceType: "github",
         sourceUrl: `https://github.com/${source}.git`,
+        ...(sourceRef ? { sourceRef } : {}),
         skillPath: `skills/${skillName}/SKILL.md`,
         updatedAt: new Date().toISOString(),
     };

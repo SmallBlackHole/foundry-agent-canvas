@@ -5,9 +5,11 @@ import { installSkillFromGitHub } from "./skill-install.mjs";
 import { compareVersions } from "./version-compare.mjs";
 
 const USER_HOME = homedir();
-const SKILLS_SOURCE = "microsoft/azure-skills";
+const SKILLS_SOURCE = "qinezh/azure-skills";
+const SKILLS_SOURCE_REF = "managed-agents";
 const SKILLS_SKILL = "microsoft-foundry";
-const SKILLS_TARBALL_URL = `https://github.com/${SKILLS_SOURCE}/archive/refs/heads/main.tar.gz`;
+const SKILLS_TARBALL_URL =
+    `https://github.com/${SKILLS_SOURCE}/archive/refs/heads/${SKILLS_SOURCE_REF}.tar.gz`;
 const SKILLS_TAR_PREFIX = "skills/microsoft-foundry/";
 const SKILLS_INSTALL_TIMEOUT_MS = 60_000;
 const USER_AGENTS_DIR = join(USER_HOME, ".agents");
@@ -15,7 +17,7 @@ const USER_SKILLS_DIR = join(USER_AGENTS_DIR, "skills");
 const USER_SKILL_DIR = join(USER_SKILLS_DIR, SKILLS_SKILL);
 const USER_SKILL_FILE = join(USER_SKILL_DIR, "SKILL.md");
 const USER_SKILL_LOCK_FILE = join(USER_AGENTS_DIR, ".skill-lock.json");
-const SKILLS_REMOTE_SKILL_PATH = ".github/plugins/azure-skills/skills/microsoft-foundry/SKILL.md";
+const SKILLS_REMOTE_SKILL_PATH = "skills/microsoft-foundry/SKILL.md";
 const SKILLS_REMOTE_CHECK_TIMEOUT_MS = 10_000;
 const SKILLS_CHECK_TTL_MS = 5 * 60_000;
 let ensureFoundrySkillPromise = null;
@@ -30,6 +32,7 @@ export async function installFoundrySkill() {
         lockFile: USER_SKILL_LOCK_FILE,
         skillName: SKILLS_SKILL,
         source: SKILLS_SOURCE,
+        sourceRef: SKILLS_SOURCE_REF,
         timeoutMs: SKILLS_INSTALL_TIMEOUT_MS,
     });
     if (!result.ok) {
@@ -106,13 +109,20 @@ function skillPathFromSkillLock(lock) {
     return String(lock?.skillPath || SKILLS_REMOTE_SKILL_PATH);
 }
 
+export function isExpectedFoundrySkillSource(lock) {
+    return String(lock?.source || "").toLowerCase() === SKILLS_SOURCE.toLowerCase()
+        && String(lock?.sourceRef || "").toLowerCase() === SKILLS_SOURCE_REF.toLowerCase()
+        && skillPathFromSkillLock(lock) === SKILLS_REMOTE_SKILL_PATH;
+}
+
 function githubRawSkillUrls(lock) {
     const repo = githubRepoFromSkillLock(lock);
+    const ref = String(lock?.sourceRef || SKILLS_SOURCE_REF);
     const path = skillPathFromSkillLock(lock)
         .split("/")
         .map(encodeURIComponent)
         .join("/");
-    return ["main", "master"].map((ref) => `https://raw.githubusercontent.com/${repo}/${ref}/${path}`);
+    return [`https://raw.githubusercontent.com/${repo}/${encodeURIComponent(ref)}/${path}`];
 }
 
 async function fetchText(url, timeoutMs) {
@@ -188,6 +198,7 @@ export async function checkFoundrySkillStatus() {
         installedVersion: installed.installedVersion,
         lockPresent: !!installed.lock,
         skillPath: skillPathFromSkillLock(installed.lock),
+        sourceRef: installed.lock?.sourceRef || "",
         lockUpdatedAt: installed.lockUpdatedAt,
         checkMethod: "github-skill-metadata",
     };
@@ -200,13 +211,22 @@ export async function checkFoundrySkillStatus() {
             summary: "Foundry Skills are not installed yet.",
         };
     }
+    if (!isExpectedFoundrySkillSource(installed.lock)) {
+        return {
+            ...base,
+            ok: true,
+            status: "wrong_source",
+            latestVersion: "",
+            summary: `This PoC requires Foundry Skills from ${SKILLS_SOURCE}#${SKILLS_SOURCE_REF}.`,
+        };
+    }
     const latest = await checkRemoteFoundrySkill(installed.lock, installed.installedVersion);
     return { ...base, ...latest };
 }
 
 async function ensureFoundrySkillOnce() {
     const status = await checkFoundrySkillStatus();
-    if (status.status !== "missing" && status.status !== "outdated") {
+    if (!["missing", "outdated", "wrong_source"].includes(status.status)) {
         return {
             ...status,
             action: "none",
@@ -215,7 +235,11 @@ async function ensureFoundrySkillOnce() {
         };
     }
 
-    const action = status.status === "outdated" ? "update" : "install";
+    const action = status.status === "wrong_source"
+        ? "replace"
+        : status.status === "outdated"
+            ? "update"
+            : "install";
     const result = await installFoundrySkill();
     const ready = result.ok || status.installed;
     return {

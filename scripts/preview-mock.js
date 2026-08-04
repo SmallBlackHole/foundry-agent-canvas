@@ -7,6 +7,7 @@
         "agent",
         "agentInput",
         "multiAgent",
+        "managedAgent",
         "az",
         "azd",
         "deployed",
@@ -73,6 +74,7 @@
             agent,
             agentInput: boolValue(params, "agentInput"),
             multiAgent: params.get("multiAgent") === "true",
+            managedAgent: params.get("managedAgent") === "true",
             az: boolValue(params, "az"),
             azd: boolValue(params, "azd"),
             deployed: boolValue(params, "deployed"),
@@ -170,7 +172,8 @@
         summary.className = "preview-mock-summary";
         summary.textContent =
             `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
-            `multiAgent=${cfg.multiAgent}, agentInput=${cfg.agentInput}, az=${cfg.az}, ` +
+            `multiAgent=${cfg.multiAgent}, managedAgent=${cfg.managedAgent}, ` +
+            `agentInput=${cfg.agentInput}, az=${cfg.az}, ` +
             `azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
             `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}, ` +
             `pluginUpdate=${cfg.pluginUpdate}`;
@@ -185,8 +188,9 @@
                 checkbox("project", "Foundry project selected", cfg.project),
             ]),
             section("Workspace", [
-                checkbox("agent", "Hosted agent exists", cfg.agent),
-                checkbox("multiAgent", "Multiple hosted agents", cfg.multiAgent),
+                checkbox("agent", "Agent exists", cfg.agent),
+                checkbox("multiAgent", "Multiple agents", cfg.multiAgent),
+                checkbox("managedAgent", "Managed agent workspace", cfg.managedAgent),
                 checkbox("agentInput", "Canvas agent name provided", cfg.agentInput),
             ]),
             section("Local tools", [

@@ -134,7 +134,28 @@ test("starter options can wrap without clipping their labels", async () => {
 test("managed-only hidden controls stay hidden despite authored display rules", async () => {
     const css = await readFile(new URL("../public/app.css", import.meta.url), "utf8");
 
-    assert.match(css, /\.btn-inspect\[hidden\],[\s\S]*?\.resource-select\[hidden\]\s*\{\s*display:\s*none;/);
+    assert.match(
+        css,
+        /\.btn-inspect\[hidden\],[\s\S]*?\.resource-select\[hidden\],[\s\S]*?\.managed-playground\[hidden\]\s*\{\s*display:\s*none;/,
+    );
+});
+
+test("managed agent deploy section includes the text-only private-preview playground", async () => {
+    const [html, app] = await Promise.all([
+        readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    ]);
+
+    assert.match(html, /id="managedPlayground"[^>]*aria-label="Managed agent playground"[^>]*hidden/);
+    assert.match(html, />Agent playground</);
+    assert.match(html, />Private preview</);
+    assert.match(html, /id="managedPlaygroundMessages"[^>]*aria-live="polite"/);
+    assert.match(html, /id="managedPlaygroundForm"/);
+    assert.match(html, /id="managedPlaygroundReset"[^>]*aria-label="Reset conversation"/);
+    assert.match(app, /\/api\/managed-agent\/playground\/stream/);
+    assert.match(app, /event\.type === "delta"/);
+    assert.match(app, /row\.textContent = message\.text/);
+    assert.doesNotMatch(app, /innerHTML = message\.text/);
 });
 
 test("the plugin update bar is informational and directs updates outside the live provider", async () => {

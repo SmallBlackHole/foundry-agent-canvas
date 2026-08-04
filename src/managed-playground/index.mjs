@@ -27,9 +27,27 @@ export function createManagedAgentPlayground({
         ...(now ? { now } : {}),
     });
 
-    async function getOpenAIClient(endpoint) {
+    async function getClients(endpoint) {
         const projectClient = projectClientFactory(endpoint, credential);
-        return await projectClient.getOpenAIClient();
+        return {
+            projectClient,
+            openAIClient: await projectClient.getOpenAIClient(),
+        };
+    }
+
+    async function resolveAgentVersion(projectClient, agentName, agentVersion, signal) {
+        const requestedVersion = text(agentVersion);
+        if (requestedVersion) return requestedVersion;
+        throwIfAborted(signal);
+        const agent = await projectClient.agents.get(agentName, {
+            abortSignal: signal,
+        });
+        throwIfAborted(signal);
+        const latestVersion = text(agent?.versions?.latest?.version);
+        if (!latestVersion) {
+            throw new Error(`Managed agent "${agentName}" is not deployed.`);
+        }
+        return latestVersion;
     }
 
     return {
@@ -43,8 +61,20 @@ export function createManagedAgentPlayground({
             emit,
         }) {
             throwIfAborted(signal);
-            const openAIClient = await getOpenAIClient(endpoint);
+            const { projectClient, openAIClient } = await getClients(endpoint);
             throwIfAborted(signal);
+            const activeAgentVersion = await resolveAgentVersion(
+                projectClient,
+                agentName,
+                agentVersion,
+                signal,
+            );
+
+            await emit({
+                type: "agent",
+                agentName,
+                agentVersion: activeAgentVersion,
+            });
 
             const existingConversationId = text(conversationId);
             const conversation = existingConversationId
@@ -78,7 +108,7 @@ export function createManagedAgentPlayground({
                         agent_reference: {
                             type: "agent_reference",
                             name: agentName,
-                            version: agentVersion,
+                            version: activeAgentVersion,
                         },
                     },
                 },
@@ -98,13 +128,17 @@ export function createManagedAgentPlayground({
             await emit({
                 type: "done",
                 conversationId: activeConversationId,
+                agentVersion: activeAgentVersion,
             });
-            return { conversationId: activeConversationId };
+            return {
+                conversationId: activeConversationId,
+                agentVersion: activeAgentVersion,
+            };
         },
 
         async reset({ endpoint, conversationId, signal }) {
             throwIfAborted(signal);
-            const openAIClient = await getOpenAIClient(endpoint);
+            const { openAIClient } = await getClients(endpoint);
             throwIfAborted(signal);
             await openAIClient.conversations.delete(conversationId, { signal });
         },

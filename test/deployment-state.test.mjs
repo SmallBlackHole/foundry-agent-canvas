@@ -293,6 +293,9 @@ test("a failed agent-list refresh keeps the picker instead of collapsing it", as
         renderHostedAgentPicker() {
             renders.push(context.state.hostedAgents.items.length);
         },
+        renderAgentTypeUi() {},
+        renderRegionSupport() {},
+        renderHostedAgentDeployment() {},
     };
     vm.createContext(context);
 

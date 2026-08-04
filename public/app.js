@@ -70,6 +70,15 @@ const state = {
         version: "",
         reason: "",
     },
+    managedPlayground: {
+        conversationId: "",
+        agentName: "",
+        agentVersion: "",
+        messages: [],
+        status: "idle",
+        error: "",
+        controller: null,
+    },
     // Hosted agents found in the workspace. The picker only appears when there
     // is more than one, so single-agent workspaces keep the implicit behavior.
     hostedAgents: { status: "idle", items: [], selected: "", creatingNew: false },
@@ -297,6 +306,7 @@ function renderBuild() {
     renderHostedAgentDeployment();
     renderHostedAgentPicker();
     renderAgentTypeUi();
+    renderManagedPlayground();
     renderPluginUpdate();
 }
 
@@ -398,6 +408,7 @@ function renderAgentTypeUi() {
     if (deployLabel) deployLabel.textContent = managed
         ? "Deploy managed agent"
         : "Deploy to Foundry";
+    renderManagedPlayground();
 }
 
 // Reflect the current hosted-region check onto the Deploy button + warning
@@ -510,7 +521,14 @@ function renderHostedAgentDeployment() {
     const deployment = state.hostedAgents.creatingNew || currentAgentType() === MANAGED_AGENT_TYPE
         ? emptyHostedAgentDeployment()
         : state.hostedAgentDeployment;
-    const descriptionText = hostedAgentDeploymentDescription(deployment);
+    const managed = currentAgentType() === MANAGED_AGENT_TYPE;
+    const managedVersion = managed ? state.managedPlayground?.agentVersion || "" : "";
+    const managedName = managed
+        ? state.managedPlayground?.agentName || selectedManagedAgentName()
+        : "";
+    const descriptionText = managed && !state.hostedAgents.creatingNew && managedVersion
+        ? `Deployed as ${managedName}, version ${managedVersion}.`
+        : hostedAgentDeploymentDescription(deployment);
     if (description) {
         description.textContent = descriptionText;
         syncDeployDescriptionVisibility();
@@ -524,6 +542,196 @@ function renderHostedAgentDeployment() {
     link.title = visible && deployment.version
         ? `Test ${deployment.agentName} version ${deployment.version} in Microsoft Foundry Portal`
         : "";
+}
+
+function selectedManagedAgentName() {
+    return String(state.hostedAgents.selected || state.agentName || "").trim();
+}
+
+function managedPlaygroundVisible() {
+    return currentAgentType() === MANAGED_AGENT_TYPE
+        && !state.hostedAgents.creatingNew
+        && !!selectedManagedAgentName();
+}
+
+function emptyManagedPlayground() {
+    return {
+        conversationId: "",
+        agentName: "",
+        agentVersion: "",
+        messages: [],
+        status: "idle",
+        error: "",
+        controller: null,
+    };
+}
+
+function clearManagedPlayground() {
+    state.managedPlayground.controller?.abort();
+    state.managedPlayground = emptyManagedPlayground();
+    renderManagedPlayground();
+    renderHostedAgentDeployment();
+}
+
+function renderManagedPlayground() {
+    const host = document.getElementById("managedPlayground");
+    if (!host) return;
+    const visible = managedPlaygroundVisible();
+    host.hidden = !visible;
+    if (!visible) return;
+
+    const messages = document.getElementById("managedPlaygroundMessages");
+    if (messages) {
+        messages.replaceChildren();
+        if (!state.managedPlayground.messages.length) {
+            const empty = document.createElement("div");
+            empty.className = "managed-playground-empty";
+            empty.textContent = "Start a conversation with the deployed agent.";
+            messages.appendChild(empty);
+        } else {
+            for (const message of state.managedPlayground.messages) {
+                const row = document.createElement("div");
+                row.className =
+                    `managed-playground-message is-${message.role}` +
+                    (message.streaming ? " is-streaming" : "");
+                row.textContent = message.text;
+                messages.appendChild(row);
+            }
+            messages.scrollTop = messages.scrollHeight;
+        }
+    }
+
+    const sending = state.managedPlayground.status === "streaming";
+    const input = document.getElementById("managedPlaygroundInput");
+    if (input) input.disabled = sending;
+    const send = document.getElementById("managedPlaygroundSend");
+    if (send) send.disabled = sending;
+    const reset = document.getElementById("managedPlaygroundReset");
+    if (reset) {
+        reset.disabled = !state.managedPlayground.conversationId
+            && state.managedPlayground.messages.length === 0;
+    }
+    const status = document.getElementById("managedPlaygroundStatus");
+    if (status) {
+        const value =
+            state.managedPlayground.error ||
+            (sending ? "Waiting for agent response..." : "");
+        status.textContent = value;
+        status.hidden = !value;
+        status.classList.toggle("is-error", !!state.managedPlayground.error);
+    }
+}
+
+function parseManagedPlaygroundLine(line) {
+    try {
+        return JSON.parse(line);
+    } catch {
+        throw new Error("Managed agent returned an invalid stream event.");
+    }
+}
+
+async function sendManagedPlaygroundMessage() {
+    if (!managedPlaygroundVisible() || state.managedPlayground.status === "streaming") return;
+    const input = document.getElementById("managedPlaygroundInput");
+    const message = String(input?.value || "").trim();
+    if (!message) return;
+    const agentName = selectedManagedAgentName();
+    const assistant = { role: "assistant", text: "", streaming: true };
+    state.managedPlayground.messages.push(
+        { role: "user", text: message, streaming: false },
+        assistant,
+    );
+    state.managedPlayground.agentName = agentName;
+    state.managedPlayground.status = "streaming";
+    state.managedPlayground.error = "";
+    const controller = new AbortController();
+    state.managedPlayground.controller = controller;
+    if (input) input.value = "";
+    renderManagedPlayground();
+
+    try {
+        const response = await fetch("/api/managed-agent/playground/stream", {
+            method: "POST",
+            headers: {
+                Accept: "application/x-ndjson",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                agentName,
+                agentVersion: state.managedPlayground.agentVersion,
+                message,
+                conversationId: state.managedPlayground.conversationId,
+            }),
+            signal: controller.signal,
+        });
+        if (!response.ok) {
+            const failure = await response.json().catch(() => ({}));
+            throw new Error(
+                failure.error ||
+                `Managed agent request failed (HTTP ${response.status}).`,
+            );
+        }
+        if (!response.body) throw new Error("Managed agent stream is unavailable.");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+            const { done, value } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            let newline = buffer.indexOf("\n");
+            while (newline >= 0) {
+                const line = buffer.slice(0, newline).trim();
+                buffer = buffer.slice(newline + 1);
+                if (line) {
+                    const event = parseManagedPlaygroundLine(line);
+                    if (event.type === "agent") {
+                        state.managedPlayground.agentName = event.agentName || agentName;
+                        state.managedPlayground.agentVersion = event.agentVersion || "";
+                        renderHostedAgentDeployment();
+                    } else if (event.type === "conversation") {
+                        state.managedPlayground.conversationId = event.conversationId || "";
+                    } else if (event.type === "delta") {
+                        assistant.text += event.delta || "";
+                        renderManagedPlayground();
+                    } else if (event.type === "error") {
+                        throw new Error(event.error || "Managed agent request failed.");
+                    }
+                }
+                newline = buffer.indexOf("\n");
+            }
+            if (done) break;
+        }
+        const finalLine = buffer.trim();
+        if (finalLine) {
+            const event = parseManagedPlaygroundLine(finalLine);
+            if (event.type === "error") {
+                throw new Error(event.error || "Managed agent request failed.");
+            }
+        }
+    } catch (error) {
+        if (error?.name !== "AbortError") {
+            state.managedPlayground.error = error?.message || String(error);
+        }
+    } finally {
+        assistant.streaming = false;
+        state.managedPlayground.status = "idle";
+        if (state.managedPlayground.controller === controller) {
+            state.managedPlayground.controller = null;
+        }
+        renderManagedPlayground();
+    }
+}
+
+async function resetManagedPlaygroundConversation() {
+    const conversationId = state.managedPlayground.conversationId;
+    clearManagedPlayground();
+    if (!conversationId) return;
+    try {
+        await postJSON("/api/managed-agent/playground/reset", { conversationId });
+    } catch {
+        // Reset is best effort in this private-preview playground.
+    }
 }
 
 async function loadHostedAgentDeployment() {
@@ -693,6 +901,9 @@ async function loadHostedAgents(force) {
         st.status = "error";
     }
     renderHostedAgentPicker();
+    renderAgentTypeUi();
+    renderRegionSupport();
+    renderHostedAgentDeployment();
     return st;
 }
 
@@ -713,6 +924,7 @@ async function refreshHostedAgentsAfterSession() {
 function showNewAgent(prompt = "") {
     const nextPrompt = String(prompt || "").trim();
     state.agentType = HOSTED_AGENT_TYPE;
+    clearManagedPlayground();
     state.init.sourcePrompt = nextPrompt;
     if (nextPrompt) {
         state.init.idea = "";
@@ -737,6 +949,7 @@ async function selectHostedAgent(agentName) {
         (agent) => agent.agentName.toLowerCase() === agentName.toLowerCase(),
     );
     state.agentType = normalizeAgentType(nextAgent?.agentType);
+    if (agentName !== previous || wasCreatingNew) clearManagedPlayground();
     const previousSections = {
         initOpen: state.init.open,
         resourcesOpen: state.folds.resources,
@@ -999,6 +1212,7 @@ function selectAgentType(agentType) {
     const next = normalizeAgentType(agentType);
     if (next === currentAgentType()) return;
     state.agentType = next;
+    clearManagedPlayground();
     if (state.init.sourcePrompt) {
         state.init.idea = state.init.sourcePrompt.trim().replace(/[.!?]+$/, "");
     }
@@ -1804,6 +2018,7 @@ function resetSelectors() {
 }
 
 function resetProjectScopedState() {
+    clearManagedPlayground();
     resetHostedAgentDeployment();
     state.hostedRegion = { status: "idle", location: "", supported: null, regions: [], docsUrl: "" };
     renderRegionSupport();
@@ -2047,6 +2262,10 @@ root.addEventListener("click", async (e) => {
         selectAgentType(MANAGED_AGENT_TYPE);
         return;
     }
+    if (e.target.closest("#managedPlaygroundReset")) {
+        await resetManagedPlaygroundConversation();
+        return;
+    }
     if (e.target.closest("#resourcesToggle")) {
         const willOpen = !state.folds.resources;
         state.folds.resources = willOpen;
@@ -2208,6 +2427,12 @@ root.addEventListener("click", async (e) => {
         }
         return;
     }
+});
+
+root.addEventListener("submit", (event) => {
+    if (!event.target.closest("#managedPlaygroundForm")) return;
+    event.preventDefault();
+    void sendManagedPlaygroundMessage();
 });
 
 // ----------------------------------------------- Local Agent Inspector embed

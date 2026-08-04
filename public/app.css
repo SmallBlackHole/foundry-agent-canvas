@@ -403,8 +403,158 @@ body {
 .btn-inspect:hover { background: var(--bg-subtle); border-color: var(--accent); }
 .btn-playground[hidden],
 .btn-inspect[hidden],
-.resource-select[hidden] { display: none; }
+.resource-select[hidden],
+.managed-playground[hidden] { display: none; }
 .deploy-hint { margin: 0; color: var(--muted); text-align: center; font-size: 12px; }
+
+.managed-playground {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--fluent-radius);
+    background: var(--bg);
+    overflow: hidden;
+}
+.managed-playground-header {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 7px 5px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+}
+.managed-playground-title {
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+}
+.managed-playground-badge {
+    flex: 0 0 auto;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    background: var(--bg);
+    font-size: 10px;
+    line-height: 14px;
+}
+.managed-playground-reset,
+.managed-playground-send {
+    border: 0;
+    display: inline-grid;
+    place-items: center;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+}
+.managed-playground-reset {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+}
+.managed-playground-reset:hover,
+.managed-playground-send:hover {
+    background: var(--fluent-subtle);
+}
+.managed-playground-reset:disabled,
+.managed-playground-send:disabled {
+    opacity: .45;
+    cursor: default;
+}
+.managed-playground-messages {
+    min-height: 112px;
+    max-height: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+.managed-playground-empty {
+    margin: auto;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+}
+.managed-playground-message {
+    max-width: 88%;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    line-height: 18px;
+}
+.managed-playground-message.is-user {
+    align-self: flex-end;
+    border-color: #c8b9ee;
+    background: #f1ecfb;
+}
+.managed-playground-message.is-assistant {
+    align-self: flex-start;
+    background: var(--bg-subtle);
+}
+.managed-playground-message.is-streaming::after {
+    content: "";
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    margin-left: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: managed-playground-pulse .8s ease-in-out infinite alternate;
+}
+@keyframes managed-playground-pulse {
+    from { opacity: .25; }
+    to { opacity: .8; }
+}
+.managed-playground-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    gap: 6px;
+    align-items: end;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+}
+.managed-playground-form textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 52px;
+    max-height: 112px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 7px 8px;
+    color: var(--text);
+    background: var(--bg);
+    font: inherit;
+    font-size: 13px;
+    line-height: 18px;
+}
+.managed-playground-form textarea:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    outline-offset: 0;
+    border-color: var(--accent);
+}
+.managed-playground-send {
+    width: 32px;
+    height: 32px;
+    border-radius: 5px;
+    color: var(--fluent-brand);
+    background: #f1ecfb;
+}
+.managed-playground-status {
+    padding: 0 10px 9px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 15px;
+}
+.managed-playground-status.is-error {
+    color: var(--danger, #b42318);
+}
 
 /* Hosted agent context bar — shown only when the workspace scan finds more than
    one hosted agent. New Agent is an explicit render state, not a persisted

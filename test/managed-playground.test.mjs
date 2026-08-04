@@ -48,13 +48,19 @@ test("creates a conversation and streams only assistant text deltas", async () =
             },
         },
     };
+    const projectClient = {
+        agents: {
+            get: async () => ({
+                versions: { latest: { version: "7" } },
+            }),
+        },
+        getOpenAIClient: async () => openAIClient,
+    };
     const createdClients = [];
     const playground = createManagedAgentPlayground({
         projectClientFactory(endpoint, credential) {
             createdClients.push({ endpoint, credential });
-            return {
-                getOpenAIClient: async () => openAIClient,
-            };
+            return projectClient;
         },
     });
     const events = [];
@@ -62,7 +68,7 @@ test("creates a conversation and streams only assistant text deltas", async () =
     const result = await playground.stream({
         endpoint: "https://example.test/api/projects/project",
         agentName: "support-agent",
-        agentVersion: "7",
+        agentVersion: "",
         message: "Help me",
         signal,
         emit: async (event) => events.push(event),
@@ -92,12 +98,16 @@ test("creates a conversation and streams only assistant text deltas", async () =
         },
     });
     assert.deepEqual(events, [
+        { type: "agent", agentName: "support-agent", agentVersion: "7" },
         { type: "conversation", conversationId: "conversation-1" },
         { type: "delta", delta: "Hello" },
         { type: "delta", delta: " world" },
-        { type: "done", conversationId: "conversation-1" },
+        { type: "done", conversationId: "conversation-1", agentVersion: "7" },
     ]);
-    assert.deepEqual(result, { conversationId: "conversation-1" });
+    assert.deepEqual(result, {
+        conversationId: "conversation-1",
+        agentVersion: "7",
+    });
 });
 
 test("reuses and deletes an existing conversation", async () => {
@@ -118,6 +128,11 @@ test("reuses and deletes an existing conversation", async () => {
     };
     const playground = createManagedAgentPlayground({
         projectClientFactory: () => ({
+            agents: {
+                get: async () => ({
+                    versions: { latest: { version: "7" } },
+                }),
+            },
             getOpenAIClient: () => openAIClient,
         }),
     });
@@ -139,7 +154,8 @@ test("reuses and deletes an existing conversation", async () => {
     assert.equal(calls[0][1].conversation, "conversation-existing");
     assert.deepEqual(calls[1], ["delete", "conversation-existing", { signal: undefined }]);
     assert.deepEqual(events, [
+        { type: "agent", agentName: "support-agent", agentVersion: "7" },
         { type: "conversation", conversationId: "conversation-existing" },
-        { type: "done", conversationId: "conversation-existing" },
+        { type: "done", conversationId: "conversation-existing", agentVersion: "7" },
     ]);
 });

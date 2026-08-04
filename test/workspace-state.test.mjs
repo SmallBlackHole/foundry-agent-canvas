@@ -234,6 +234,7 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
         render() {
             state.rendered = true;
         },
+        clearManagedPlayground() {},
         toast() {},
     };
 

@@ -50,9 +50,18 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
         managedPlayground: {
             async stream(input) {
                 calls.push(["stream", input]);
+                await input.emit({
+                    type: "agent",
+                    agentName: input.agentName,
+                    agentVersion: "7",
+                });
                 await input.emit({ type: "conversation", conversationId: "conversation-1" });
                 await input.emit({ type: "delta", delta: "Hello" });
-                await input.emit({ type: "done", conversationId: "conversation-1" });
+                await input.emit({
+                    type: "done",
+                    conversationId: "conversation-1",
+                    agentVersion: "7",
+                });
             },
             async reset(input) {
                 calls.push(["reset", input]);
@@ -66,16 +75,16 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 agentName: " support-agent ",
-                agentVersion: " 7 ",
                 message: " Hello ",
             }),
         });
         assert.equal(response.status, 200);
         assert.equal(response.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
         assert.deepEqual(parseNdjson(await response.text()), [
+            { type: "agent", agentName: "support-agent", agentVersion: "7" },
             { type: "conversation", conversationId: "conversation-1" },
             { type: "delta", delta: "Hello" },
-            { type: "done", conversationId: "conversation-1" },
+            { type: "done", conversationId: "conversation-1", agentVersion: "7" },
         ]);
 
         assert.deepEqual(await (await fetch(`${base}/api/managed-agent/playground/reset`, {
@@ -90,7 +99,7 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
 
     assert.equal(calls[0][1].endpoint, "https://example.test/api/projects/project");
     assert.equal(calls[0][1].agentName, "support-agent");
-    assert.equal(calls[0][1].agentVersion, "7");
+    assert.equal(calls[0][1].agentVersion, "");
     assert.equal(calls[0][1].message, "Hello");
     assert.equal(calls[0][1].conversationId, "");
     assert.equal(calls[0][1].signal instanceof AbortSignal, true);
@@ -112,13 +121,12 @@ test("validates the PoC inputs and requires a selected project", async () => {
         assert.deepEqual(await (await fetch(`${base}/api/managed-agent/playground/stream`, {
             method: "POST",
             body: JSON.stringify({
-                agentName: "agent",
-                agentVersion: "",
+                agentName: "",
                 message: "hello",
             }),
         })).json(), {
             ok: false,
-            error: "Missing agentVersion",
+            error: "Missing agentName",
         });
         assert.deepEqual(await (await fetch(`${base}/api/managed-agent/playground/reset`, {
             method: "POST",

@@ -119,6 +119,7 @@ test("New starts an explicit render state and opens only Create", async () => {
             agentType: "managed",
         },
         HOSTED_AGENT_TYPE: "hosted",
+        clearManagedPlayground() {},
         render() {
             calls.push("render");
         },
@@ -184,6 +185,7 @@ test("selecting the current agent exits New without rewriting the selection", as
         currentAgentType() {
             return context.state.agentType;
         },
+        clearManagedPlayground() {},
         HOSTED_AGENT_TYPE: "hosted",
     };
 
@@ -259,6 +261,7 @@ test("switching agents hides the previous portal action before saving the select
         currentAgentType() {
             return context.state.agentType;
         },
+        clearManagedPlayground() {},
         HOSTED_AGENT_TYPE: "hosted",
         renderHostedAgentDeployment() {
             calls.push("deployment");
