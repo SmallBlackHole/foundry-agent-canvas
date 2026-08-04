@@ -226,6 +226,9 @@ test("New Agent mode suppresses the previous deployment description and portal l
         hasAvailableHostedAgentDeployment(deployment) {
             return !!(deployment.deployed && deployment.available && deployment.portalUrl);
         },
+        managedPlaygroundVisible() {
+            return false;
+        },
         hostedAgentDeploymentDescription(deployment) {
             return deployment.deployed
                 ? "Deployed as example-agent, version 4."

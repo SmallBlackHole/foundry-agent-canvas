@@ -138,26 +138,43 @@ test("managed-only hidden controls stay hidden despite authored display rules", 
 
     assert.match(
         css,
-        /\.btn-inspect\[hidden\],[\s\S]*?\.resource-select\[hidden\],[\s\S]*?\.managed-playground\[hidden\]\s*\{\s*display:\s*none;/,
+        /\.btn-inspect\[hidden\],[\s\S]*?\.resource-select\[hidden\],[\s\S]*?\.managed-playground-view\[hidden\]\s*\{\s*display:\s*none;/,
     );
 });
 
-test("managed agent deploy section includes the text-only private-preview playground", async () => {
-    const [html, app] = await Promise.all([
+test("managed agent deploy section opens a dedicated text-only playground view", async () => {
+    const [html, app, css] = await Promise.all([
         readFile(new URL("../public/index.html", import.meta.url), "utf8"),
         readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.css", import.meta.url), "utf8"),
     ]);
 
-    assert.match(html, /id="managedPlayground"[^>]*aria-label="Managed agent playground"[^>]*hidden/);
+    const viewIndex = html.indexOf('id="managedPlaygroundView"');
+    const buildTemplateIndex = html.indexOf('id="tpl-build"');
+    assert.ok(viewIndex > 0 && viewIndex < buildTemplateIndex);
+    assert.match(html, /id="managedPlaygroundView"[^>]*class="managed-playground-view"[^>]*hidden/);
+    assert.match(html, /id="managedPlaygroundBack"[^>]*>\s*<svg[\s\S]*?Back/);
+    assert.match(html, /id="managedPlaygroundOpen"[^>]*>\s*<span[^>]*codicon-debug-alt[\s\S]*?>Open agent playground</);
     assert.match(html, />Agent playground</);
     assert.match(html, />Private preview</);
+    assert.match(html, /id="managedPlaygroundAgentName"/);
+    assert.match(html, /id="managedPlaygroundAgentVersion"[^>]*hidden/);
     assert.match(html, /id="managedPlaygroundMessages"[^>]*aria-live="polite"/);
     assert.match(html, /id="managedPlaygroundForm"/);
     assert.match(html, /id="managedPlaygroundReset"[^>]*aria-label="Reset conversation"/);
+    assert.doesNotMatch(html, /id="managedPlayground"/);
+    assert.match(app, /function openManagedPlayground\(\)[\s\S]*?root\.hidden = true;[\s\S]*?managedPlaygroundView\.hidden = false;/);
+    assert.match(app, /function closeManagedPlayground\(\)[\s\S]*?managedPlaygroundView\.hidden = true;[\s\S]*?root\.hidden = false;/);
+    assert.match(app, /event\.target\.closest\("#managedPlaygroundBack"\)[\s\S]*?closeManagedPlayground\(\)/);
+    assert.match(app, /state\.managedPlayground\.controller\?\.abort\(\)/);
     assert.match(app, /\/api\/managed-agent\/playground\/stream/);
     assert.match(app, /event\.type === "delta"/);
+    assert.match(app, /if \(!message\.text && !message\.streaming\) continue;/);
     assert.match(app, /row\.textContent = message\.text/);
     assert.doesNotMatch(app, /innerHTML = message\.text/);
+    assert.match(css, /\.managed-playground-view\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/);
+    assert.match(css, /\.managed-playground-main\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;/);
+    assert.match(css, /@media \(max-width:\s*430px\)[\s\S]*?\.managed-playground-message\s*\{[\s\S]*?max-width:\s*92%;/);
 });
 
 test("the plugin update bar is informational and directs updates outside the live provider", async () => {
@@ -210,12 +227,17 @@ test("project header links to the Microsoft Foundry issue form", async () => {
     assert.match(routesSource, /path === "\/issue-report\.js"/);
 });
 
-test("preview mock exposes region availability instead of a hidden region override", async () => {
+test("preview mock exposes region and managed playground states", async () => {
     const mock = await readFile(new URL("../scripts/preview-mock.js", import.meta.url), "utf8");
     const preview = await readFile(new URL("../scripts/preview.mjs", import.meta.url), "utf8");
 
     assert.match(mock, /checkbox\("regionSupported", "Hosted agents available in region"/);
+    assert.match(mock, /checkbox\("managedStreamSlow", "Slow streaming response"/);
+    assert.match(mock, /checkbox\("managedStreamError", "Streaming error"/);
     assert.match(mock, /searchParams\.delete\("region"\)/);
     assert.match(preview, /searchParams\.get\("regionSupported"\) !== "false"/);
+    assert.match(preview, /searchParams\.get\("managedStreamSlow"\) === "true"/);
+    assert.match(preview, /searchParams\.get\("managedStreamError"\) === "true"/);
+    assert.match(preview, /Preview managed agent stream failed\./);
     assert.doesNotMatch(preview, /searchParams\.get\("region"\)/);
 });

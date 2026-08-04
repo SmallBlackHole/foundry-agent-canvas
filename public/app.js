@@ -1,7 +1,7 @@
 // Microsoft Foundry canvas — client SPA.
-// A single build view. Add & Deploy affordances POST a prompt to /api/send,
-// which the extension forwards to the chat via session.send(). Live project
-// data (deployments, toolboxes, skills, guardrails) is read from /api/* routes.
+// The build view hands off to dedicated Inspector and managed playground views.
+// Add & Deploy affordances POST a prompt to /api/send, which the extension
+// forwards to chat via session.send(). Live project data is read from /api/*.
 
 import {
     emptySelection,
@@ -96,6 +96,7 @@ const state = {
 
 const root = document.getElementById("root");
 const toastEl = document.getElementById("toast");
+const managedPlaygroundView = document.getElementById("managedPlaygroundView");
 
 let toastTimer = null;
 let hostedAgentDeploymentRequest = 0;
@@ -513,8 +514,9 @@ function hostedAgentDeploymentDescription(deployment) {
 
 function renderHostedAgentDeployment() {
     const link = document.getElementById("testPlaygroundLink");
+    const managedButton = document.getElementById("managedPlaygroundOpen");
     const description = document.getElementById("deployDescription");
-    if (!link && !description) return;
+    if (!link && !managedButton && !description) return;
     const deployment = state.hostedAgents.creatingNew || currentAgentType() === MANAGED_AGENT_TYPE
         ? emptyHostedAgentDeployment()
         : state.hostedAgentDeployment;
@@ -530,15 +532,24 @@ function renderHostedAgentDeployment() {
         description.textContent = descriptionText;
         syncDeployDescriptionVisibility();
     }
-    if (!link) return;
     const visible = hasAvailableHostedAgentDeployment(deployment);
-    link.hidden = !visible;
-    link.closest(".row-deploy")?.classList.toggle("has-playground", visible);
-    if (visible) link.href = deployment.portalUrl;
-    else link.removeAttribute("href");
-    link.title = visible && deployment.version
-        ? `Test ${deployment.agentName} version ${deployment.version} in Microsoft Foundry Portal`
-        : "";
+    if (link) {
+        link.hidden = !visible;
+        if (visible) link.href = deployment.portalUrl;
+        else link.removeAttribute("href");
+        link.title = visible && deployment.version
+            ? `Test ${deployment.agentName} version ${deployment.version} in Microsoft Foundry Portal`
+            : "";
+    }
+    const managedVisible = managedPlaygroundVisible();
+    if (managedButton) {
+        managedButton.hidden = !managedVisible;
+        managedButton.title = managedVisible
+            ? `Open ${managedName} in the agent playground`
+            : "";
+    }
+    const row = link?.closest(".row-deploy") || managedButton?.closest(".row-deploy");
+    row?.classList.toggle("has-playground", visible || managedVisible);
 }
 
 function selectedManagedAgentName() {
@@ -563,6 +574,22 @@ function emptyManagedPlayground() {
     };
 }
 
+function closeManagedPlayground() {
+    if (managedPlaygroundView) managedPlaygroundView.hidden = true;
+    root.hidden = false;
+}
+
+function openManagedPlayground() {
+    if (!managedPlaygroundVisible() || !managedPlaygroundView) return;
+    closeInspector();
+    root.hidden = true;
+    managedPlaygroundView.hidden = false;
+    renderManagedPlayground();
+    requestAnimationFrame(() => {
+        document.getElementById("managedPlaygroundInput")?.focus();
+    });
+}
+
 function clearManagedPlayground() {
     state.managedPlayground.controller?.abort();
     state.managedPlayground = emptyManagedPlayground();
@@ -571,11 +598,23 @@ function clearManagedPlayground() {
 }
 
 function renderManagedPlayground() {
-    const host = document.getElementById("managedPlayground");
-    if (!host) return;
+    if (!managedPlaygroundView) return;
     const visible = managedPlaygroundVisible();
-    host.hidden = !visible;
-    if (!visible) return;
+    if (!visible) {
+        closeManagedPlayground();
+        return;
+    }
+
+    const agentName = state.managedPlayground.agentName || selectedManagedAgentName();
+    const name = document.getElementById("managedPlaygroundAgentName");
+    if (name) name.textContent = agentName;
+    const version = document.getElementById("managedPlaygroundAgentVersion");
+    if (version) {
+        version.textContent = state.managedPlayground.agentVersion
+            ? `Version ${state.managedPlayground.agentVersion}`
+            : "";
+        version.hidden = !version.textContent;
+    }
 
     const messages = document.getElementById("managedPlaygroundMessages");
     if (messages) {
@@ -587,6 +626,7 @@ function renderManagedPlayground() {
             messages.appendChild(empty);
         } else {
             for (const message of state.managedPlayground.messages) {
+                if (!message.text && !message.streaming) continue;
                 const row = document.createElement("div");
                 row.className =
                     `managed-playground-message is-${message.role}` +
@@ -628,7 +668,11 @@ function parseManagedPlaygroundLine(line) {
 }
 
 async function sendManagedPlaygroundMessage() {
-    if (!managedPlaygroundVisible() || state.managedPlayground.status === "streaming") return;
+    if (
+        !managedPlaygroundVisible()
+        || managedPlaygroundView?.hidden
+        || state.managedPlayground.status === "streaming"
+    ) return;
     const input = document.getElementById("managedPlaygroundInput");
     const message = String(input?.value || "").trim();
     if (!message) return;
@@ -686,6 +730,7 @@ async function sendManagedPlaygroundMessage() {
                         state.managedPlayground.agentName = event.agentName || agentName;
                         state.managedPlayground.agentVersion = event.agentVersion || "";
                         renderHostedAgentDeployment();
+                        renderManagedPlayground();
                     } else if (event.type === "conversation") {
                         state.managedPlayground.conversationId = event.conversationId || "";
                     } else if (event.type === "delta") {
@@ -2259,8 +2304,8 @@ root.addEventListener("click", async (e) => {
         selectAgentType(MANAGED_AGENT_TYPE);
         return;
     }
-    if (e.target.closest("#managedPlaygroundReset")) {
-        await resetManagedPlaygroundConversation();
+    if (e.target.closest("#managedPlaygroundOpen")) {
+        openManagedPlayground();
         return;
     }
     if (e.target.closest("#resourcesToggle")) {
@@ -2426,7 +2471,17 @@ root.addEventListener("click", async (e) => {
     }
 });
 
-root.addEventListener("submit", (event) => {
+managedPlaygroundView?.addEventListener("click", async (event) => {
+    if (event.target.closest("#managedPlaygroundBack")) {
+        closeManagedPlayground();
+        return;
+    }
+    if (event.target.closest("#managedPlaygroundReset")) {
+        await resetManagedPlaygroundConversation();
+    }
+});
+
+managedPlaygroundView?.addEventListener("submit", (event) => {
     if (!event.target.closest("#managedPlaygroundForm")) return;
     event.preventDefault();
     void sendManagedPlaygroundMessage();

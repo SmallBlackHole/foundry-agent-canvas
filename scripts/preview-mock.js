@@ -8,6 +8,8 @@
         "agentInput",
         "multiAgent",
         "managedAgent",
+        "managedStreamSlow",
+        "managedStreamError",
         "az",
         "azd",
         "deployed",
@@ -75,6 +77,8 @@
             agentInput: boolValue(params, "agentInput"),
             multiAgent: params.get("multiAgent") === "true",
             managedAgent: params.get("managedAgent") === "true",
+            managedStreamSlow: boolValue(params, "managedStreamSlow", false),
+            managedStreamError: boolValue(params, "managedStreamError", false),
             az: boolValue(params, "az"),
             azd: boolValue(params, "azd"),
             deployed: boolValue(params, "deployed"),
@@ -173,6 +177,7 @@
         summary.textContent =
             `signedIn=${cfg.signedIn}, project=${cfg.project}, agent=${cfg.agent}, ` +
             `multiAgent=${cfg.multiAgent}, managedAgent=${cfg.managedAgent}, ` +
+            `managedStreamSlow=${cfg.managedStreamSlow}, managedStreamError=${cfg.managedStreamError}, ` +
             `agentInput=${cfg.agentInput}, az=${cfg.az}, ` +
             `azd=${cfg.azd}, deployed=${cfg.deployed}, ` +
             `metadata=${cfg.agentMetadata}, error=${cfg.agentError}, regionSupported=${cfg.regionSupported}, ` +
@@ -192,6 +197,10 @@
                 checkbox("multiAgent", "Multiple agents", cfg.multiAgent),
                 checkbox("managedAgent", "Managed agent workspace", cfg.managedAgent),
                 checkbox("agentInput", "Canvas agent name provided", cfg.agentInput),
+            ]),
+            section("Managed agent playground", [
+                checkbox("managedStreamSlow", "Slow streaming response", cfg.managedStreamSlow),
+                checkbox("managedStreamError", "Streaming error", cfg.managedStreamError),
             ]),
             section("Local tools", [
                 checkbox("az", "Azure CLI available", cfg.az),

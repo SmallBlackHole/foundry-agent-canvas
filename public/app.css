@@ -404,41 +404,69 @@ body {
 .btn-playground[hidden],
 .btn-inspect[hidden],
 .resource-select[hidden],
-.managed-playground[hidden] { display: none; }
+.managed-playground-view[hidden] { display: none; }
 .deploy-hint { margin: 0; color: var(--muted); text-align: center; font-size: 12px; }
 
-.managed-playground {
-    margin-top: 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--fluent-radius);
+.managed-playground-view {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
     background: var(--bg);
-    overflow: hidden;
+    color: var(--text);
 }
-.managed-playground-header {
-    min-height: 34px;
+.managed-playground-bar {
+    flex: 0 0 auto;
+    min-height: 45px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 7px 5px 10px;
+    gap: 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-subtle);
 }
-.managed-playground-title {
+.managed-playground-back {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--accent);
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+}
+.managed-playground-back:hover { background: var(--bg); }
+.managed-playground-heading {
     min-width: 0;
     flex: 1 1 auto;
-    font-size: 12px;
-    line-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.managed-playground-title {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 19px;
     font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .managed-playground-badge {
     flex: 0 0 auto;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--muted);
     background: var(--bg);
-    font-size: 10px;
-    line-height: 14px;
+    font-size: 11px;
+    line-height: 16px;
 }
 .managed-playground-reset,
 .managed-playground-send {
@@ -450,8 +478,9 @@ body {
     cursor: pointer;
 }
 .managed-playground-reset {
-    width: 26px;
-    height: 26px;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
     border-radius: 4px;
 }
 .managed-playground-reset:hover,
@@ -463,13 +492,48 @@ body {
     opacity: .45;
     cursor: default;
 }
-.managed-playground-messages {
-    min-height: 112px;
-    max-height: 260px;
+.managed-playground-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: min(760px, 100%);
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
+    background: var(--bg);
+}
+.managed-playground-agent {
+    flex: 0 0 auto;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
     gap: 8px;
-    padding: 10px;
+    padding: 15px 18px 10px;
+    border-bottom: 1px solid var(--border);
+}
+.managed-playground-agent-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 21px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.managed-playground-agent-version {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 18px;
+}
+.managed-playground-agent-version[hidden] { display: none; }
+.managed-playground-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 18px;
     overflow-y: auto;
 }
 .managed-playground-empty {
@@ -479,14 +543,14 @@ body {
     text-align: center;
 }
 .managed-playground-message {
-    max-width: 88%;
-    padding: 7px 9px;
+    max-width: min(82%, 640px);
+    padding: 9px 11px;
     border: 1px solid var(--border);
     border-radius: 6px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-size: 13px;
-    line-height: 18px;
+    line-height: 19px;
 }
 .managed-playground-message.is-user {
     align-self: flex-end;
@@ -512,22 +576,23 @@ body {
     to { opacity: .8; }
 }
 .managed-playground-form {
+    flex: 0 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 32px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 8px;
     align-items: end;
-    padding: 8px;
+    padding: 12px 16px 16px;
     border-top: 1px solid var(--border);
 }
 .managed-playground-form textarea {
     width: 100%;
     min-width: 0;
-    min-height: 52px;
-    max-height: 112px;
+    min-height: 72px;
+    max-height: 180px;
     resize: vertical;
     border: 1px solid var(--border);
     border-radius: 5px;
-    padding: 7px 8px;
+    padding: 9px 10px;
     color: var(--text);
     background: var(--bg);
     font: inherit;
@@ -540,17 +605,18 @@ body {
     border-color: var(--accent);
 }
 .managed-playground-send {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 5px;
     color: var(--fluent-brand);
     background: #f1ecfb;
 }
 .managed-playground-status {
-    padding: 0 10px 9px;
+    flex: 0 0 auto;
+    padding: 0 18px 8px;
     color: var(--muted);
-    font-size: 11px;
-    line-height: 15px;
+    font-size: 12px;
+    line-height: 17px;
 }
 .managed-playground-status.is-error {
     color: var(--danger, #b42318);
@@ -1596,5 +1662,34 @@ body {
     .panel-shell {
         min-height: 100vh;
         border-radius: 0;
+    }
+    .managed-playground-bar {
+        gap: 6px;
+        padding: 7px 8px;
+    }
+    .managed-playground-back {
+        padding-inline: 4px;
+    }
+    .managed-playground-heading {
+        gap: 5px;
+    }
+    .managed-playground-agent {
+        padding: 12px 12px 8px;
+    }
+    .managed-playground-messages {
+        gap: 8px;
+        padding: 14px 12px;
+    }
+    .managed-playground-message {
+        max-width: 92%;
+    }
+    .managed-playground-status {
+        padding-inline: 12px;
+    }
+    .managed-playground-form {
+        padding: 10px 10px 12px;
+    }
+    .managed-playground-form textarea {
+        min-height: 60px;
     }
 }

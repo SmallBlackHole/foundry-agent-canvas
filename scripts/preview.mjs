@@ -176,6 +176,25 @@ function mockManagedAgent(url) {
     return url.searchParams.get("managedAgent") === "true";
 }
 
+function previewStreamDelay(signal, delayMs) {
+    if (!delayMs) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(done, delayMs);
+        function done() {
+            signal?.removeEventListener("abort", aborted);
+            resolve();
+        }
+        function aborted() {
+            clearTimeout(timer);
+            const error = new Error("Preview stream cancelled.");
+            error.name = "AbortError";
+            reject(error);
+        }
+        if (signal?.aborted) aborted();
+        else signal?.addEventListener("abort", aborted, { once: true });
+    });
+}
+
 const previewAgentNames = ["Preview Agent", "support-agent", "research-agent"];
 
 async function mockHostedAgents(url) {
@@ -569,10 +588,12 @@ function createPreviewApiServices() {
             console.log("\n[preview] prompt-to-chat stub\n" + body.prompt + "\n");
             return { preview: true };
         },
-        streamManagedAgent({ body }) {
+        streamManagedAgent({ body, url }) {
+            const delayMs = url.searchParams.get("managedStreamSlow") === "true" ? 350 : 0;
+            const fail = url.searchParams.get("managedStreamError") === "true";
             return {
                 stream: "ndjson",
-                async run({ emit }) {
+                async run({ emit, signal }) {
                     const conversationId = body.conversationId || "preview-conversation";
                     await emit({
                         type: "agent",
@@ -580,12 +601,15 @@ function createPreviewApiServices() {
                         agentVersion: body.agentVersion || "3",
                     });
                     await emit({ type: "conversation", conversationId });
+                    await previewStreamDelay(signal, delayMs);
+                    if (fail) throw new Error("Preview managed agent stream failed.");
                     for (const delta of [
                         "Preview response from ",
                         body.agentName,
                         ": ",
                         body.message,
                     ]) {
+                        await previewStreamDelay(signal, delayMs);
                         await emit({ type: "delta", delta });
                     }
                     await emit({

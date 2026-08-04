@@ -28,6 +28,36 @@
             <iframe id="inspectorFrame" class="inspector-frame" title="Agent Inspector" src=""></iframe>
         </div>
 
+        <div id="managedPlaygroundView" class="managed-playground-view" hidden>
+            <header class="managed-playground-bar">
+                <button class="managed-playground-back" id="managedPlaygroundBack" type="button">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="m15 5-1.4-1.4L7.2 10l6.4 6.4L15 15l-5-5 5-5Z"/></svg>
+                    Back
+                </button>
+                <div class="managed-playground-heading">
+                    <span class="managed-playground-title">Agent playground</span>
+                    <span class="managed-playground-badge">Private preview</span>
+                </div>
+                <button class="managed-playground-reset" id="managedPlaygroundReset" type="button" aria-label="Reset conversation" title="Reset conversation">
+                    <span class="fi fi-refresh" aria-hidden="true"></span>
+                </button>
+            </header>
+            <main class="managed-playground-main" aria-label="Managed agent playground">
+                <div class="managed-playground-agent">
+                    <span class="managed-playground-agent-name" id="managedPlaygroundAgentName"></span>
+                    <span class="managed-playground-agent-version" id="managedPlaygroundAgentVersion" hidden></span>
+                </div>
+                <div class="managed-playground-messages" id="managedPlaygroundMessages" aria-live="polite"></div>
+                <div class="managed-playground-status" id="managedPlaygroundStatus" role="status" hidden></div>
+                <form class="managed-playground-form" id="managedPlaygroundForm">
+                    <textarea id="managedPlaygroundInput" rows="3" maxlength="8000" placeholder="Message managed agent"></textarea>
+                    <button class="managed-playground-send" id="managedPlaygroundSend" type="submit" aria-label="Send message" title="Send message">
+                        <span class="fi fi-send" aria-hidden="true"></span>
+                    </button>
+                </form>
+            </main>
+        </div>
+
         <template id="tpl-build">
             <section class="layout">
                 <div class="panel-shell">
@@ -325,6 +355,10 @@
                                     <span class="codicon codicon-debug-alt" aria-hidden="true"></span>
                                     <span>Test in Foundry Portal</span>
                                 </a>
+                                <button class="btn btn-playground" id="managedPlaygroundOpen" type="button" hidden>
+                                    <span class="codicon codicon-debug-alt" aria-hidden="true"></span>
+                                    <span>Open agent playground</span>
+                                </button>
                                 <button class="btn btn-deploy" id="deployBtn" type="button">
                                     <span class="fi fi-rocket" aria-hidden="true"></span>
                                     <span id="deployBtnLabel">Deploy to Foundry</span>
@@ -334,23 +368,6 @@
                                     <span>Inspect Locally</span>
                                 </button>
                             </div>
-                            <section class="managed-playground" id="managedPlayground" aria-label="Managed agent playground" hidden>
-                                <header class="managed-playground-header">
-                                    <span class="managed-playground-title">Agent playground</span>
-                                    <span class="managed-playground-badge">Private preview</span>
-                                    <button class="managed-playground-reset" id="managedPlaygroundReset" type="button" aria-label="Reset conversation" title="Reset conversation">
-                                        <span class="fi fi-refresh" aria-hidden="true"></span>
-                                    </button>
-                                </header>
-                                <div class="managed-playground-messages" id="managedPlaygroundMessages" aria-live="polite"></div>
-                                <form class="managed-playground-form" id="managedPlaygroundForm">
-                                    <textarea id="managedPlaygroundInput" rows="2" maxlength="8000" placeholder="Message managed agent"></textarea>
-                                    <button class="managed-playground-send" id="managedPlaygroundSend" type="submit" aria-label="Send message" title="Send message">
-                                        <span class="fi fi-send" aria-hidden="true"></span>
-                                    </button>
-                                </form>
-                                <div class="managed-playground-status" id="managedPlaygroundStatus" role="status" hidden></div>
-                            </section>
                         </div>
                     </section>
                 </div>
