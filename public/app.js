@@ -10,6 +10,7 @@ import {
     selectSubscription as transitionSubscription,
 } from "./selection-state.js";
 import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
+import { renderManagedAssistantMarkdown } from "./managed-markdown.js";
 
 const HOSTED_AGENT_TYPE = "hosted";
 const MANAGED_AGENT_TYPE = "managed";
@@ -627,7 +628,11 @@ function renderManagedPlayground() {
                 row.className =
                     `managed-playground-message is-${message.role}` +
                     (message.streaming ? " is-streaming" : "");
-                row.textContent = message.text;
+                if (message.role === "assistant") {
+                    renderManagedAssistantMarkdown(row, message.text);
+                } else {
+                    row.textContent = message.text;
+                }
                 messages.appendChild(row);
             }
             messages.scrollTop = messages.scrollHeight;

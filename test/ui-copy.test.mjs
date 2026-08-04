@@ -178,8 +178,10 @@ test("managed agent deploy section opens a dedicated text-only playground view",
     assert.match(app, /\/api\/managed-agent\/playground\/stream/);
     assert.match(app, /event\.type === "delta"/);
     assert.match(app, /if \(!message\.text && !message\.streaming\) continue;/);
-    assert.match(app, /row\.textContent = message\.text/);
+    assert.match(app, /message\.role === "assistant"[\s\S]*?renderManagedAssistantMarkdown\(row, message\.text\)/);
+    assert.match(app, /else \{\s*row\.textContent = message\.text;/);
     assert.doesNotMatch(app, /innerHTML = message\.text/);
+    assert.match(app, /import \{ renderManagedAssistantMarkdown \} from "\.\/managed-markdown\.js";/);
     assert.match(
         app,
         /addEventListener\("keydown",[\s\S]*?event\.key !== "Enter"[\s\S]*?event\.shiftKey[\s\S]*?event\.isComposing[\s\S]*?event\.keyCode === 229[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.repeat[\s\S]*?requestSubmit\(\)/,
@@ -188,6 +190,8 @@ test("managed agent deploy section opens a dedicated text-only playground view",
     assert.match(css, /\.managed-playground-main\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;/);
     assert.match(css, /\.managed-playground-composer\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) 44px;/);
     assert.match(css, /\.managed-playground-send\s*\{[\s\S]*?margin:\s*0 7px 7px 1px;/);
+    assert.match(css, /\.managed-playground-message\.is-assistant pre\s*\{[\s\S]*?overflow-x:\s*auto;/);
+    assert.match(css, /\.managed-playground-message\.is-assistant a\s*\{[\s\S]*?text-decoration:\s*underline;/);
     assert.match(css, /@media \(max-width:\s*430px\)[\s\S]*?\.managed-playground-message\s*\{[\s\S]*?max-width:\s*92%;/);
 });
 

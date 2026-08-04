@@ -78,6 +78,12 @@ export function createRequestHandler(
         }
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
+        if (method === "GET" && path === "/managed-markdown.js") {
+            return serveStatic(res, "managed-markdown.js", publicDir);
+        }
+        if (method === "GET" && path === "/vendor/marked/marked.esm.js") {
+            return serveStatic(res, join("vendor", "marked", "marked.esm.js"), publicDir);
+        }
         if (method === "GET" && path === "/selection-state.js") {
             return serveStatic(res, "selection-state.js", publicDir);
         }

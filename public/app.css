@@ -547,7 +547,6 @@ body {
     padding: 9px 11px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-size: 13px;
     line-height: 19px;
@@ -556,10 +555,111 @@ body {
     align-self: flex-end;
     border-color: #c8b9ee;
     background: #f1ecfb;
+    white-space: pre-wrap;
 }
 .managed-playground-message.is-assistant {
     align-self: flex-start;
+    min-width: 0;
     background: var(--bg-subtle);
+    white-space: normal;
+}
+.managed-playground-message.is-assistant > :first-child { margin-top: 0; }
+.managed-playground-message.is-assistant > :last-child { margin-bottom: 0; }
+.managed-playground-message.is-assistant p {
+    margin: 0 0 8px;
+}
+.managed-playground-message.is-assistant h1,
+.managed-playground-message.is-assistant h2,
+.managed-playground-message.is-assistant h3,
+.managed-playground-message.is-assistant h4,
+.managed-playground-message.is-assistant h5,
+.managed-playground-message.is-assistant h6 {
+    margin: 11px 0 5px;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 650;
+}
+.managed-playground-message.is-assistant h1 { font-size: 16px; line-height: 22px; }
+.managed-playground-message.is-assistant h2 { font-size: 15px; line-height: 21px; }
+.managed-playground-message.is-assistant ul,
+.managed-playground-message.is-assistant ol {
+    margin: 4px 0 8px;
+    padding-left: 21px;
+}
+.managed-playground-message.is-assistant li {
+    margin: 2px 0;
+}
+.managed-playground-message.is-assistant blockquote {
+    margin: 6px 0 8px;
+    padding: 2px 0 2px 9px;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+}
+.managed-playground-message.is-assistant blockquote > :last-child {
+    margin-bottom: 0;
+}
+.managed-playground-message.is-assistant code {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+}
+.managed-playground-message.is-assistant pre {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 6px 0 9px;
+    padding: 9px 10px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    white-space: pre;
+    overflow-wrap: normal;
+}
+.managed-playground-message.is-assistant pre code {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    white-space: inherit;
+}
+.managed-playground-message.is-assistant a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.managed-playground-message.is-assistant hr {
+    margin: 9px 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+}
+.managed-markdown-table-wrap {
+    max-width: 100%;
+    margin: 6px 0 9px;
+    overflow-x: auto;
+}
+.managed-playground-message.is-assistant table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.managed-playground-message.is-assistant th,
+.managed-playground-message.is-assistant td {
+    padding: 4px 7px;
+    border: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+}
+.managed-playground-message.is-assistant th {
+    background: var(--bg);
+    font-weight: 600;
+}
+.managed-playground-message.is-assistant .is-center { text-align: center; }
+.managed-playground-message.is-assistant .is-right { text-align: right; }
+.managed-playground-message.is-assistant .is-left { text-align: left; }
+.managed-playground-message.is-assistant del {
+    color: var(--muted);
 }
 .managed-playground-message.is-streaming::after {
     content: "";
