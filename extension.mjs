@@ -11,7 +11,7 @@ import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selectio
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
-import { ensureManagedPocSkill } from "./src/managed-poc-skill.mjs";
+import { ensureManagedPocSkillForSession } from "./src/managed-poc-skill.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
@@ -62,7 +62,7 @@ const pendingRefresh = createPendingRefreshManager({
 async function ensureFoundrySkillForCanvas(session) {
     const results = await Promise.allSettled([
         ensureFoundrySkill(),
-        ensureManagedPocSkill(),
+        ensureManagedPocSkillForSession(session),
     ]);
     const failures = [];
     const official = results[0];
@@ -79,9 +79,9 @@ async function ensureFoundrySkillForCanvas(session) {
     }
     const managed = results[1];
     if (managed.status === "rejected") {
-        failures.push(`Managed Agent PoC skill installation failed: ${managed.reason?.message ?? managed.reason}`);
+        failures.push(`Managed Agent PoC skill setup failed: ${managed.reason?.message ?? managed.reason}`);
     } else if (!managed.value.ready) {
-        failures.push(`Managed Agent PoC skill installation failed: ${managed.value.error || "Unknown error"}`);
+        failures.push(`Managed Agent PoC skill setup failed: ${managed.value.error || "Unknown error"}`);
     }
     for (const failure of failures) {
         try {

@@ -55,3 +55,25 @@ export function ensureManagedPocSkill() {
     }
     return ensurePromise;
 }
+
+export async function ensureManagedPocSkillForSession(
+    session,
+    { ensureSkill = ensureManagedPocSkill } = {},
+) {
+    const result = await ensureSkill();
+    if (!result.ready) return { ...result, reloaded: false };
+    if (typeof session?.rpc?.skills?.reload !== "function") {
+        return {
+            ...result,
+            ready: false,
+            reloaded: false,
+            error: "The current Copilot runtime does not support programmatic skill reload.",
+        };
+    }
+    const reloadDiagnostics = await session.rpc.skills.reload();
+    return {
+        ...result,
+        reloaded: true,
+        reloadDiagnostics,
+    };
+}

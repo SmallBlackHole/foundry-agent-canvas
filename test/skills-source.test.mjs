@@ -21,5 +21,5 @@ test("official and managed PoC skills use separate sources and install paths", a
     assert.match(managed, /join\(USER_AGENTS_DIR, "skills", SKILL_NAME\)/);
 
     assert.match(extension, /ensureFoundrySkill\(\)/);
-    assert.match(extension, /ensureManagedPocSkill\(\)/);
+    assert.match(extension, /ensureManagedPocSkillForSession\(session\)/);
 });
