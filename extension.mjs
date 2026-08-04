@@ -10,7 +10,7 @@ import { createRequestHandler } from "./src/routes.mjs";
 import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selection.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
-import { ensureFoundrySkill } from "./src/skills.mjs";
+import { ensureFoundrySkillForSession } from "./src/skills.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
@@ -62,14 +62,16 @@ async function ensureFoundrySkillForCanvas(session) {
     let failure = "";
     let ready = false;
     try {
-        const result = await ensureFoundrySkill();
+        const result = await ensureFoundrySkillForSession(session);
         ready = !!result.ready;
-        if (!result.ok && !(result.status === "unknown" && ready)) {
+        if (!ready || (!result.ok && result.status !== "unknown")) {
             const operation = result.action === "none" ? "check" : result.action;
-            failure = `Foundry Skills automatic ${operation} failed: ${result.summary || "Unknown error"}`;
+            failure =
+                `Foundry Skills automatic ${operation} failed: `
+                + `${result.error || result.summary || "Unknown error"}`;
         }
     } catch (err) {
-        failure = `Foundry Skills automatic check failed: ${err?.message ?? err}`;
+        failure = `Foundry Skills automatic setup failed: ${err?.message ?? err}`;
     }
     if (failure) {
         try {

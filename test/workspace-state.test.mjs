@@ -209,7 +209,10 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
 
 test("the client sends the create prompt without a pending workspace refresh", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-    assert.match(source, /sendToChat\(withActionContext\(text\)\)/);
+    assert.match(
+        source,
+        /state\.hostedAgents\.creatingNew = true;\s*renderHostedAgentPicker\(\);\s*renderHostedAgentDeployment\(\);\s*sendToChat\(withActionContext\(text\)\)/,
+    );
     assert.doesNotMatch(source, /sendToChat\(withActionContext\(text\), "workspace"\)/);
 });
 
@@ -221,7 +224,7 @@ test("the client opens the build sections immediately after sending", async () =
     assert.ok(functionSource);
     assert.match(
         handler,
-        /sendToChat\(withActionContext\(text\)\);\s*showBuildSections\(\);/,
+        /state\.hostedAgents\.creatingNew = true;\s*renderHostedAgentPicker\(\);\s*renderHostedAgentDeployment\(\);\s*sendToChat\(withActionContext\(text\)\);\s*showBuildSections\(\);/,
     );
 
     const calls = [];

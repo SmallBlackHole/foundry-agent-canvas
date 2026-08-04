@@ -95,6 +95,80 @@ test("chat actions append the selected workspace agent and Foundry project", asy
     assert.match(source, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
 });
 
+test("Create Start enters new-agent state before adding action context", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    const handler = source.match(
+        /if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/,
+    )?.[0];
+    assert.ok(functionSource);
+    assert.ok(handler);
+
+    const calls = [];
+    const context = {
+        state: {
+            agentName: "",
+            init: { promptText: "" },
+            hostedAgents: {
+                selected: "research-agent",
+                creatingNew: false,
+            },
+            selection: {
+                subscription: { name: "Development" },
+                project: {
+                    name: "Agent Project",
+                    endpoint: "https://example.test/api/projects/agent-project",
+                },
+            },
+        },
+        e: {
+            target: {
+                closest(selector) {
+                    return selector === "#initStart" ? {} : null;
+                },
+            },
+        },
+        document: {
+            getElementById(id) {
+                return id === "initPrompt" ? { value: "create a research agent" } : null;
+            },
+        },
+        remindProjectSelection() {
+            return true;
+        },
+        renderHostedAgentPicker() {
+            calls.push("picker");
+        },
+        renderHostedAgentDeployment() {
+            calls.push("deployment");
+        },
+        sendToChat(prompt) {
+            calls.push(["send", prompt]);
+        },
+        showBuildSections() {
+            calls.push("build");
+        },
+    };
+    vm.createContext(context);
+
+    await vm.runInContext(
+        `${functionSource}\n(async () => {\n${handler}\n})();`,
+        context,
+    );
+
+    assert.equal(context.state.hostedAgents.creatingNew, true);
+    assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), [
+        "picker",
+        "deployment",
+        "send",
+        "build",
+    ]);
+    assert.doesNotMatch(calls[2][1], /research-agent/);
+    assert.match(calls[2][1], /Use my selected Foundry project "Agent Project"/);
+});
+
 test("New starts an explicit render state and opens only Create", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];

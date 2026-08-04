@@ -1883,6 +1883,9 @@ root.addEventListener("click", async (e) => {
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) {
+            state.hostedAgents.creatingNew = true;
+            renderHostedAgentPicker();
+            renderHostedAgentDeployment();
             sendToChat(withActionContext(text));
             showBuildSections();
         }
