@@ -3,6 +3,7 @@ import { createCanvasServices } from "./canvas-services.mjs";
 import { createServiceContext } from "./context.mjs";
 import { createHostedAgentServices } from "./hosted-agent-services.mjs";
 import { createInspectorServices } from "./inspector-services.mjs";
+import { createManagedPlaygroundServices } from "./managed-playground-services.mjs";
 import { createResourceServices } from "./resource-services.mjs";
 import { createSelectionServices } from "./selection-services.mjs";
 
@@ -22,6 +23,7 @@ export function createRuntimeApiServices(instanceId, {
     clearSavedSelection,
     pluginVersion = "",
     localInspector,
+    managedPlayground,
     pluginUpdate,
 }) {
     const ctx = createServiceContext(instanceId);
@@ -54,6 +56,11 @@ export function createRuntimeApiServices(instanceId, {
             inspectorUiDir,
             workspaceRootFn,
             ...(localInspector ? { localInspector } : {}),
+        }),
+        ...createManagedPlaygroundServices({
+            ctx,
+            session,
+            ...(managedPlayground ? { playground: managedPlayground } : {}),
         }),
     };
 }

@@ -64,6 +64,10 @@ function requiredString(body, field, label) {
     return value;
 }
 
+function optionalString(body, field) {
+    return typeof body[field] === "string" ? body[field].trim() : "";
+}
+
 function direct(serviceMethod) {
     return ({ services, url, body }) => services[serviceMethod]({ url, body });
 }
@@ -153,6 +157,27 @@ route("POST", "/api/send", "sendPrompt", {
         return { ok: true, ...result };
     },
 });
+route("POST", "/api/managed-agent/playground/stream", "streamManagedAgent", {
+    parseBody: true,
+    handle: ({ services, url, body }) => services.streamManagedAgent({
+        url,
+        body: {
+            agentName: requiredString(body, "agentName", "agentName"),
+            agentVersion: requiredString(body, "agentVersion", "agentVersion"),
+            message: requiredString(body, "message", "message"),
+            conversationId: optionalString(body, "conversationId"),
+        },
+    }),
+});
+route("POST", "/api/managed-agent/playground/reset", "resetManagedAgentConversation", {
+    parseBody: true,
+    handle: ({ services, url, body }) => services.resetManagedAgentConversation({
+        url,
+        body: {
+            conversationId: requiredString(body, "conversationId", "conversationId"),
+        },
+    }),
+});
 route("GET", "/api/project-init", "getProjectInit");
 route("GET", "/api/plugin-update", "getPluginUpdate");
 route("GET", "/api/inspect/ready", "getInspectorReady");
@@ -176,6 +201,53 @@ function sendResult(res, result) {
     sendJson(res, result?.httpStatus || 200, result?.body ?? result);
 }
 
+async function writeNdjson(res, event) {
+    if (res.destroyed || res.writableEnded) return false;
+    if (res.write(`${JSON.stringify(event)}\n`)) return true;
+    await new Promise((resolve) => {
+        const cleanup = () => {
+            res.off("drain", done);
+            res.off("close", done);
+            res.off("error", done);
+        };
+        const done = () => {
+            cleanup();
+            resolve();
+        };
+        res.once("drain", done);
+        res.once("close", done);
+        res.once("error", done);
+    });
+    return !res.destroyed && !res.writableEnded;
+}
+
+async function sendNdjson(req, res, result) {
+    const abortController = new AbortController();
+    const abort = () => abortController.abort();
+    req.once("aborted", abort);
+    res.once("close", abort);
+    res.writeHead(200, {
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+    });
+    try {
+        await result.run({
+            signal: abortController.signal,
+            emit: (event) => writeNdjson(res, event),
+        });
+        if (!res.destroyed && !res.writableEnded) res.end();
+    } finally {
+        req.off("aborted", abort);
+        res.off("close", abort);
+    }
+}
+
+function requestDisconnected(req, res) {
+    return req.aborted || res.destroyed;
+}
+
 export function createApiRouter({
     services,
     bodyLimit = DEFAULT_BODY_LIMIT,
@@ -194,10 +266,23 @@ export function createApiRouter({
         try {
             const body = match.parseBody ? await readJsonBody(req, bodyLimit) : undefined;
             const result = await match.handle({ services, url, body });
-            sendResult(res, result);
+            if (result?.stream === "ndjson" && typeof result.run === "function") {
+                await sendNdjson(req, res, result);
+            } else {
+                sendResult(res, result);
+            }
         } catch (error) {
+            if (requestDisconnected(req, res)) return true;
             const status = error instanceof ApiError ? error.status : 500;
-            sendJson(res, status, { ok: false, error: error?.message || String(error) });
+            if (res.headersSent) {
+                await writeNdjson(res, {
+                    type: "error",
+                    error: error?.message || String(error),
+                });
+                if (!res.destroyed && !res.writableEnded) res.end();
+            } else {
+                sendJson(res, status, { ok: false, error: error?.message || String(error) });
+            }
             if (status === 500 && reportError) {
                 try {
                     await reportError(error, { method, path: url.pathname });
