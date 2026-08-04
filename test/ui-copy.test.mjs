@@ -168,6 +168,7 @@ test("managed agent deploy section opens a dedicated text-only playground view",
     assert.match(html, /id="managedPlaygroundAgentVersion"[^>]*hidden/);
     assert.match(html, /id="managedPlaygroundMessages"[^>]*aria-live="polite"/);
     assert.match(html, /id="managedPlaygroundForm"/);
+    assert.match(html, /class="managed-playground-composer"[\s\S]*?id="managedPlaygroundInput"[\s\S]*?id="managedPlaygroundSend"/);
     assert.match(html, /id="managedPlaygroundReset"[^>]*aria-label="Reset conversation"/);
     assert.doesNotMatch(html, /id="managedPlayground"/);
     assert.match(app, /function openManagedPlayground\(\)[\s\S]*?root\.hidden = true;[\s\S]*?managedPlaygroundView\.hidden = false;/);
@@ -179,8 +180,14 @@ test("managed agent deploy section opens a dedicated text-only playground view",
     assert.match(app, /if \(!message\.text && !message\.streaming\) continue;/);
     assert.match(app, /row\.textContent = message\.text/);
     assert.doesNotMatch(app, /innerHTML = message\.text/);
+    assert.match(
+        app,
+        /addEventListener\("keydown",[\s\S]*?event\.key !== "Enter"[\s\S]*?event\.shiftKey[\s\S]*?event\.isComposing[\s\S]*?event\.keyCode === 229[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.repeat[\s\S]*?requestSubmit\(\)/,
+    );
     assert.match(css, /\.managed-playground-view\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;/);
     assert.match(css, /\.managed-playground-main\s*\{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;/);
+    assert.match(css, /\.managed-playground-composer\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) 44px;/);
+    assert.match(css, /\.managed-playground-send\s*\{[\s\S]*?margin:\s*0 7px 7px 1px;/);
     assert.match(css, /@media \(max-width:\s*430px\)[\s\S]*?\.managed-playground-message\s*\{[\s\S]*?max-width:\s*92%;/);
 });
 

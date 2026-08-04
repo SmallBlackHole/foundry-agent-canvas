@@ -50,10 +50,12 @@
                 <div class="managed-playground-messages" id="managedPlaygroundMessages" aria-live="polite"></div>
                 <div class="managed-playground-status" id="managedPlaygroundStatus" role="status" hidden></div>
                 <form class="managed-playground-form" id="managedPlaygroundForm">
-                    <textarea id="managedPlaygroundInput" rows="3" maxlength="8000" placeholder="Message managed agent"></textarea>
-                    <button class="managed-playground-send" id="managedPlaygroundSend" type="submit" aria-label="Send message" title="Send message">
-                        <span class="fi fi-send" aria-hidden="true"></span>
-                    </button>
+                    <div class="managed-playground-composer">
+                        <textarea id="managedPlaygroundInput" rows="3" maxlength="8000" placeholder="Message managed agent"></textarea>
+                        <button class="managed-playground-send" id="managedPlaygroundSend" type="submit" aria-label="Send message" title="Send message">
+                            <span class="fi fi-send" aria-hidden="true"></span>
+                        </button>
+                    </div>
                 </form>
             </main>
         </div>

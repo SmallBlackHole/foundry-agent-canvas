@@ -2482,6 +2482,19 @@ managedPlaygroundView?.addEventListener("click", async (event) => {
     }
 });
 
+managedPlaygroundView?.addEventListener("keydown", (event) => {
+    if (!event.target.closest("#managedPlaygroundInput")) return;
+    if (
+        event.key !== "Enter"
+        || event.shiftKey
+        || event.isComposing
+        || event.keyCode === 229
+    ) return;
+    event.preventDefault();
+    if (event.repeat || event.target.disabled) return;
+    event.target.closest("#managedPlaygroundForm")?.requestSubmit();
+});
+
 managedPlaygroundView?.addEventListener("submit", (event) => {
     if (!event.target.closest("#managedPlaygroundForm")) return;
     event.preventDefault();
