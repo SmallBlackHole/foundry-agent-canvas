@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createRuntimeApiServices } from "../src/api/index.mjs";
+import { servers } from "../src/state.mjs";
 
 test("resolves the hosted agent project when Inspect locally is clicked", async () => {
     const calls = [];
@@ -66,13 +67,16 @@ test("relaunching or closing the inspector retires the previous readiness poll",
     assert.match(source, /inspectorPollToken \+= 1; \/\/ stop any in-flight readiness poll/);
 });
 
-test("lists workspace agents and inspects the one the picker selected", async () => {
+test("lists workspace agents and inspects the one the picker selected", async (t) => {
     const resolved = [];
+    const instanceId = "agent-picker-test";
     const agents = [
         { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml", serviceKey: "support-agent", source: "azure_service_key" },
         { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml", serviceKey: "research", source: "azure_service_name" },
     ];
-    const services = createRuntimeApiServices("agent-picker-test", {
+    servers.set(instanceId, { state: { agentName: "" } });
+    t.after(() => servers.delete(instanceId));
+    const services = createRuntimeApiServices(instanceId, {
         session: { log: async () => {}, send: async () => {} },
         inspectorUiDir: "inspector-ui",
         workspaceRootFn: async () => "/w",
@@ -96,12 +100,10 @@ test("lists workspace agents and inspects the one the picker selected", async ()
         ],
     });
 
-    // No canvas instance is registered for this id, so the pick is a no-op the
-    // service still acknowledges.
     assert.deepEqual(
         await services.selectHostedAgent({ body: { agentName: " research-agent " } }),
         { ok: true, selected: "research-agent" },
     );
     await services.startInspector();
-    assert.deepEqual(resolved, ["support-agent"]);
+    assert.deepEqual(resolved, ["research-agent"]);
 });

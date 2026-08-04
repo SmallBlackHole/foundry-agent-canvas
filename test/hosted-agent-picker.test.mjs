@@ -43,6 +43,58 @@ test("picker visibility counts workspace agents rather than a fallback selection
     );
 });
 
+test("chat actions append the selected workspace agent and Foundry project", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+
+    const context = {
+        state: {
+            agentName: "",
+            hostedAgents: {
+                selected: "research-agent",
+                creatingNew: false,
+            },
+            selection: {
+                subscription: { name: "Development" },
+                project: {
+                    name: "Agent Project",
+                    endpoint: "https://example.test/api/projects/agent-project",
+                },
+            },
+        },
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `${functionSource}\nresult = withActionContext("deploy it as a Foundry hosted agent");`,
+        context,
+    );
+
+    assert.equal(
+        context.result,
+        [
+            "deploy it as a Foundry hosted agent",
+            "",
+            'Apply this request to my selected workspace agent "research-agent".',
+            'Use my selected Foundry project "Agent Project" in subscription "Development" '
+                + "(endpoint: https://example.test/api/projects/agent-project).",
+        ].join("\n"),
+    );
+
+    context.state.hostedAgents.creatingNew = true;
+    vm.runInContext('result = withActionContext("create an agent");', context);
+    assert.doesNotMatch(context.result, /research-agent/);
+    assert.match(context.result, /Use my selected Foundry project "Agent Project"/);
+
+    assert.match(source, /sendToChat\(withActionContext\(m\.prompt\)\)/);
+    assert.match(source, /sendToChat\(withActionContext\(t\.prompt\)\)/);
+    assert.match(source, /sendToChat\(withActionContext\(g\.prompt\)\)/);
+    assert.match(source, /sendToChat\(withActionContext\(s\.prompt\)\)/);
+    assert.match(source, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
+});
+
 test("New starts an explicit render state and opens only Create", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];
@@ -108,6 +160,61 @@ test("selecting the current agent exits New without rewriting the selection", as
     assert.equal(context.state.init.open, false);
     assert.deepEqual(context.state.folds, { resources: true, deploy: true });
     assert.deepEqual(calls, ["init", "folds", "picker", "deployment", "Agent: Preview Agent"]);
+});
+
+test("switching agents hides the previous portal action before saving the selection", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(/async function selectHostedAgent\(agentName\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(functionSource);
+
+    const calls = [];
+    let finishSelection;
+    const context = {
+        state: {
+            agentName: "support-agent",
+            hostedAgents: { selected: "support-agent", creatingNew: false },
+            init: { open: false },
+            folds: { resources: true, deploy: true },
+        },
+        renderHostedAgentPicker() {
+            calls.push("picker");
+        },
+        resetHostedAgentDeployment() {
+            calls.push("reset");
+        },
+        postJSON() {
+            calls.push("save");
+            return new Promise((resolve) => {
+                finishSelection = resolve;
+            });
+        },
+        closeInspector() {
+            calls.push("close-inspector");
+        },
+        loadHostedAgentDeployment() {
+            calls.push("load-deployment");
+        },
+        toast(message) {
+            calls.push(message);
+        },
+    };
+    vm.createContext(context);
+    const selection = vm.runInContext(
+        `${functionSource}\nselectHostedAgent("research-agent");`,
+        context,
+    );
+
+    assert.deepEqual(calls, ["picker", "reset", "save"]);
+    finishSelection({ ok: true });
+    await selection;
+    assert.deepEqual(calls, [
+        "picker",
+        "reset",
+        "save",
+        "close-inspector",
+        "load-deployment",
+        "Agent: research-agent",
+    ]);
 });
 
 test("Inspect Locally asks for an existing agent while New Agent is active", async () => {
