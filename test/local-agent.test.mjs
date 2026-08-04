@@ -159,6 +159,7 @@ test("resolves the configured hosted agent name from nested azure.yml", async (t
         projectDir: nested,
         serviceKey: "customer-support-service",
         source: "azure_service_name",
+        agentType: "hosted",
     });
 });
 
@@ -203,6 +204,7 @@ test("explicit canvas input wins over ambiguous workspace services", async (t) =
         projectDir: "",
         serviceKey: "",
         source: "canvas_input",
+        agentType: "hosted",
     });
 });
 
@@ -256,6 +258,7 @@ test("lists every hosted agent with the azd project that runs it", async (t) => 
             projectDir: research,
             serviceKey: "research-service",
             source: "azure_service_name",
+            agentType: "hosted",
         },
         {
             agentName: "support-agent",
@@ -263,6 +266,7 @@ test("lists every hosted agent with the azd project that runs it", async (t) => 
             projectDir: support,
             serviceKey: "support-agent",
             source: "azure_service_key",
+            agentType: "hosted",
         },
     ]);
 });
@@ -279,6 +283,7 @@ test("lists legacy agent manifests only without a hosted Azure service", async (
             projectDir: "",
             serviceKey: "",
             source: "agent_manifest_name",
+            agentType: "hosted",
         },
     ]);
 });
@@ -302,6 +307,7 @@ test("lists an undeployed agent alongside a deployed hosted agent", async (t) =>
             projectDir: deployed,
             serviceKey: "deployed-agent",
             source: "azure_service_key",
+            agentType: "hosted",
         },
         {
             agentName: "undeployed-agent",
@@ -309,6 +315,7 @@ test("lists an undeployed agent alongside a deployed hosted agent", async (t) =>
             projectDir: "",
             serviceKey: "",
             source: "agent_manifest_name",
+            agentType: "hosted",
         },
     ]);
 });
@@ -331,6 +338,7 @@ test("discovers workspace state and agents in one scan result", async (t) => {
                 projectDir: root,
                 serviceKey: "support-agent",
                 source: "azure_service_key",
+                agentType: "hosted",
             },
         ],
     });
@@ -351,6 +359,7 @@ test("prefers deployed project metadata when an agent manifest has the same name
             projectDir: root,
             serviceKey: "support-agent",
             source: "azure_service_key",
+            agentType: "hosted",
         },
     ]);
 });
@@ -401,7 +410,68 @@ test("uses a legacy agent manifest name only without a hosted Azure service", as
         projectDir: "",
         serviceKey: "",
         source: "agent_manifest_name",
+        agentType: "hosted",
     });
+});
+
+test("classifies config.promptAgent services as managed agents", async (t) => {
+    const root = await testWorkspace(t);
+    await writeFile(
+        join(root, "agent.yaml"),
+        ["kind: prompt", "name: operations-agent", "model: gpt-5", ""].join("\n"),
+    );
+    await writeFile(
+        join(root, "azure.yaml"),
+        [
+            "services:",
+            "  operations-agent:",
+            "    host: azure.ai.agent",
+            "    project: .",
+            "    config:",
+            "      promptAgent:",
+            "        projectEndpoint: https://example.services.ai.azure.com/api/projects/demo",
+            "        modelEndpoint: https://example.services.ai.azure.com",
+            "        apiVersion: v1",
+            "",
+        ].join("\n"),
+    );
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "operations-agent",
+            manifestPath: join(root, "azure.yaml"),
+            projectDir: root,
+            serviceKey: "operations-agent",
+            source: "azure_service_key",
+            agentType: "managed",
+        },
+    ]);
+    assert.equal((await resolveHostedAgentName(root, "operations-agent")).agentType, "managed");
+    assert.deepEqual(await resolveHostedAgentProject(root, "operations-agent"), {
+        projectDir: "",
+        manifestPath: "",
+        projects: [],
+    });
+});
+
+test("does not infer managed type from an agent.yaml-only prompt manifest", async (t) => {
+    const root = await testWorkspace(t);
+    const manifest = join(root, "agent.yaml");
+    await writeFile(
+        manifest,
+        ["kind: prompt", "name: uncertain-prompt-agent", "model: gpt-5", ""].join("\n"),
+    );
+
+    assert.deepEqual(await listHostedAgents(root), [
+        {
+            agentName: "uncertain-prompt-agent",
+            manifestPath: manifest,
+            projectDir: "",
+            serviceKey: "",
+            source: "agent_manifest_name",
+            agentType: "hosted",
+        },
+    ]);
 });
 
 test("does not treat a generic nested azure project as a hosted agent", async (t) => {

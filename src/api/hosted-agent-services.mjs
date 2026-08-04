@@ -2,8 +2,8 @@ import { initialBuildSections } from "../build-sections.mjs";
 import { discoverHostedAgentWorkspace, listHostedAgents } from "../local-agent.mjs";
 import {
     agentSummaries,
-    selectedHostedAgentName,
     selectedHostedAgentPortalAction,
+    selectedWorkspaceAgent,
 } from "./hosted-agent-selection.mjs";
 
 export function createHostedAgentServices({ ctx, workspaceRootFn, listAgents = listHostedAgents }) {
@@ -13,13 +13,15 @@ export function createHostedAgentServices({ ctx, workspaceRootFn, listAgents = l
         getHostedAgentDeployment() {
             return selectedHostedAgentPortalAction(getEntry(), workspaceRootFn);
         },
-        // Powers the "Deploy & test" agent picker. The canvas only shows the
-        // picker for workspaces with more than one hosted agent.
+        // Powers the "Deploy & test" agent picker. Route names stay hosted-
+        // compatible while records carry their actual agent type.
         async listHostedAgents() {
             const agents = await listAgents(await workspaceRootFn());
+            const selectedAgent = selectedWorkspaceAgent(getEntry(), agents);
             return {
                 ok: true,
-                selected: selectedHostedAgentName(getEntry(), agents),
+                selected: selectedAgent.agentName,
+                agentType: selectedAgent.agentType || "",
                 agents: agentSummaries(agents),
             };
         },
@@ -40,13 +42,15 @@ export function createHostedAgentServices({ ctx, workspaceRootFn, listAgents = l
         async getProjectInit() {
             const root = await workspaceRootFn();
             const { hasAzure, hasAgent, agents } = await discoverHostedAgentWorkspace(root);
+            const selectedAgent = selectedWorkspaceAgent(getEntry(), agents);
             return {
                 ok: true,
                 hasAzure,
                 hasAgent,
                 initialized: hasAzure || hasAgent,
                 sections: initialBuildSections({ hasAgent }),
-                selected: selectedHostedAgentName(getEntry(), agents),
+                selected: selectedAgent.agentName,
+                agentType: selectedAgent.agentType || "",
                 agents: agentSummaries(agents),
             };
         },

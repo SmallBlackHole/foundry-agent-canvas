@@ -10,8 +10,8 @@ export const MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE = `
 **The Microsoft Foundry canvas is ready.**
 
 1. Sign in and select a subscription and Foundry project.
-2. Expand **Create new hosted agents** if it is collapsed.
-3. Choose or edit a starter prompt.
+2. Expand **Create new agents** if it is collapsed.
+3. Choose **Hosted Agent** or **Managed Agent**, then choose or edit a starter prompt.
 4. Click **Start** to continue.
 `.trim();
 

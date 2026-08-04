@@ -18,6 +18,11 @@ export const selectGuardrailPrompt = (name) =>
     `Use the "${name}" guardrail in my Foundry agent`;
 
 export const DEPLOY_PROMPT = "deploy it as a Foundry hosted agent";
+export const MANAGED_DEPLOY_PROMPT =
+    "Use the managed-agent private-preview workflow to deploy my selected managed agent " +
+    "to my selected existing Foundry project in West US 2 (westus2). Use the preview " +
+    "azure.ai.agents azd extension, preserve the declarative instructions and skills, " +
+    "deploy it remotely, and smoke invoke the deployed agent. Do not ask for a local run.";
 
 // ---------------------------------------------------------------------------
 // Provider colors (used by live deployment enrichment for the colored dot)

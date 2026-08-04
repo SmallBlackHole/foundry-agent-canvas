@@ -155,6 +155,14 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
     assert.ok(functionSource);
     const context = {
         state: { init: { idea: "summarize support tickets" } },
+        MANAGED_AGENT_TYPE: "managed",
+        MANAGED_CREATE_INSTRUCTION: "managed",
+        HOSTED_CREATE_INSTRUCTION:
+            "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, " +
+            "and the Responses protocol. Then run it locally to make sure it runs successfully.",
+        currentAgentType() {
+            return "hosted";
+        },
         sentenceCase(text) {
             return text.charAt(0).toUpperCase() + text.slice(1);
         },
@@ -166,6 +174,41 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
     assert.doesNotMatch(context.result, /invoke the .* action for this canvas/);
     assert.match(context.result, /Create a foundry hosted agent for this task/);
     assert.match(context.result, /Then run it locally to make sure it runs successfully/);
+});
+
+test("managed creation prompt is explicit about the private-preview remote workflow", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(functionSource);
+    const managedInstruction = [
+        "Use the Managed Agent private-preview workflow to create a declarative Foundry managed agent ",
+        "for this task in my selected existing Foundry project. Use West US 2 (westus2) and the preview ",
+        "azure.ai.agents azd extension. Author declarative instructions and skills, deploy the agent ",
+        "remotely, and smoke invoke the deployed agent. Do not ask for or perform a local run.",
+    ].join("");
+    const context = {
+        state: { init: { idea: "triage service incidents" } },
+        MANAGED_AGENT_TYPE: "managed",
+        MANAGED_CREATE_INSTRUCTION: managedInstruction,
+        HOSTED_CREATE_INSTRUCTION: "hosted",
+        currentAgentType() {
+            return "managed";
+        },
+        sentenceCase(text) {
+            return text.charAt(0).toUpperCase() + text.slice(1);
+        },
+    };
+
+    vm.runInNewContext(`${functionSource}\nresult = initPromptText();`, context);
+
+    assert.match(context.result, /Managed Agent private-preview workflow/);
+    assert.match(context.result, /selected existing Foundry project/);
+    assert.match(context.result, /West US 2 \(westus2\)/);
+    assert.match(context.result, /preview azure\.ai\.agents azd extension/);
+    assert.match(context.result, /declarative instructions and skills/);
+    assert.match(context.result, /deploy the agent remotely/);
+    assert.match(context.result, /smoke invoke the deployed agent/);
+    assert.doesNotMatch(context.result, /run it locally/i);
 });
 
 test("canvas-provided user request bypasses the generated inspiration prompt", async () => {
@@ -180,6 +223,7 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
         init: { idea: "old idea", open: false, promptText: "", promptDirty: false },
         hostedAgents: { creatingNew: false },
         folds: { resources: true, deploy: true },
+        agentType: "managed",
     };
     const context = {
         state,
@@ -195,7 +239,7 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
 
     vm.runInNewContext(
         `${modeSource}\n${functionSource}\nsetInitUserPrompt(original);`,
-        { ...context, original },
+        { ...context, original, HOSTED_AGENT_TYPE: "hosted" },
     );
 
     assert.equal(context.state.init.promptText, original);
@@ -203,6 +247,7 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
     assert.equal(context.state.init.idea, "");
     assert.equal(context.state.init.open, true);
     assert.equal(context.state.hostedAgents.creatingNew, true);
+    assert.equal(context.state.agentType, "hosted");
     assert.deepEqual(context.state.folds, { resources: false, deploy: false });
     assert.equal(context.state.rendered, true);
 });

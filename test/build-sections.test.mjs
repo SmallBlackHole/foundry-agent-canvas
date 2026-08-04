@@ -18,3 +18,11 @@ test("no hosted agent keeps the create-first experience", () => {
         deployOpen: false,
     });
 });
+
+test("existing managed agent uses the same build-first section layout", () => {
+    assert.deepEqual(initialBuildSections({ agentType: "managed" }), {
+        initOpen: false,
+        resourcesOpen: true,
+        deployOpen: true,
+    });
+});

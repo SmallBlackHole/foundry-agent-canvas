@@ -1,8 +1,11 @@
 export function initialBuildSections(info = {}) {
-    const hasHostedAgent = info.hasAgent === true;
+    const hasWorkspaceAgent =
+        info.hasAgent === true ||
+        info.agentType === "hosted" ||
+        info.agentType === "managed";
     return {
-        initOpen: !hasHostedAgent,
-        resourcesOpen: hasHostedAgent,
-        deployOpen: hasHostedAgent,
+        initOpen: !hasWorkspaceAgent,
+        resourcesOpen: hasWorkspaceAgent,
+        deployOpen: hasWorkspaceAgent,
     };
 }

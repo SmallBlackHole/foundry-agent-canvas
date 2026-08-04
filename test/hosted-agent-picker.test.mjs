@@ -53,6 +53,7 @@ test("chat actions append the selected workspace agent and Foundry project", asy
     const context = {
         state: {
             agentName: "",
+            agentType: "hosted",
             hostedAgents: {
                 selected: "research-agent",
                 creatingNew: false,
@@ -64,6 +65,10 @@ test("chat actions append the selected workspace agent and Foundry project", asy
                     endpoint: "https://example.test/api/projects/agent-project",
                 },
             },
+        },
+        MANAGED_AGENT_TYPE: "managed",
+        currentAgentType() {
+            return context.state.agentType;
         },
     };
     vm.createContext(context);
@@ -77,7 +82,7 @@ test("chat actions append the selected workspace agent and Foundry project", asy
         [
             "deploy it as a Foundry hosted agent",
             "",
-            'Apply this request to my selected workspace agent "research-agent".',
+            'Apply this request to my selected workspace hosted agent "research-agent".',
             'Use my selected Foundry project "Agent Project" in subscription "Development" '
                 + "(endpoint: https://example.test/api/projects/agent-project).",
         ].join("\n"),
@@ -88,11 +93,17 @@ test("chat actions append the selected workspace agent and Foundry project", asy
     assert.doesNotMatch(context.result, /research-agent/);
     assert.match(context.result, /Use my selected Foundry project "Agent Project"/);
 
+    context.state.agentType = "managed";
+    vm.runInContext('result = withActionContext("create a managed agent");', context);
+    assert.match(context.result, /Managed Agent private-preview GHCP harness workflow/);
+    assert.match(context.result, /declarative with instructions and skills/);
+    assert.match(context.result, /do not run it locally/);
+
     assert.match(source, /sendToChat\(withActionContext\(m\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(t\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(g\.prompt\)\)/);
     assert.match(source, /sendToChat\(withActionContext\(s\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
+    assert.match(source, /sendToChat\(withActionContext\(prompt\), managed \? undefined : "deployment"\)/);
 });
 
 test("New starts an explicit render state and opens only Create", async () => {
@@ -103,9 +114,11 @@ test("New starts an explicit render state and opens only Create", async () => {
     const context = {
         state: {
             hostedAgents: { creatingNew: false },
-            init: { open: false },
+            init: { open: false, sourcePrompt: "" },
             folds: { resources: true, deploy: true },
+            agentType: "managed",
         },
+        HOSTED_AGENT_TYPE: "hosted",
         render() {
             calls.push("render");
         },
@@ -114,10 +127,11 @@ test("New starts an explicit render state and opens only Create", async () => {
     vm.runInNewContext(`${functionSource}\nshowNewAgent();`, context);
 
     assert.equal(context.state.hostedAgents.creatingNew, true);
+    assert.equal(context.state.agentType, "hosted");
     assert.equal(context.state.init.open, true);
     assert.deepEqual(context.state.folds, { resources: false, deploy: false });
     assert.deepEqual(calls, ["render"]);
-    assert.match(source, /const renderedName = creatingNew \? "New Agent" : active\.agentName;/);
+    assert.match(source, /`New \$\{agentTypeLabel\(\)\} Agent`/);
     assert.match(source, /newButton\.hidden = creatingNew;/);
 });
 
@@ -129,7 +143,11 @@ test("selecting the current agent exits New without rewriting the selection", as
     const context = {
         state: {
             agentName: "Preview Agent",
-            hostedAgents: { selected: "Preview Agent", creatingNew: true },
+            agentType: "hosted",
+            hostedAgents: {
+                selected: "Preview Agent",
+                creatingNew: true,
+            },
             init: { open: true },
             folds: { resources: false, deploy: false },
         },
@@ -138,6 +156,12 @@ test("selecting the current agent exits New without rewriting the selection", as
         },
         renderHostedAgentPicker() {
             calls.push("picker");
+        },
+        renderAgentTypeUi() {
+            calls.push("type");
+        },
+        renderRegionSupport() {
+            calls.push("region");
         },
         renderInit() {
             calls.push("init");
@@ -151,15 +175,34 @@ test("selecting the current agent exits New without rewriting the selection", as
         toast(message) {
             calls.push(message);
         },
+        hostedAgentOptions() {
+            return [{ agentName: "Preview Agent", agentType: "managed" }];
+        },
+        normalizeAgentType(value) {
+            return value === "managed" ? "managed" : "hosted";
+        },
+        currentAgentType() {
+            return context.state.agentType;
+        },
+        HOSTED_AGENT_TYPE: "hosted",
     };
 
     vm.createContext(context);
     await vm.runInContext(`${functionSource}\nselectHostedAgent("Preview Agent");`, context);
 
     assert.equal(context.state.hostedAgents.creatingNew, false);
+    assert.equal(context.state.agentType, "managed");
     assert.equal(context.state.init.open, false);
     assert.deepEqual(context.state.folds, { resources: true, deploy: true });
-    assert.deepEqual(calls, ["init", "folds", "picker", "deployment", "Agent: Preview Agent"]);
+    assert.deepEqual(calls, [
+        "init",
+        "folds",
+        "picker",
+        "type",
+        "region",
+        "deployment",
+        "Agent: Preview Agent",
+    ]);
 });
 
 test("switching agents hides the previous portal action before saving the selection", async () => {
@@ -172,12 +215,19 @@ test("switching agents hides the previous portal action before saving the select
     const context = {
         state: {
             agentName: "support-agent",
+            agentType: "hosted",
             hostedAgents: { selected: "support-agent", creatingNew: false },
             init: { open: false },
             folds: { resources: true, deploy: true },
         },
         renderHostedAgentPicker() {
             calls.push("picker");
+        },
+        renderAgentTypeUi() {
+            calls.push("type");
+        },
+        renderRegionSupport() {
+            calls.push("region");
         },
         resetHostedAgentDeployment() {
             calls.push("reset");
@@ -197,6 +247,22 @@ test("switching agents hides the previous portal action before saving the select
         toast(message) {
             calls.push(message);
         },
+        hostedAgentOptions() {
+            return [
+                { agentName: "support-agent", agentType: "hosted" },
+                { agentName: "research-agent", agentType: "hosted" },
+            ];
+        },
+        normalizeAgentType(value) {
+            return value === "managed" ? "managed" : "hosted";
+        },
+        currentAgentType() {
+            return context.state.agentType;
+        },
+        HOSTED_AGENT_TYPE: "hosted",
+        renderHostedAgentDeployment() {
+            calls.push("deployment");
+        },
     };
     vm.createContext(context);
     const selection = vm.runInContext(
@@ -204,11 +270,13 @@ test("switching agents hides the previous portal action before saving the select
         context,
     );
 
-    assert.deepEqual(calls, ["picker", "reset", "save"]);
+    assert.deepEqual(calls, ["picker", "type", "region", "reset", "save"]);
     finishSelection({ ok: true });
     await selection;
     assert.deepEqual(calls, [
         "picker",
+        "type",
+        "region",
         "reset",
         "save",
         "close-inspector",
@@ -223,6 +291,8 @@ test("Inspect Locally asks for an existing agent while New Agent is active", asy
         /if \(e\.target\.closest\("#inspectBtn"\)\) \{[\s\S]*?\n    \}/,
     )?.[0];
     assert.ok(handler);
+    assert.match(handler, /currentAgentType\(\) === MANAGED_AGENT_TYPE/);
+    assert.match(handler, /toast\("Managed agents are deployed and tested remotely\."\)/);
     assert.match(handler, /if \(state\.hostedAgents\.creatingNew\)/);
     assert.match(handler, /toast\("Select an existing agent to inspect locally\."\)/);
     assert.match(handler, /else \{\s*launchInspector\(e\.target\.closest\("#inspectBtn"\)\);/);

@@ -44,7 +44,34 @@ test("workflow headings use sentence case and hosted agent remains lowercase", a
     assert.match(html, />Create new hosted agents</);
     assert.match(html, />Build current hosted agent</);
     assert.match(html, />Deploy &amp; test</);
-    assert.doesNotMatch(html, /Hosted Agents|Hosted Agent|Deploy &amp; Test/);
+    assert.doesNotMatch(html, /Hosted Agents|Deploy &amp; Test/);
+});
+
+test("Create defaults to Hosted Agent and offers the Managed Agent preview flow", async () => {
+    const [html, app] = await Promise.all([
+        readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    ]);
+
+    assert.match(html, /class="agent-type-switch"[^>]*role="radiogroup"/);
+    assert.match(html, /id="hostedAgentType"[^>]*aria-checked="true"[\s\S]*?>\s*Hosted Agent/);
+    assert.match(html, /id="managedAgentType"[^>]*aria-checked="false"[\s\S]*?>\s*Managed Agent/);
+    assert.match(app, /state\.agentType = HOSTED_AGENT_TYPE;/);
+    assert.match(app, /Managed Agent private-preview workflow/);
+    assert.match(app, /selected existing Foundry project/);
+    assert.match(app, /West US 2 \(westus2\)/);
+    assert.match(app, /preview azure\.ai\.agents azd extension/);
+    assert.match(app, /declarative instructions and skills/);
+    assert.match(app, /deploy the agent remotely/);
+    assert.match(app, /smoke invoke the deployed agent/);
+    assert.match(app, /Do not ask for "/);
+    assert.match(app, /or perform a local run/);
+    assert.match(app, /inspect\.hidden = managed;/);
+    assert.match(app, /for \(const id of \["toolboxResource", "guardrailResource"\]\)/);
+    assert.match(
+        app,
+        /if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?managedProjectRegionBlocked\(\)/,
+    );
 });
 
 test("canvas registration and session activity are app-only while routing trusts capability over profile", async () => {
@@ -80,8 +107,8 @@ test("canvas registration and session activity are app-only while routing trusts
 test("canvas handoff guide is formatted as a readable Markdown checklist", () => {
     assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /^\*\*The Microsoft Foundry canvas is ready\.\*\*/);
     assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n\n1\. Sign in and select a subscription and Foundry project\./);
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n2\. Expand \*\*Create new hosted agents\*\* if it is collapsed\./);
-    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n3\. Choose or edit a starter prompt\./);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n2\. Expand \*\*Create new agents\*\* if it is collapsed\./);
+    assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n3\. Choose \*\*Hosted Agent\*\* or \*\*Managed Agent\*\*, then choose or edit a starter prompt\./);
     assert.match(MICROSOFT_FOUNDRY_CANVAS_HANDOFF_MESSAGE, /\n4\. Click \*\*Start\*\* to continue\.$/);
     assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /respond with the following Markdown exactly/);
     assert.match(MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE, /Click \*\*Start\*\* to continue/);
@@ -102,6 +129,12 @@ test("starter options can wrap without clipping their labels", async () => {
     assert.match(css, /\.start-options\s*\{[\s\S]*?flex-wrap:\s*wrap;/);
     assert.match(css, /\.start-option\s*\{[\s\S]*?flex:\s*1 1 120px;/);
     assert.match(css, /\.option-title\s*\{[\s\S]*?white-space:\s*normal;/);
+});
+
+test("managed-only hidden controls stay hidden despite authored display rules", async () => {
+    const css = await readFile(new URL("../public/app.css", import.meta.url), "utf8");
+
+    assert.match(css, /\.btn-inspect\[hidden\],[\s\S]*?\.resource-select\[hidden\]\s*\{\s*display:\s*none;/);
 });
 
 test("the plugin update bar is informational and directs updates outside the live provider", async () => {

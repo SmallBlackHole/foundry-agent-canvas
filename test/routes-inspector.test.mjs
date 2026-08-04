@@ -13,8 +13,8 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
         projects: [],
     };
     const agents = [
-        { agentName: "support-agent", projectDir: project.projectDir, manifestPath: project.manifestPath },
-        { agentName: "research-agent", projectDir: "C:\\workspace\\apps\\research", manifestPath: "" },
+        { agentName: "support-agent", projectDir: project.projectDir, manifestPath: project.manifestPath, agentType: "hosted" },
+        { agentName: "research-agent", projectDir: "C:\\workspace\\apps\\research", manifestPath: "", agentType: "hosted" },
     ];
     const session = { log: async () => {}, send: async () => {} };
     const services = createRuntimeApiServices("inspect-project-test", {
@@ -71,8 +71,9 @@ test("lists workspace agents and inspects the one the picker selected", async (t
     const resolved = [];
     const instanceId = "agent-picker-test";
     const agents = [
-        { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml", serviceKey: "support-agent", source: "azure_service_key" },
-        { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml", serviceKey: "research", source: "azure_service_name" },
+        { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml", serviceKey: "support-agent", source: "azure_service_key", agentType: "hosted" },
+        { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml", serviceKey: "research", source: "azure_service_name", agentType: "hosted" },
+        { agentName: "operations-agent", projectDir: "/w/operations", manifestPath: "/w/operations/azure.yaml", serviceKey: "operations", source: "azure_service_name", agentType: "managed" },
     ];
     servers.set(instanceId, { state: { agentName: "" } });
     t.after(() => servers.delete(instanceId));
@@ -94,9 +95,11 @@ test("lists workspace agents and inspects the one the picker selected", async (t
     assert.deepEqual(await services.listHostedAgents(), {
         ok: true,
         selected: "support-agent",
+        agentType: "hosted",
         agents: [
-            { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml" },
-            { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml" },
+            { agentName: "support-agent", projectDir: "/w/support", manifestPath: "/w/support/azure.yaml", agentType: "hosted" },
+            { agentName: "research-agent", projectDir: "/w/research", manifestPath: "/w/research/azure.yaml", agentType: "hosted" },
+            { agentName: "operations-agent", projectDir: "/w/operations", manifestPath: "/w/operations/azure.yaml", agentType: "managed" },
         ],
     });
 

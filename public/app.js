@@ -11,8 +11,26 @@ import {
 } from "./selection-state.js";
 import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
 
+const HOSTED_AGENT_TYPE = "hosted";
+const MANAGED_AGENT_TYPE = "managed";
+const MANAGED_DEPLOY_PROMPT =
+    "Use the managed-agent private-preview workflow to deploy my selected managed agent " +
+    "to my selected existing Foundry project in West US 2 (westus2). Use the preview " +
+    "azure.ai.agents azd extension, preserve the declarative instructions and skills, " +
+    "deploy it remotely, and smoke invoke the deployed agent. Do not ask for a local run.";
+const HOSTED_CREATE_INSTRUCTION =
+    "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, " +
+    "and the Responses protocol. Then run it locally to make sure it runs successfully.";
+const MANAGED_CREATE_INSTRUCTION =
+    "Use the Managed Agent private-preview workflow to create a declarative Foundry managed " +
+    "agent for this task in my selected existing Foundry project. Use West US 2 (westus2) " +
+    "and the preview azure.ai.agents azd extension. Author declarative instructions and " +
+    "skills, deploy the agent remotely, and smoke invoke the deployed agent. Do not ask for " +
+    "or perform a local run.";
+
 const state = {
     agentName: "",
+    agentType: HOSTED_AGENT_TYPE,
     selection: emptySelection(),
     model: { name: "", color: "#10a37f" },
     deployPrompt: "deploy it as a Foundry hosted agent",
@@ -36,6 +54,7 @@ const state = {
         promptText: "",
         startOption: "inspireIdea",
         idea: "",
+        sourcePrompt: "",
     },
     // Existing-agent sections stay folded until workspace detection completes.
     folds: { resources: false, deploy: false },
@@ -170,8 +189,16 @@ function withActionContext(prompt) {
     if (!state.hostedAgents.creatingNew) {
         const agentName = String(state.hostedAgents.selected || state.agentName || "").trim();
         if (agentName) {
-            context.push(`Apply this request to my selected workspace agent ${JSON.stringify(agentName)}.`);
+            const type = currentAgentType() === MANAGED_AGENT_TYPE ? "managed agent" : "hosted agent";
+            context.push(`Apply this request to my selected workspace ${type} ${JSON.stringify(agentName)}.`);
         }
+    }
+
+    if (currentAgentType() === MANAGED_AGENT_TYPE) {
+        context.push(
+            "Use the Managed Agent private-preview GHCP harness workflow. Keep the agent " +
+            "declarative with instructions and skills, deploy and test it remotely, and do not run it locally.",
+        );
     }
 
     const { subscription, project } = state.selection;
@@ -183,6 +210,18 @@ function withActionContext(prompt) {
     }
 
     return context.length ? `${prompt}\n\n${context.join("\n")}` : prompt;
+}
+
+function normalizeAgentType(value) {
+    return value === MANAGED_AGENT_TYPE ? MANAGED_AGENT_TYPE : HOSTED_AGENT_TYPE;
+}
+
+function currentAgentType() {
+    return normalizeAgentType(state.agentType);
+}
+
+function agentTypeLabel(agentType = currentAgentType()) {
+    return normalizeAgentType(agentType) === MANAGED_AGENT_TYPE ? "Managed" : "Hosted";
 }
 
 // Build a Foundry Portal URL for the selected project. Returns "" when the
@@ -257,6 +296,7 @@ function renderBuild() {
     renderRegionSupport();
     renderHostedAgentDeployment();
     renderHostedAgentPicker();
+    renderAgentTypeUi();
     renderPluginUpdate();
 }
 
@@ -292,12 +332,72 @@ function prettyRegion(code) {
         eastus2: "East US 2", northcentralus: "North Central US", swedencentral: "Sweden Central",
         canadacentral: "Canada Central", canadaeast: "Canada East", southeastasia: "Southeast Asia",
         polandcentral: "Poland Central", southafricanorth: "South Africa North", koreacentral: "Korea Central",
-        southindia: "South India", brazilsouth: "Brazil South", westus: "West US", westus3: "West US 3",
+        southindia: "South India", brazilsouth: "Brazil South", westus: "West US", westus2: "West US 2",
+        westus3: "West US 3",
         norwayeast: "Norway East", japaneast: "Japan East", francecentral: "France Central",
         germanywestcentral: "Germany West Central", switzerlandnorth: "Switzerland North",
         spaincentral: "Spain Central", australiaeast: "Australia East",
     };
     return map[c.toLowerCase()] || c;
+}
+
+function selectedProjectRegionCode() {
+    return String(
+        state.selection.project?.location || state.hostedRegion.location || "",
+    ).trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function managedProjectRegionBlocked() {
+    const location = selectedProjectRegionCode();
+    return currentAgentType() === MANAGED_AGENT_TYPE &&
+        !!location &&
+        location !== "westus2";
+}
+
+function renderAgentTypeUi() {
+    const managed = currentAgentType() === MANAGED_AGENT_TYPE;
+    for (const [id, type] of [
+        ["hostedAgentType", HOSTED_AGENT_TYPE],
+        ["managedAgentType", MANAGED_AGENT_TYPE],
+    ]) {
+        const button = document.getElementById(id);
+        if (!button) continue;
+        const selected = currentAgentType() === type;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-checked", String(selected));
+    }
+
+    const createTitle = document.getElementById("createTitle");
+    if (createTitle) createTitle.textContent = managed
+        ? "Create new managed agents"
+        : "Create new hosted agents";
+    const initBlock = document.getElementById("initBlock");
+    if (initBlock) initBlock.setAttribute(
+        "aria-label",
+        managed ? "Create new managed agents" : "Create new hosted agents",
+    );
+
+    const buildTitle = document.getElementById("buildTitle");
+    if (buildTitle) buildTitle.textContent = managed
+        ? "Build current managed agent"
+        : "Build current hosted agent";
+    const buildDescription = document.getElementById("buildDescription");
+    if (buildDescription) {
+        buildDescription.textContent = managed
+            ? "Update the model and declarative skills for your current managed agent."
+            : "Switch to a new model, add tools and skills or apply guardrail to your current hosted agent.";
+    }
+
+    for (const id of ["toolboxResource", "guardrailResource"]) {
+        const element = document.getElementById(id);
+        if (element) element.hidden = managed;
+    }
+    const inspect = document.getElementById("inspectBtn");
+    if (inspect) inspect.hidden = managed;
+    const deployLabel = document.getElementById("deployBtnLabel");
+    if (deployLabel) deployLabel.textContent = managed
+        ? "Deploy managed agent"
+        : "Deploy to Foundry";
 }
 
 // Reflect the current hosted-region check onto the Deploy button + warning
@@ -306,12 +406,18 @@ function renderRegionSupport() {
     const warn = document.getElementById("regionWarn");
     const btn = document.getElementById("deployBtn");
     const hr = state.hostedRegion;
-    const blocked = hr.supported === false;
+    const managed = currentAgentType() === MANAGED_AGENT_TYPE;
+    const managedLocation = selectedProjectRegionCode();
+    const blocked = managed
+        ? managedProjectRegionBlocked()
+        : hr.supported === false;
     if (btn) {
         btn.classList.toggle("is-blocked", blocked);
         btn.setAttribute("aria-disabled", String(blocked));
         btn.title = blocked
-            ? "Hosted agents aren't supported in this project's region"
+            ? managed
+                ? "Managed agents private preview requires West US 2"
+                : "Hosted agents aren't supported in this project's region"
             : "";
     }
     if (warn) {
@@ -319,13 +425,30 @@ function renderRegionSupport() {
         if (blocked) {
             const head = document.getElementById("regionWarnHead");
             if (head) {
-                const loc = prettyRegion(hr.location);
-                head.textContent = loc
-                    ? `Hosted agents aren't available in this project's region (${loc}).`
-                    : "Hosted agents aren't available in this project's region.";
+                const loc = prettyRegion(managedLocation || hr.location);
+                head.textContent = managed
+                    ? `Managed agents private preview requires West US 2${loc ? `; this project is in ${loc}.` : "."}`
+                    : loc
+                        ? `Hosted agents aren't available in this project's region (${loc}).`
+                        : "Hosted agents aren't available in this project's region.";
             }
+            const message = document.getElementById("regionWarnMessage");
             const link = document.getElementById("regionWarnLink");
-            if (link && hr.docsUrl) link.href = hr.docsUrl;
+            const suffix = document.getElementById("regionWarnSuffix");
+            if (managed) {
+                if (message) message.textContent =
+                    "Select an existing Foundry project in West US 2 before deploying.";
+                if (link) link.hidden = true;
+                if (suffix) suffix.textContent = "";
+            } else {
+                if (message) message.textContent =
+                    "Deploying to Foundry will fail. Switch to a project in a ";
+                if (link) {
+                    link.hidden = false;
+                    if (hr.docsUrl) link.href = hr.docsUrl;
+                }
+                if (suffix) suffix.textContent = ".";
+            }
         }
     }
 }
@@ -384,7 +507,7 @@ function renderHostedAgentDeployment() {
     const link = document.getElementById("testPlaygroundLink");
     const description = document.getElementById("deployDescription");
     if (!link && !description) return;
-    const deployment = state.hostedAgents.creatingNew
+    const deployment = state.hostedAgents.creatingNew || currentAgentType() === MANAGED_AGENT_TYPE
         ? emptyHostedAgentDeployment()
         : state.hostedAgentDeployment;
     const descriptionText = hostedAgentDeploymentDescription(deployment);
@@ -404,6 +527,10 @@ function renderHostedAgentDeployment() {
 }
 
 async function loadHostedAgentDeployment() {
+    if (currentAgentType() === MANAGED_AGENT_TYPE) {
+        resetHostedAgentDeployment();
+        return state.hostedAgentDeployment;
+    }
     const requestId = ++hostedAgentDeploymentRequest;
     state.hostedAgentDeployment = emptyHostedAgentDeployment("loading");
     renderHostedAgentDeployment();
@@ -431,7 +558,11 @@ function hostedAgentOptions() {
     const { selected } = state.hostedAgents;
     const options = workspaceHostedAgentOptions();
     if (selected && !options.some((a) => a.agentName.toLowerCase() === selected.toLowerCase())) {
-        return [{ agentName: selected, manifestPath: "" }, ...options];
+        return [{
+            agentName: selected,
+            manifestPath: "",
+            agentType: currentAgentType(),
+        }, ...options];
     }
     return options;
 }
@@ -439,6 +570,14 @@ function hostedAgentOptions() {
 function selectedHostedAgentOption(options) {
     const selected = String(state.hostedAgents.selected || "").toLowerCase();
     return options.find((a) => a.agentName.toLowerCase() === selected) || options[0];
+}
+
+function syncAgentTypeFromSelection(fallback = "") {
+    const options = workspaceHostedAgentOptions();
+    const selected = String(state.hostedAgents.selected || "").toLowerCase();
+    const active = options.find((agent) => agent.agentName.toLowerCase() === selected)
+        || options[0];
+    state.agentType = normalizeAgentType(active?.agentType || fallback || state.agentType);
 }
 
 function renderHostedAgentPicker() {
@@ -462,7 +601,9 @@ function renderHostedAgentPicker() {
 
     const creatingNew = state.hostedAgents.creatingNew === true;
     const active = selectedHostedAgentOption(options);
-    const renderedName = creatingNew ? "New Agent" : active.agentName;
+    const renderedName = creatingNew
+        ? `New ${agentTypeLabel()} Agent`
+        : active.agentName;
     current.textContent = renderedName;
     newButton.hidden = creatingNew;
     const trigger = document.getElementById("hostedAgentTrigger");
@@ -478,8 +619,12 @@ function renderHostedAgentPicker() {
 
         const name = document.createElement("span");
         name.className = "item-name";
-        name.textContent = "New Agent";
+        name.textContent = renderedName;
         item.appendChild(name);
+        const type = document.createElement("span");
+        type.className = "agent-type-badge";
+        type.textContent = agentTypeLabel();
+        item.appendChild(type);
         item.appendChild(fluentIcon("check", "item-check"));
         item.addEventListener("click", closeHostedAgentMenu);
         list.appendChild(item);
@@ -499,6 +644,11 @@ function renderHostedAgentPicker() {
         name.className = "item-name";
         name.textContent = agent.agentName;
         item.appendChild(name);
+
+        const type = document.createElement("span");
+        type.className = "agent-type-badge";
+        type.textContent = agentTypeLabel(agent.agentType);
+        item.appendChild(type);
 
         if (isActive) item.appendChild(fluentIcon("check", "item-check"));
 
@@ -535,6 +685,7 @@ async function loadHostedAgents(force) {
         const data = await getJSON("/api/hosted-agents");
         st.items = Array.isArray(data.agents) ? data.agents : [];
         st.selected = data.selected || "";
+        syncAgentTypeFromSelection(data.agentType || "");
         st.status = "ready";
     } catch {
         // Keep the last known agents: a failed refresh must not collapse the
@@ -561,9 +712,14 @@ async function refreshHostedAgentsAfterSession() {
 
 function showNewAgent(prompt = "") {
     const nextPrompt = String(prompt || "").trim();
+    state.agentType = HOSTED_AGENT_TYPE;
+    state.init.sourcePrompt = nextPrompt;
     if (nextPrompt) {
         state.init.idea = "";
         setInitPreviewPrompt(nextPrompt);
+    } else {
+        state.init.promptDirty = false;
+        state.init.promptText = "";
     }
     state.hostedAgents.creatingNew = true;
     state.init.open = true;
@@ -574,8 +730,13 @@ function showNewAgent(prompt = "") {
 
 async function selectHostedAgent(agentName) {
     const previous = state.hostedAgents.selected;
+    const previousType = state.agentType;
     const wasCreatingNew = state.hostedAgents.creatingNew === true;
     if (!agentName || (agentName === previous && !wasCreatingNew)) return;
+    const nextAgent = hostedAgentOptions().find(
+        (agent) => agent.agentName.toLowerCase() === agentName.toLowerCase(),
+    );
+    state.agentType = normalizeAgentType(nextAgent?.agentType);
     const previousSections = {
         initOpen: state.init.open,
         resourcesOpen: state.folds.resources,
@@ -591,6 +752,8 @@ async function selectHostedAgent(agentName) {
         renderFolds();
     }
     renderHostedAgentPicker();
+    renderAgentTypeUi();
+    renderRegionSupport();
     if (agentName !== previous) resetHostedAgentDeployment();
     if (agentName === previous) {
         renderHostedAgentDeployment();
@@ -602,10 +765,13 @@ async function selectHostedAgent(agentName) {
     } catch {
         state.hostedAgents.selected = previous;
         state.hostedAgents.creatingNew = wasCreatingNew;
+        state.agentType = previousType;
         state.init.open = previousSections.initOpen;
         state.folds.resources = previousSections.resourcesOpen;
         state.folds.deploy = previousSections.deployOpen;
         renderHostedAgentPicker();
+        renderAgentTypeUi();
+        renderRegionSupport();
         renderInit();
         renderFolds();
         loadHostedAgentDeployment();
@@ -615,7 +781,8 @@ async function selectHostedAgent(agentName) {
     state.agentName = agentName;
     // Deployment state is per-agent, so the portal link has to be re-resolved.
     closeInspector();
-    loadHostedAgentDeployment();
+    if (currentAgentType() === HOSTED_AGENT_TYPE) loadHostedAgentDeployment();
+    else renderHostedAgentDeployment();
     toast("Agent: " + agentName);
 }
 
@@ -723,11 +890,10 @@ function initPromptText() {
     const purpose =
         (state.init.idea || "").trim() ||
         "perform one clearly defined task from the user's text input";
-    return (
-        sentenceCase(purpose) +
-        ". Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol. " +
-        "Then run it locally to make sure it runs successfully."
-    );
+    const instruction = currentAgentType() === MANAGED_AGENT_TYPE
+        ? MANAGED_CREATE_INSTRUCTION
+        : HOSTED_CREATE_INSTRUCTION;
+    return `${sentenceCase(purpose)}. ${instruction}`;
 }
 
 const HELP_ME_DECIDE_PROMPT =
@@ -802,20 +968,17 @@ function setInitIdea(idea) {
     if (!idea || !idea.trim()) return;
     const purpose = idea.trim().replace(/[.!?]+$/, "");
     state.init.idea = purpose;
+    state.init.sourcePrompt = "";
     state.init.open = true;
     state.init.startOption = "inspireIdea";
 
     const ta = document.getElementById("initPrompt");
     const current = (ta ? ta.value : state.init.promptText) || initPromptText();
-    const re =
-        /^.+?\. Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol\./;
-    const next = re.test(current)
-        ? current.replace(
-              re,
-              sentenceCase(purpose) +
-                  ". " +
-                  "Create a foundry hosted agent for this task using Python, Microsoft Agent Framework, and the Responses protocol.",
-          )
+    const instructionIndex = [HOSTED_CREATE_INSTRUCTION, MANAGED_CREATE_INSTRUCTION]
+        .map((instruction) => current.indexOf(instruction))
+        .find((index) => index >= 0);
+    const next = instructionIndex >= 0
+        ? `${sentenceCase(purpose)}. ${current.slice(instructionIndex)}`
         : initPromptText();
 
     state.init.promptText = next;
@@ -832,9 +995,23 @@ function selectStartOption(id) {
     }
 }
 
+function selectAgentType(agentType) {
+    const next = normalizeAgentType(agentType);
+    if (next === currentAgentType()) return;
+    state.agentType = next;
+    if (state.init.sourcePrompt) {
+        state.init.idea = state.init.sourcePrompt.trim().replace(/[.!?]+$/, "");
+    }
+    state.init.promptDirty = false;
+    state.init.promptText = "";
+    render();
+}
+
 function renderInit() {
     const block = document.getElementById("initBlock");
     if (!block) return;
+    renderAgentTypeUi();
+    renderRegionSupport();
 
     // Reflect collapsed/expanded.
     const toggle = document.getElementById("initToggle");
@@ -1862,6 +2039,14 @@ root.addEventListener("click", async (e) => {
         renderFolds();
         return;
     }
+    if (e.target.closest("#hostedAgentType")) {
+        selectAgentType(HOSTED_AGENT_TYPE);
+        return;
+    }
+    if (e.target.closest("#managedAgentType")) {
+        selectAgentType(MANAGED_AGENT_TYPE);
+        return;
+    }
     if (e.target.closest("#resourcesToggle")) {
         const willOpen = !state.folds.resources;
         state.folds.resources = willOpen;
@@ -1880,6 +2065,10 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#initStart")) {
         if (!remindProjectSelection(e)) return;
+        if (managedProjectRegionBlocked()) {
+            toast("Managed agents private preview requires a project in West US 2");
+            return;
+        }
         const ta = document.getElementById("initPrompt");
         const text = (ta ? ta.value : state.init.promptText).trim();
         if (text) {
@@ -1893,13 +2082,17 @@ root.addEventListener("click", async (e) => {
         return;
     }
     if (e.target.closest("#decideIdea")) {
+        state.init.sourcePrompt = "";
         selectStartOption("decideIdea");
-        setInitPreviewPrompt(HELP_ME_DECIDE_PROMPT);
+        state.init.idea = HELP_ME_DECIDE_PROMPT.replace(/[.!?]+$/, "");
+        state.init.promptDirty = false;
+        syncInitPrompt();
         return;
     }
     if (e.target.closest("#helloWorldIdea")) {
         selectStartOption("helloWorldIdea");
         state.init.idea = "return a friendly hello-world greeting";
+        state.init.sourcePrompt = "";
         state.init.promptDirty = false;
         syncInitPrompt();
         toast("Hello world selected \u2713");
@@ -1986,7 +2179,12 @@ root.addEventListener("click", async (e) => {
     }
     if (e.target.closest("#deployBtn")) {
         if (!remindProjectSelection(e)) return;
-        if (state.hostedRegion.supported === false) {
+        const managed = currentAgentType() === MANAGED_AGENT_TYPE;
+        if (managedProjectRegionBlocked()) {
+            toast("Managed agents private preview requires a project in West US 2");
+            return;
+        }
+        if (!managed && state.hostedRegion.supported === false) {
             const loc = prettyRegion(state.hostedRegion.location);
             toast(
                 loc
@@ -1995,12 +2193,15 @@ root.addEventListener("click", async (e) => {
             );
             return;
         }
-        resetHostedAgentDeployment();
-        sendToChat(withActionContext(state.deployPrompt), "deployment");
+        if (!managed) resetHostedAgentDeployment();
+        const prompt = managed ? MANAGED_DEPLOY_PROMPT : state.deployPrompt;
+        sendToChat(withActionContext(prompt), managed ? undefined : "deployment");
         return;
     }
     if (e.target.closest("#inspectBtn")) {
-        if (state.hostedAgents.creatingNew) {
+        if (currentAgentType() === MANAGED_AGENT_TYPE) {
+            toast("Managed agents are deployed and tested remotely.");
+        } else if (state.hostedAgents.creatingNew) {
             toast("Select an existing agent to inspect locally.");
         } else {
             launchInspector(e.target.closest("#inspectBtn"));
@@ -2117,6 +2318,7 @@ root.addEventListener("input", (e) => {
     else if (e.target.id === "initPrompt") {
         state.init.promptDirty = true;
         state.init.promptText = e.target.value;
+        state.init.sourcePrompt = "";
         resizeInitPrompt(e.target);
     }
 });
@@ -2151,6 +2353,7 @@ async function init() {
             if (Array.isArray(pi.agents)) {
                 state.hostedAgents.items = pi.agents;
                 state.hostedAgents.selected = pi.selected || "";
+                syncAgentTypeFromSelection(pi.agentType || "");
                 state.hostedAgents.status = "ready";
             }
         }

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 
-import { DEPLOY_PROMPT } from "../src/catalog.mjs";
+import { DEPLOY_PROMPT, MANAGED_DEPLOY_PROMPT } from "../src/catalog.mjs";
 import { refreshDeploymentState } from "../src/deployment-state.mjs";
 
 test("deployment refresh action emits the verified live result", async () => {
@@ -41,8 +41,16 @@ test("deploy prompt no longer asks Copilot to invoke a canvas action", async () 
     assert.equal(DEPLOY_PROMPT, "deploy it as a Foundry hosted agent");
     assert.doesNotMatch(DEPLOY_PROMPT, /After deployment succeeds/);
     assert.doesNotMatch(DEPLOY_PROMPT, /refreshDeploymentState/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /managed-agent private-preview workflow/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /selected existing Foundry project/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /West US 2 \(westus2\)/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /preview azure\.ai\.agents azd extension/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /declarative instructions and skills/);
+    assert.match(MANAGED_DEPLOY_PROMPT, /smoke invoke the deployed agent/);
+    assert.doesNotMatch(MANAGED_DEPLOY_PROMPT, /local run[^.]*success/i);
     // The client tags the deploy prompt so the extension can auto-refresh.
-    assert.match(appSource, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
+    assert.match(appSource, /const prompt = managed \? MANAGED_DEPLOY_PROMPT : state\.deployPrompt;/);
+    assert.match(appSource, /sendToChat\(withActionContext\(prompt\), managed \? undefined : "deployment"\)/);
     // The action is retained as a manual/recovery path alongside the idle-driven
     // manager (which also uses the same refresh function).
     assert.match(extensionSource, /name: "refreshDeploymentState"/);
@@ -235,6 +243,10 @@ test("New Agent mode suppresses the previous deployment description and portal l
         syncDeployDescriptionVisibility() {
             description.hidden =
                 !context.state.folds.deploy || !description.textContent.trim();
+        },
+        MANAGED_AGENT_TYPE: "managed",
+        currentAgentType() {
+            return "hosted";
         },
     };
     vm.createContext(context);

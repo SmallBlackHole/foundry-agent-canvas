@@ -1,7 +1,10 @@
 import { emptySelection } from "../../public/selection-state.js";
 import { getToken } from "../foundry-auth.mjs";
 import { resolveHostedAgentPortalAction } from "../hosted-agent.mjs";
-import { resolveHostedAgentName } from "../local-agent.mjs";
+import {
+    MANAGED_AGENT_TYPE,
+    resolveHostedAgentName,
+} from "../local-agent.mjs";
 
 // Resolves the portal action for the hosted agent the deploy/test actions
 // target. Used by the API surface and by extension.mjs for deployment-state
@@ -13,6 +16,17 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
         await workspaceRootFn(),
         entry ? entry.state.agentName : "",
     );
+    if (agent.agentType === MANAGED_AGENT_TYPE) {
+        return {
+            ok: false,
+            deployed: false,
+            available: false,
+            portalUrl: "",
+            agentName: agent.agentName,
+            version: "",
+            reason: "unsupported_agent_type",
+        };
+    }
     return resolveHostedAgentPortalAction(
         {
             endpoint: project?.endpoint || "",
@@ -31,18 +45,23 @@ export async function selectedHostedAgentPortalAction(entry, workspaceRootFn) {
 // explicit pick that no longer matches any workspace agent is kept as-is because
 // it can come from the canvas open input.
 export function selectedHostedAgentName(entry, agents) {
+    return selectedWorkspaceAgent(entry, agents).agentName;
+}
+
+export function selectedWorkspaceAgent(entry, agents) {
     const explicit = String(entry?.state.agentName || "").trim();
-    if (!explicit) return agents[0]?.agentName || "";
+    if (!explicit) return agents[0] || { agentName: "", agentType: "" };
     const match = agents.find(
         (agent) => agent.agentName.toLowerCase() === explicit.toLowerCase(),
     );
-    return match ? match.agentName : explicit;
+    return match || { agentName: explicit, agentType: "" };
 }
 
 export function agentSummaries(agents) {
-    return agents.map(({ agentName, manifestPath, projectDir }) => ({
+    return agents.map(({ agentName, manifestPath, projectDir, agentType }) => ({
         agentName,
         manifestPath,
         projectDir,
+        agentType: agentType || "hosted",
     }));
 }
