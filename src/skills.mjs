@@ -5,8 +5,8 @@ import { installSkillFromGitHub } from "./skill-install.mjs";
 import { compareVersions } from "./version-compare.mjs";
 
 const USER_HOME = homedir();
-const SKILLS_SOURCE = "qinezh/azure-skills";
-const SKILLS_SOURCE_REF = "managed-agents";
+const SKILLS_SOURCE = "microsoft/azure-skills";
+const SKILLS_SOURCE_REF = "main";
 const SKILLS_SKILL = "microsoft-foundry";
 const SKILLS_TARBALL_URL =
     `https://github.com/${SKILLS_SOURCE}/archive/refs/heads/${SKILLS_SOURCE_REF}.tar.gz`;
@@ -111,7 +111,7 @@ function skillPathFromSkillLock(lock) {
 
 export function isExpectedFoundrySkillSource(lock) {
     return String(lock?.source || "").toLowerCase() === SKILLS_SOURCE.toLowerCase()
-        && String(lock?.sourceRef || "").toLowerCase() === SKILLS_SOURCE_REF.toLowerCase()
+        && String(lock?.sourceRef || "").toLowerCase() === SKILLS_SOURCE_REF
         && skillPathFromSkillLock(lock) === SKILLS_REMOTE_SKILL_PATH;
 }
 
@@ -217,7 +217,7 @@ export async function checkFoundrySkillStatus() {
             ok: true,
             status: "wrong_source",
             latestVersion: "",
-            summary: `This PoC requires Foundry Skills from ${SKILLS_SOURCE}#${SKILLS_SOURCE_REF}.`,
+            summary: `Foundry Skills must be restored from ${SKILLS_SOURCE}#${SKILLS_SOURCE_REF}.`,
         };
     }
     const latest = await checkRemoteFoundrySkill(installed.lock, installed.installedVersion);
@@ -236,7 +236,7 @@ async function ensureFoundrySkillOnce() {
     }
 
     const action = status.status === "wrong_source"
-        ? "replace"
+        ? "restore"
         : status.status === "outdated"
             ? "update"
             : "install";

@@ -64,6 +64,8 @@ test("Create defaults to Hosted Agent and offers the Managed Agent preview flow"
     assert.match(app, /declarative instructions and skills/);
     assert.match(app, /deploy the agent remotely/);
     assert.match(app, /smoke invoke the deployed agent/);
+    assert.match(app, /const MANAGED_POC_SLASH_COMMAND = "\/microsoft-foundry-managed-poc";/);
+    assert.match(app, /\$\{MANAGED_POC_SLASH_COMMAND\}\\n\\n\$\{contextualPrompt\}/);
     assert.match(app, /Do not ask for "/);
     assert.match(app, /or perform a local run/);
     assert.match(app, /inspect\.hidden = managed;/);

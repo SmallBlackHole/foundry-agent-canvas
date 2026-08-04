@@ -13,6 +13,7 @@ import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
 
 const HOSTED_AGENT_TYPE = "hosted";
 const MANAGED_AGENT_TYPE = "managed";
+const MANAGED_POC_SLASH_COMMAND = "/microsoft-foundry-managed-poc";
 const MANAGED_DEPLOY_PROMPT =
     "Use the managed-agent private-preview workflow to deploy my selected managed agent " +
     "to my selected existing Foundry project in West US 2 (westus2). Use the preview " +
@@ -203,13 +204,6 @@ function withActionContext(prompt) {
         }
     }
 
-    if (currentAgentType() === MANAGED_AGENT_TYPE) {
-        context.push(
-            "Use the Managed Agent private-preview GHCP harness workflow. Keep the agent " +
-            "declarative with instructions and skills, deploy and test it remotely, and do not run it locally.",
-        );
-    }
-
     const { subscription, project } = state.selection;
     if (project?.name) {
         const parts = [`project "${project.name}"`];
@@ -218,7 +212,10 @@ function withActionContext(prompt) {
         context.push(`Use my selected Foundry ${parts.join(" ")}.`);
     }
 
-    return context.length ? `${prompt}\n\n${context.join("\n")}` : prompt;
+    const contextualPrompt = context.length ? `${prompt}\n\n${context.join("\n")}` : prompt;
+    return currentAgentType() === MANAGED_AGENT_TYPE
+        ? `${MANAGED_POC_SLASH_COMMAND}\n\n${contextualPrompt}`
+        : contextualPrompt;
 }
 
 function normalizeAgentType(value) {

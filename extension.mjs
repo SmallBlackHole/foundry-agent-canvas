@@ -11,6 +11,7 @@ import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selectio
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkill } from "./src/skills.mjs";
+import { ensureManagedPocSkill } from "./src/managed-poc-skill.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
 import { refreshWorkspaceState } from "./src/workspace-state.mjs";
 import { refreshDeploymentState } from "./src/deployment-state.mjs";
@@ -59,19 +60,30 @@ const pendingRefresh = createPendingRefreshManager({
 });
 
 async function ensureFoundrySkillForCanvas(session) {
-    let failure = "";
-    let ready = false;
-    try {
-        const result = await ensureFoundrySkill();
-        ready = !!result.ready;
-        if (!result.ok && !(result.status === "unknown" && ready)) {
-            const operation = result.action === "none" ? "check" : result.action;
-            failure = `Foundry Skills automatic ${operation} failed: ${result.summary || "Unknown error"}`;
-        }
-    } catch (err) {
-        failure = `Foundry Skills automatic check failed: ${err?.message ?? err}`;
+    const results = await Promise.allSettled([
+        ensureFoundrySkill(),
+        ensureManagedPocSkill(),
+    ]);
+    const failures = [];
+    const official = results[0];
+    if (official.status === "rejected") {
+        failures.push(`Foundry Skills automatic check failed: ${official.reason?.message ?? official.reason}`);
+    } else if (
+        !official.value.ok &&
+        !(official.value.status === "unknown" && official.value.ready)
+    ) {
+        const operation = official.value.action === "none" ? "check" : official.value.action;
+        failures.push(
+            `Foundry Skills automatic ${operation} failed: ${official.value.summary || "Unknown error"}`,
+        );
     }
-    if (failure) {
+    const managed = results[1];
+    if (managed.status === "rejected") {
+        failures.push(`Managed Agent PoC skill installation failed: ${managed.reason?.message ?? managed.reason}`);
+    } else if (!managed.value.ready) {
+        failures.push(`Managed Agent PoC skill installation failed: ${managed.value.error || "Unknown error"}`);
+    }
+    for (const failure of failures) {
         try {
             await session.log(failure, { level: "error" });
         } catch {
