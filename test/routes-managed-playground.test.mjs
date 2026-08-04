@@ -50,16 +50,17 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
         managedPlayground: {
             async stream(input) {
                 calls.push(["stream", input]);
+                const conversationId = input.conversationId || "conversation-1";
                 await input.emit({
                     type: "agent",
                     agentName: input.agentName,
                     agentVersion: "7",
                 });
-                await input.emit({ type: "conversation", conversationId: "conversation-1" });
-                await input.emit({ type: "delta", delta: "Hello" });
+                await input.emit({ type: "conversation", conversationId });
+                await input.emit({ type: "delta", delta: input.message });
                 await input.emit({
                     type: "done",
-                    conversationId: "conversation-1",
+                    conversationId,
                     agentVersion: "7",
                 });
             },
@@ -87,6 +88,24 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
             { type: "done", conversationId: "conversation-1", agentVersion: "7" },
         ]);
 
+        const secondResponse = await fetch(`${base}/api/managed-agent/playground/stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                agentName: "support-agent",
+                agentVersion: "7",
+                message: "Continue",
+                conversationId: "conversation-1",
+            }),
+        });
+        assert.equal(secondResponse.status, 200);
+        assert.deepEqual(parseNdjson(await secondResponse.text()), [
+            { type: "agent", agentName: "support-agent", agentVersion: "7" },
+            { type: "conversation", conversationId: "conversation-1" },
+            { type: "delta", delta: "Continue" },
+            { type: "done", conversationId: "conversation-1", agentVersion: "7" },
+        ]);
+
         assert.deepEqual(await (await fetch(`${base}/api/managed-agent/playground/reset`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -103,7 +122,10 @@ test("streams a managed agent through the selected Canvas project", async (t) =>
     assert.equal(calls[0][1].message, "Hello");
     assert.equal(calls[0][1].conversationId, "");
     assert.equal(calls[0][1].signal instanceof AbortSignal, true);
-    assert.deepEqual(calls[1], ["reset", {
+    assert.equal(calls[1][1].conversationId, "conversation-1");
+    assert.equal(calls[1][1].message, "Continue");
+    assert.equal(calls[1][1].signal instanceof AbortSignal, true);
+    assert.deepEqual(calls[2], ["reset", {
         endpoint: "https://example.test/api/projects/project",
         conversationId: "conversation-1",
     }]);

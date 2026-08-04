@@ -17,6 +17,36 @@ function throwIfAborted(signal) {
     if (signal?.aborted) throw abortError();
 }
 
+function userMessage(message) {
+    return {
+        role: "user",
+        content: [{
+            type: "input_text",
+            text: message,
+        }],
+    };
+}
+
+function terminalResponseError(event) {
+    if (event?.type === "response.failed") {
+        const detail = text(event.response?.error?.message);
+        return new Error(detail ? `Foundry response failed: ${detail}` : "Foundry response failed");
+    }
+    if (event?.type === "response.incomplete") {
+        const reason = text(event.response?.incomplete_details?.reason);
+        return new Error(
+            reason
+                ? `Foundry response was incomplete: ${reason}`
+                : "Foundry response was incomplete",
+        );
+    }
+    if (event?.type === "error") {
+        const detail = text(event.message);
+        return new Error(detail ? `Foundry response error: ${detail}` : "Foundry response error");
+    }
+    return null;
+}
+
 export function createManagedAgentPlayground({
     getAccessToken,
     now,
@@ -77,9 +107,22 @@ export function createManagedAgentPlayground({
             });
 
             const existingConversationId = text(conversationId);
-            const conversation = existingConversationId
-                ? { id: existingConversationId }
-                : await openAIClient.conversations.create({}, { signal });
+            const input = userMessage(message);
+            let conversation;
+            if (existingConversationId) {
+                conversation = { id: existingConversationId };
+                await openAIClient.conversations.items.create(
+                    existingConversationId,
+                    { items: [input] },
+                    { signal },
+                );
+            } else {
+                conversation = await openAIClient.conversations.create(
+                    { items: [input] },
+                    { signal },
+                );
+            }
+            throwIfAborted(signal);
             const activeConversationId = text(conversation?.id);
             if (!activeConversationId) {
                 throw new Error("Foundry did not return a conversation id");
@@ -93,13 +136,6 @@ export function createManagedAgentPlayground({
             const response = await openAIClient.responses.create(
                 {
                     conversation: activeConversationId,
-                    input: [{
-                        role: "user",
-                        content: [{
-                            type: "input_text",
-                            text: message,
-                        }],
-                    }],
                     stream: true,
                 },
                 {
@@ -114,6 +150,7 @@ export function createManagedAgentPlayground({
                 },
             );
 
+            let completed = false;
             for await (const event of response) {
                 throwIfAborted(signal);
                 if (event?.type === "response.output_text.delta" && event.delta) {
@@ -122,9 +159,17 @@ export function createManagedAgentPlayground({
                         delta: event.delta,
                     });
                 }
+                if (event?.type === "response.completed") {
+                    completed = true;
+                }
+                const terminalError = terminalResponseError(event);
+                if (terminalError) throw terminalError;
             }
 
             throwIfAborted(signal);
+            if (!completed) {
+                throw new Error("Foundry response stream ended before completion");
+            }
             await emit({
                 type: "done",
                 conversationId: activeConversationId,

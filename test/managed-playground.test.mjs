@@ -33,6 +33,11 @@ test("creates a conversation and streams only assistant text deltas", async () =
                 calls.push(["conversation.create", ...args]);
                 return { id: "conversation-1" };
             },
+            items: {
+                create: async () => {
+                    throw new Error("new conversation should include its initial message");
+                },
+            },
             delete: async () => {},
         },
         responses: {
@@ -76,16 +81,17 @@ test("creates a conversation and streams only assistant text deltas", async () =
 
     assert.equal(createdClients[0].endpoint, "https://example.test/api/projects/project");
     assert.equal(typeof createdClients[0].credential.getToken, "function");
-    assert.deepEqual(calls[0], ["conversation.create", {}, { signal }]);
-    assert.deepEqual(calls[1][1], {
-        conversation: "conversation-1",
-        input: [{
+    assert.deepEqual(calls[0], ["conversation.create", {
+        items: [{
             role: "user",
             content: [{
                 type: "input_text",
                 text: "Help me",
             }],
         }],
+    }, { signal }]);
+    assert.deepEqual(calls[1][1], {
+        conversation: "conversation-1",
         stream: true,
     });
     assert.equal(calls[1][2].signal, signal);
@@ -110,19 +116,56 @@ test("creates a conversation and streams only assistant text deltas", async () =
     });
 });
 
-test("reuses and deletes an existing conversation", async () => {
+test("commits two rounds to one conversation and deletes it on reset", async () => {
     const calls = [];
+    const conversations = new Map();
     const openAIClient = {
         conversations: {
-            create: async () => {
-                throw new Error("existing conversation must be reused");
+            create: async (body, options) => {
+                calls.push(["conversation.create", body, options]);
+                conversations.set("conversation-1", {
+                    active: false,
+                    items: [...body.items],
+                    processed: 0,
+                });
+                return { id: "conversation-1" };
             },
-            delete: async (...args) => calls.push(["delete", ...args]),
+            items: {
+                create: async (conversationId, body, options) => {
+                    calls.push(["conversation.items.create", conversationId, body, options]);
+                    const conversation = conversations.get(conversationId);
+                    assert.ok(conversation, "conversation must exist before adding a message");
+                    assert.equal(conversation.active, false, "previous response must be complete");
+                    conversation.items.push(...body.items);
+                },
+            },
+            delete: async (conversationId, options) => {
+                calls.push(["conversation.delete", conversationId, options]);
+                const conversation = conversations.get(conversationId);
+                assert.ok(conversation, "conversation must exist before reset");
+                assert.equal(conversation.active, false, "response must be complete before reset");
+                conversations.delete(conversationId);
+            },
         },
         responses: {
-            create: async (...args) => {
-                calls.push(["create", ...args]);
-                return (async function* stream() {})();
+            create: async (body, options) => {
+                calls.push(["response.create", body, options]);
+                const conversation = conversations.get(body.conversation);
+                assert.ok(conversation, "response must use an existing conversation");
+                assert.equal("input" in body, false, "messages must be committed before the response");
+                assert.equal(conversation.active, false, "only one response may run at a time");
+                const message = conversation.items[conversation.processed];
+                assert.ok(message, "each response must have one unprocessed user message");
+                conversation.active = true;
+                return (async function* stream() {
+                    yield {
+                        type: "response.output_text.delta",
+                        delta: `reply:${message.content[0].text}`,
+                    };
+                    conversation.processed += 1;
+                    conversation.active = false;
+                    yield { type: "response.completed" };
+                })();
             },
         },
     };
@@ -137,25 +180,97 @@ test("reuses and deletes an existing conversation", async () => {
         }),
     });
     const events = [];
+    const signal = new AbortController().signal;
 
-    await playground.stream({
+    const first = await playground.stream({
         endpoint: "https://example.test/api/projects/project",
         agentName: "support-agent",
         agentVersion: "7",
-        message: "Continue",
-        conversationId: "conversation-existing",
+        message: "First",
+        signal,
+        emit: async (event) => events.push(event),
+    });
+    const second = await playground.stream({
+        endpoint: "https://example.test/api/projects/project",
+        agentName: "support-agent",
+        agentVersion: "7",
+        message: "Second",
+        conversationId: first.conversationId,
+        signal,
         emit: async (event) => events.push(event),
     });
     await playground.reset({
         endpoint: "https://example.test/api/projects/project",
-        conversationId: "conversation-existing",
+        conversationId: second.conversationId,
     });
 
-    assert.equal(calls[0][1].conversation, "conversation-existing");
-    assert.deepEqual(calls[1], ["delete", "conversation-existing", { signal: undefined }]);
+    assert.deepEqual(first, {
+        conversationId: "conversation-1",
+        agentVersion: "7",
+    });
+    assert.deepEqual(second, first);
+    assert.deepEqual(calls.map(([name]) => name), [
+        "conversation.create",
+        "response.create",
+        "conversation.items.create",
+        "response.create",
+        "conversation.delete",
+    ]);
+    assert.deepEqual(calls[2], ["conversation.items.create", "conversation-1", {
+        items: [{
+            role: "user",
+            content: [{
+                type: "input_text",
+                text: "Second",
+            }],
+        }],
+    }, { signal }]);
+    assert.equal(conversations.size, 0);
     assert.deepEqual(events, [
         { type: "agent", agentName: "support-agent", agentVersion: "7" },
-        { type: "conversation", conversationId: "conversation-existing" },
-        { type: "done", conversationId: "conversation-existing", agentVersion: "7" },
+        { type: "conversation", conversationId: "conversation-1" },
+        { type: "delta", delta: "reply:First" },
+        { type: "done", conversationId: "conversation-1", agentVersion: "7" },
+        { type: "agent", agentName: "support-agent", agentVersion: "7" },
+        { type: "conversation", conversationId: "conversation-1" },
+        { type: "delta", delta: "reply:Second" },
+        { type: "done", conversationId: "conversation-1", agentVersion: "7" },
+    ]);
+});
+
+test("does not mark a response done when its stream ends without completion", async () => {
+    const playground = createManagedAgentPlayground({
+        projectClientFactory: () => ({
+            agents: {
+                get: async () => ({
+                    versions: { latest: { version: "7" } },
+                }),
+            },
+            getOpenAIClient: () => ({
+                conversations: {
+                    create: async () => ({ id: "conversation-1" }),
+                },
+                responses: {
+                    create: async () => (async function* stream() {
+                        yield { type: "response.output_text.delta", delta: "partial" };
+                    })(),
+                },
+            }),
+        }),
+    });
+    const events = [];
+
+    await assert.rejects(playground.stream({
+        endpoint: "https://example.test/api/projects/project",
+        agentName: "support-agent",
+        agentVersion: "7",
+        message: "Hello",
+        emit: async (event) => events.push(event),
+    }), /ended before completion/);
+
+    assert.deepEqual(events, [
+        { type: "agent", agentName: "support-agent", agentVersion: "7" },
+        { type: "conversation", conversationId: "conversation-1" },
+        { type: "delta", delta: "partial" },
     ]);
 });
