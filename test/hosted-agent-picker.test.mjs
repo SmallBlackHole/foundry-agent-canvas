@@ -54,6 +54,7 @@ test("chat actions append the selected workspace agent and Foundry project", asy
         state: {
             agentName: "",
             hostedAgents: {
+                items: [{ agentName: "research-agent" }],
                 selected: "research-agent",
                 creatingNew: false,
             },
@@ -95,6 +96,40 @@ test("chat actions append the selected workspace agent and Foundry project", asy
     assert.match(source, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
 });
 
+test("chat actions omit selected-agent context when the workspace has no agents", async () => {
+    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const functionSource = source.match(
+        /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assert.ok(functionSource);
+
+    const context = {
+        state: {
+            agentName: "new-agent",
+            hostedAgents: {
+                items: [],
+                selected: "",
+                creatingNew: false,
+            },
+            selection: {
+                subscription: { name: "Development" },
+                project: {
+                    name: "Agent Project",
+                    endpoint: "https://example.test/api/projects/agent-project",
+                },
+            },
+        },
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `${functionSource}\nresult = withActionContext("create a new hosted agent");`,
+        context,
+    );
+
+    assert.doesNotMatch(context.result, /Apply this request to my selected workspace agent/);
+    assert.match(context.result, /Use my selected Foundry project "Agent Project"/);
+});
+
 test("Create Start enters new-agent state before adding action context", async () => {
     const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
@@ -112,6 +147,7 @@ test("Create Start enters new-agent state before adding action context", async (
             agentName: "",
             init: { promptText: "" },
             hostedAgents: {
+                items: [{ agentName: "research-agent" }],
                 selected: "research-agent",
                 creatingNew: false,
             },
