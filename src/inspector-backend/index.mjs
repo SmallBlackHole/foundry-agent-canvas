@@ -7,6 +7,8 @@ import { readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 
+import { listenLoopbackServer } from "../server-utils.mjs";
+
 // ─── Static file serving ──────────────────────────────────────────────────────
 
 const MIME_TYPES = {
@@ -352,8 +354,7 @@ export async function createInspectorServer({ uiDir, agentPort, onFixRequested }
         }
     });
 
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const addr = server.address();
-    const url = `http://127.0.0.1:${addr.port}/`;
+    const port = await listenLoopbackServer(server);
+    const url = `http://127.0.0.1:${port}/`;
     return { url, server };
 }
