@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveHostedAgentPortalAction } from "../src/hosted-agent.mjs";
+import { resolveHostedAgentPortalAction } from "../../src/hosted-agent/hosted-agent.mjs";
 
 const metadata = {
     endpoint: "https://example.services.ai.azure.com/api/projects/example-project",

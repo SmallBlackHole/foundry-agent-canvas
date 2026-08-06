@@ -1,12 +1,12 @@
 import { emptySelection } from "../../public/selection-state.js";
-import { clearFoundryCache } from "../foundry.mjs";
+import { clearFoundryCache } from "../foundry/foundry.mjs";
 import {
     getIdentity,
     signInCancel,
     signInStart,
     signInStatus,
     signOut,
-} from "../foundry-auth.mjs";
+} from "../foundry/foundry-auth.mjs";
 import { clearSelection, servers } from "../state.mjs";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";

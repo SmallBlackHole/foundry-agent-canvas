@@ -6,7 +6,7 @@ import { createRuntimeApiServices } from "./api/index.mjs";
 import { resolvePluginVersion } from "./plugin-update.mjs";
 import { serveFile, serveStatic, SSE_HEARTBEAT_MS } from "./server-utils.mjs";
 import { servers } from "./state.mjs";
-import { flushPendingWorkspaceState } from "./workspace-state.mjs";
+import { flushPendingWorkspaceState } from "./hosted-agent/workspace-state.mjs";
 
 function openEventStream(req, res, entry) {
     res.writeHead(200, {

@@ -8,7 +8,7 @@ import {
     isHostedAgentRegionSupported,
     listProjects,
     listSubscriptions,
-} from "../foundry.mjs";
+} from "../foundry/foundry.mjs";
 import { enrichProjectLocation, saveSelection } from "../state.mjs";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";

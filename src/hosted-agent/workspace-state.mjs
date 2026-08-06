@@ -1,6 +1,6 @@
-import { initialBuildSections } from "./build-sections.mjs";
+import { initialBuildSections } from "../build-sections.mjs";
 import { inspectHostedAgentWorkspace } from "./local-agent.mjs";
-import { pushFrame } from "./server-utils.mjs";
+import { pushFrame } from "../server-utils.mjs";
 
 export const WORKSPACE_STATE_FRAME_TYPE = "workspaceState";
 

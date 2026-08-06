@@ -9,8 +9,8 @@ import {
     isAgentTerminalRunning,
     launchAgentTerminal,
     parseShellProbe,
-} from "../src/agent-terminal.mjs";
-import { GITHUB_COPILOT_APP_AGENT } from "../src/agent-canvas-system-message.mjs";
+} from "../../src/hosted-agent/agent-terminal.mjs";
+import { GITHUB_COPILOT_APP_AGENT } from "../../src/agent-canvas-system-message.mjs";
 
 async function resetAgentTerminalState() {
     await closeAgentTerminal({

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createApiRouter } from "../src/api-router.mjs";
-import { createRuntimeApiServices } from "../src/api/index.mjs";
+import { createApiRouter } from "../../src/api-router.mjs";
+import { createRuntimeApiServices } from "../../src/api/index.mjs";
 
 function servicesWith(pluginUpdate, session = { log: async () => {} }) {
     return createRuntimeApiServices("plugin-update-test", {

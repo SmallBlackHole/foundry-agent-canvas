@@ -1,12 +1,17 @@
-import { deployments } from "../catalog.mjs";
+import { deployments } from "../foundry/catalog.mjs";
 import {
     listDeployments,
     listGuardrails,
     listSkills,
     listToolboxes,
     listToolboxTools,
-} from "../foundry.mjs";
-import { enrichDeployment, enrichGuardrail, enrichSkill, enrichToolbox } from "../mappers.mjs";
+} from "../foundry/foundry.mjs";
+import {
+    enrichDeployment,
+    enrichGuardrail,
+    enrichSkill,
+    enrichToolbox,
+} from "../foundry/mappers.mjs";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 
 function liveItems(result, mapItem) {

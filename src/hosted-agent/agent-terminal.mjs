@@ -21,8 +21,8 @@ import {
     GITHUB_COPILOT_APP_AGENT,
     MICROSOFT_FOUNDRY_CANVAS_ID,
     isGitHubCopilotAppEnvironment,
-} from "./agent-canvas-system-message.mjs";
-import { isAgentReachable } from "./inspector.mjs";
+} from "../agent-canvas-system-message.mjs";
+import { isAgentReachable } from "../inspector/inspector.mjs";
 
 const TERMINAL_CANVAS_ID = "terminal";
 const TERMINAL_INSTANCE_ID_PREFIX = "foundry-agent-run";

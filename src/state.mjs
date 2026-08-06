@@ -5,8 +5,8 @@ import {
     listSubscriptions,
     listProjects,
     resolveProjectLocation,
-} from "./foundry.mjs";
-import { getIdentity } from "./foundry-auth.mjs";
+} from "./foundry/foundry.mjs";
+import { getIdentity } from "./foundry/foundry-auth.mjs";
 import {
     emptySelection,
     normalizeSelection,

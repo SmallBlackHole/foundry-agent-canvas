@@ -6,11 +6,11 @@ import {
     createCanvasTelemetry,
     createOtelEmitter,
     createTelemetryRecorder,
-} from "../src/telemetry/index.mjs";
+} from "../../src/telemetry/index.mjs";
 import {
     TELEMETRY_CONNECTION_STRING_ENV,
     TELEMETRY_EVENTS,
-} from "../src/telemetry/schema.mjs";
+} from "../../src/telemetry/schema.mjs";
 
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 

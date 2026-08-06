@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 test("multi-agent picker is rendered between the project header and accordions", async () => {
-    const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+    const html = await readFile(new URL("../../public/index.html", import.meta.url), "utf8");
     const headerIndex = html.indexOf('<header class="project-bar">');
     const pickerIndex = html.indexOf('id="hostedAgentBar"');
     const initIndex = html.indexOf('id="initBlock"');
@@ -20,7 +20,7 @@ test("multi-agent picker is rendered between the project header and accordions",
 });
 
 test("picker visibility counts workspace agents rather than a fallback selection", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
         /function workspaceHostedAgentOptions\(\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -44,7 +44,7 @@ test("picker visibility counts workspace agents rather than a fallback selection
 });
 
 test("chat actions append the selected workspace agent and Foundry project", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
         /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -100,7 +100,7 @@ test("chat actions append the selected workspace agent and Foundry project", asy
 });
 
 test("chat actions omit selected-agent context when the workspace has no agents", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
         /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -134,7 +134,7 @@ test("chat actions omit selected-agent context when the workspace has no agents"
 });
 
 test("Create Start enters new-agent state before adding action context", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
         /function withActionContext\(prompt\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -210,7 +210,7 @@ test("Create Start enters new-agent state before adding action context", async (
 });
 
 test("New starts an explicit render state and opens only Create", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     const calls = [];
@@ -236,7 +236,7 @@ test("New starts an explicit render state and opens only Create", async () => {
 });
 
 test("selecting the current agent exits New without rewriting the selection", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/async function selectHostedAgent\(agentName\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     const calls = [];
@@ -277,7 +277,7 @@ test("selecting the current agent exits New without rewriting the selection", as
 });
 
 test("switching agents hides the previous portal action before saving the selection", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/async function selectHostedAgent\(agentName\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
 
@@ -332,7 +332,7 @@ test("switching agents hides the previous portal action before saving the select
 });
 
 test("Inspect Locally asks for an existing agent while New Agent is active", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const handler = source.match(
         /if \(e\.target\.closest\("#inspectBtn"\)\) \{[\s\S]*?\n    \}/,
     )?.[0];
@@ -346,7 +346,7 @@ test("Inspect Locally asks for an existing agent while New Agent is active", asy
 });
 
 test("session idle refresh selects the sole newly created agent", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(
         /async function refreshHostedAgentsAfterSession\(\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -396,9 +396,9 @@ test("session idle refresh selects the sole newly created agent", async () => {
 
 test("the packaged icon set includes Add without the retired agent glyph", async () => {
     const [app, css, packageSource] = await Promise.all([
-        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
-        readFile(new URL("../public/app.css", import.meta.url), "utf8"),
-        readFile(new URL("../scripts/package.mjs", import.meta.url), "utf8"),
+        readFile(new URL("../../public/app.js", import.meta.url), "utf8"),
+        readFile(new URL("../../public/app.css", import.meta.url), "utf8"),
+        readFile(new URL("../../scripts/package.mjs", import.meta.url), "utf8"),
     ]);
 
     assert.match(css, /\.fi-add\s*\{[^}]*add_16_regular\.svg[^}]*--fi-size: 16px;/);

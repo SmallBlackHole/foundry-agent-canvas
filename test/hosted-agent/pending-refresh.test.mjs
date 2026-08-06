@@ -4,7 +4,7 @@ import test from "node:test";
 import {
     createPendingRefreshManager,
     DEPLOYMENT_REFRESH,
-} from "../src/pending-refresh.mjs";
+} from "../../src/hosted-agent/pending-refresh.mjs";
 
 function aliveEntry(id = "canvas-1") {
     return { id, server: { listening: true }, sseClients: new Set() };

@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { ensureFoundrySkillForSession } from "../src/skills.mjs";
+import { ensureFoundrySkillForSession } from "../../src/skills/skills.mjs";
 
 test("the provider uses session-aware Foundry skill synchronization", async () => {
-    const extension = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const extension = await readFile(new URL("../../extension.mjs", import.meta.url), "utf8");
 
     assert.match(
         extension,
-        /import \{ ensureFoundrySkillForSession \} from "\.\/src\/skills\.mjs";/,
+        /import \{ ensureFoundrySkillForSession \} from "\.\/src\/skills\/skills\.mjs";/,
     );
     assert.match(extension, /ensureFoundrySkillForSession\(session\)/);
     assert.doesNotMatch(extension, /ensureFoundrySkill\(\)/);

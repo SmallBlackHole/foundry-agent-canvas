@@ -1,5 +1,5 @@
 // Bundles the extension entry point (extension.mjs) plus its local modules
-// (catalog.mjs, foundry.mjs, inspector-backend/index.mjs) and their npm
+// (foundry/catalog.mjs, foundry/foundry.mjs, inspector/backend.mjs) and their npm
 // dependencies (@azure/identity, ws) into a single ESM file under dist/.
 //
 // `@github/copilot-sdk/extension` is provided by the Copilot App host at

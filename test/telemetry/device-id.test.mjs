@@ -10,7 +10,7 @@ import {
     getOrCreateUnixDeviceId,
     getOrCreateWindowsDeviceId,
     resolveUnixDeviceIdRoot,
-} from "../src/telemetry/device-id.mjs";
+} from "../../src/telemetry/device-id.mjs";
 
 async function testDirectory(t) {
     const root = await mkdtemp(join(tmpdir(), "foundry-canvas-device-"));

@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 const execFileAsync = promisify(execFile);
 
 test("Inspector listener does not extend the provider lifetime", async () => {
-    const moduleUrl = pathToFileURL(resolve("src/inspector-backend/index.mjs")).href;
+    const moduleUrl = pathToFileURL(resolve("src/inspector/backend.mjs")).href;
     const script = `
         import { resolve } from "node:path";
         import { createInspectorServer } from ${JSON.stringify(moduleUrl)};

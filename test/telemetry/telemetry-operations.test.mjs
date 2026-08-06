@@ -4,12 +4,12 @@ import test from "node:test";
 import {
     createPendingOperationTracker,
     runTelemetryOperation,
-} from "../src/telemetry/operations.mjs";
+} from "../../src/telemetry/operations.mjs";
 import {
     deploymentVerificationOutcome,
     foundrySkillOperation,
     pendingDeploymentOutcome,
-} from "../src/telemetry/outcomes.mjs";
+} from "../../src/telemetry/outcomes.mjs";
 
 function recorder() {
     const events = [];

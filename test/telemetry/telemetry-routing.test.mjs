@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("the browser routes every approved primary action through the local endpoint", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf-8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf-8");
     const actions = [
         "start_agent_creation",
         "switch_model",

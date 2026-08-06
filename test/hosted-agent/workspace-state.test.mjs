@@ -5,7 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 
-import { flushPendingWorkspaceState, refreshWorkspaceState } from "../src/workspace-state.mjs";
+import {
+    flushPendingWorkspaceState,
+    refreshWorkspaceState,
+} from "../../src/hosted-agent/workspace-state.mjs";
 
 async function testDirectory(t) {
     const root = await mkdtemp(join(tmpdir(), "microsoft-foundry-state-"));
@@ -119,7 +122,7 @@ test("workspace transition is retained when every connected SSE client is stale"
 });
 
 test("SPA applies live workspace-state frames to the visible sections", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function applyWorkspaceTransition\(info\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     assert.match(source, /msg\.type === "workspaceState"\) applyWorkspaceTransition\(msg\)/);
@@ -150,7 +153,7 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
 });
 
 test("creation prompt no longer asks Copilot to invoke a canvas action", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     const context = {
@@ -169,7 +172,7 @@ test("creation prompt no longer asks Copilot to invoke a canvas action", async (
 });
 
 test("canvas-provided user request bypasses the generated inspiration prompt", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const modeSource = source.match(/function showNewAgent\(prompt = ""\) \{[\s\S]*?\n\}/)?.[0];
     const functionSource = source.match(/function setInitUserPrompt\(prompt\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(modeSource);
@@ -208,7 +211,7 @@ test("canvas-provided user request bypasses the generated inspiration prompt", a
 });
 
 test("the client sends the create prompt without a pending workspace refresh", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     assert.match(
         source,
         /state\.hostedAgents\.creatingNew = true;\s*renderHostedAgentPicker\(\);\s*renderHostedAgentDeployment\(\);\s*recordAction\("start_agent_creation", "agent"\);\s*sendToChat\(withActionContext\(text\), "", "agent"\)/,
@@ -217,7 +220,7 @@ test("the client sends the create prompt without a pending workspace refresh", a
 });
 
 test("the client opens the build sections immediately after sending", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const handler = source.match(/if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/)?.[0];
     const functionSource = source.match(/function showBuildSections\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(handler);
@@ -248,7 +251,7 @@ test("the client opens the build sections immediately after sending", async () =
 });
 
 test("canvas retains the workspace refresh action as a manual/recovery path", async () => {
-    const source = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../extension.mjs", import.meta.url), "utf8");
 
     assert.match(source, /name: "refreshWorkspaceState"/);
     assert.match(source, /description: "Refresh the canvas workspace state after the hosted-agent code is created\."/);
@@ -257,7 +260,7 @@ test("canvas retains the workspace refresh action as a manual/recovery path", as
 });
 
 test("session idle asks every open canvas to refresh hosted agents", async () => {
-    const source = await readFile(new URL("../extension.mjs", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../extension.mjs", import.meta.url), "utf8");
     const functionSource = source.match(
         /function notifyHostedAgentRefresh\(\) \{[\s\S]*?\n\}/,
     )?.[0];

@@ -9,12 +9,12 @@ import { listenLoopbackServer, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler } from "./src/routes.mjs";
 import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selection.mjs";
 import { resolvePluginVersion } from "./src/plugin-update.mjs";
-import { setInspectorSession } from "./src/inspector.mjs";
-import { closeAgentTerminal } from "./src/agent-terminal.mjs";
-import { ensureFoundrySkillForSession } from "./src/skills.mjs";
+import { setInspectorSession } from "./src/inspector/inspector.mjs";
+import { closeAgentTerminal } from "./src/hosted-agent/agent-terminal.mjs";
+import { ensureFoundrySkillForSession } from "./src/skills/skills.mjs";
 import { createWorkspaceRootResolver, initializeWorkspaceRoot } from "./src/workspace-root.mjs";
-import { refreshWorkspaceState } from "./src/workspace-state.mjs";
-import { refreshDeploymentState } from "./src/deployment-state.mjs";
+import { refreshWorkspaceState } from "./src/hosted-agent/workspace-state.mjs";
+import { refreshDeploymentState } from "./src/hosted-agent/deployment-state.mjs";
 import {
     MICROSOFT_FOUNDRY_CANVAS_ID,
     MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
@@ -23,7 +23,7 @@ import {
 import {
     createPendingRefreshManager,
     DEPLOYMENT_REFRESH,
-} from "./src/pending-refresh.mjs";
+} from "./src/hosted-agent/pending-refresh.mjs";
 import { createCanvasTelemetry, NOOP_TELEMETRY } from "./src/telemetry/index.mjs";
 import {
     createPendingOperationTracker,

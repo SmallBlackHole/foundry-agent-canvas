@@ -1,6 +1,9 @@
-import { launchAgentTerminal } from "../agent-terminal.mjs";
-import { ensureInspectorProxy, isAgentReachable } from "../inspector.mjs";
-import { listHostedAgents, resolveHostedAgentProject } from "../local-agent.mjs";
+import { launchAgentTerminal } from "../hosted-agent/agent-terminal.mjs";
+import { ensureInspectorProxy, isAgentReachable } from "../inspector/inspector.mjs";
+import {
+    listHostedAgents,
+    resolveHostedAgentProject,
+} from "../hosted-agent/local-agent.mjs";
 import { selectedHostedAgentName } from "./hosted-agent-selection.mjs";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";

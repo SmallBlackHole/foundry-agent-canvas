@@ -1,7 +1,7 @@
 import { emptySelection } from "../../public/selection-state.js";
-import { getToken } from "../foundry-auth.mjs";
-import { resolveHostedAgentPortalAction } from "../hosted-agent.mjs";
-import { resolveHostedAgentName } from "../local-agent.mjs";
+import { getToken } from "../foundry/foundry-auth.mjs";
+import { resolveHostedAgentPortalAction } from "../hosted-agent/hosted-agent.mjs";
+import { resolveHostedAgentName } from "../hosted-agent/local-agent.mjs";
 
 // Resolves the portal action for the hosted agent the deploy/test actions
 // target. Used by the API surface and by extension.mjs for deployment-state

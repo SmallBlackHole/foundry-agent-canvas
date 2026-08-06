@@ -4,11 +4,11 @@ import test from "node:test";
 import {
     parseHostedAgentRegions,
     updateHostedAgentRegions,
-} from "../scripts/sync-hosted-agent-regions.mjs";
+} from "../../scripts/sync-hosted-agent-regions.mjs";
 import {
     HOSTED_AGENT_REGIONS,
     isHostedAgentRegionSupported,
-} from "../src/foundry.mjs";
+} from "../../src/foundry/foundry.mjs";
 
 const learnExcerpt = `
 ### Region availability

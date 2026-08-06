@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { createRuntimeApiServices } from "../src/api/index.mjs";
-import { servers } from "../src/state.mjs";
+import { createRuntimeApiServices } from "../../src/api/index.mjs";
+import { servers } from "../../src/state.mjs";
 
 test("resolves the hosted agent project when Inspect locally is clicked", async () => {
     const calls = [];
@@ -58,7 +58,7 @@ test("resolves the hosted agent project when Inspect locally is clicked", async 
 });
 
 test("relaunching or closing the inspector retires the previous readiness poll", async () => {
-    const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
 
     // Without this, a stale loop's 2-minute deadline fires over a newer launch
     // and reports a timeout for an inspector that is actually fine.

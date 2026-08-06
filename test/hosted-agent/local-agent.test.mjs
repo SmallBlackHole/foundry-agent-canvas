@@ -11,7 +11,7 @@ import {
     listHostedAgents,
     resolveHostedAgentName,
     resolveHostedAgentProject,
-} from "../src/local-agent.mjs";
+} from "../../src/hosted-agent/local-agent.mjs";
 
 async function testWorkspace(t) {
     const root = await mkdtemp(join(tmpdir(), "microsoft-foundry-"));

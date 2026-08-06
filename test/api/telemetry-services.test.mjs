@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCanvasServices } from "../src/api/canvas-services.mjs";
-import { createHostedAgentServices } from "../src/api/hosted-agent-services.mjs";
-import { createInspectorServices } from "../src/api/inspector-services.mjs";
+import { createCanvasServices } from "../../src/api/canvas-services.mjs";
+import { createHostedAgentServices } from "../../src/api/hosted-agent-services.mjs";
+import { createInspectorServices } from "../../src/api/inspector-services.mjs";
 
 function operationRecorder() {
     const events = [];

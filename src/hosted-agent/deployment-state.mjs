@@ -1,4 +1,4 @@
-import { pushFrame } from "./server-utils.mjs";
+import { pushFrame } from "../server-utils.mjs";
 
 export async function refreshDeploymentState(entry, inspectDeployment, { push = pushFrame } = {}) {
     const deployment = await inspectDeployment();

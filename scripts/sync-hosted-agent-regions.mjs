@@ -6,7 +6,7 @@ export const HOSTED_AGENT_REGIONS_SOURCE =
     "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/"
     + "articles/foundry/agents/concepts/hosted-agents.md";
 
-const TARGET = new URL("../src/foundry.mjs", import.meta.url);
+const TARGET = new URL("../src/foundry/foundry.mjs", import.meta.url);
 const START_MARKER = "// BEGIN HOSTED_AGENT_REGIONS";
 const END_MARKER = "// END HOSTED_AGENT_REGIONS";
 

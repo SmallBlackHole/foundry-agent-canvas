@@ -1,5 +1,8 @@
 import { initialBuildSections } from "../build-sections.mjs";
-import { discoverHostedAgentWorkspace, listHostedAgents } from "../local-agent.mjs";
+import {
+    discoverHostedAgentWorkspace,
+    listHostedAgents,
+} from "../hosted-agent/local-agent.mjs";
 import {
     agentSummaries,
     selectedHostedAgentName,

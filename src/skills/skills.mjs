@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { installSkillFromGitHub } from "./skill-install.mjs";
-import { compareVersions } from "./version-compare.mjs";
+import { compareVersions } from "../version-compare.mjs";
 
 const USER_HOME = homedir();
 const SKILLS_SOURCE = "microsoft/azure-skills";

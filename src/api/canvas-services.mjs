@@ -1,4 +1,4 @@
-import { DEPLOY_PROMPT } from "../catalog.mjs";
+import { DEPLOY_PROMPT } from "../foundry/catalog.mjs";
 import { checkPluginUpdate } from "../plugin-update.mjs";
 import { bootstrapInstance, defaultState } from "../state.mjs";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";

@@ -18,10 +18,10 @@ import {
     selectToolboxPrompt,
     selectSkillPrompt,
     selectGuardrailPrompt,
-} from "../src/catalog.mjs";
+} from "../src/foundry/catalog.mjs";
 import { ApiError, createApiRouter } from "../src/api-router.mjs";
 import { initialBuildSections } from "../src/build-sections.mjs";
-import { inspectHostedAgentWorkspace } from "../src/local-agent.mjs";
+import { inspectHostedAgentWorkspace } from "../src/hosted-agent/local-agent.mjs";
 import { resolvePluginVersion } from "../src/plugin-update.mjs";
 import {
     emptySelection,

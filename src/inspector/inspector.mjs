@@ -1,4 +1,4 @@
-import { createInspectorServer } from "./inspector-backend/index.mjs";
+import { createInspectorServer } from "./backend.mjs";
 
 export const AGENT_PORT = 8088;
 let inspectorProxyUrl = null;

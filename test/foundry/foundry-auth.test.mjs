@@ -5,7 +5,7 @@ import {
     createFoundryAuth,
     FOUNDRY_SCOPE,
     MANAGEMENT_SCOPE,
-} from "../src/foundry-auth.mjs";
+} from "../../src/foundry/foundry-auth.mjs";
 
 function jwt(payload) {
     return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
