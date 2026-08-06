@@ -1,6 +1,6 @@
-// Bundles the extension entry point (extension.mjs) plus its local modules
-// (foundry/catalog.mjs, foundry/foundry.mjs, inspector/backend.mjs) and their npm
-// dependencies (@azure/identity, ws) into a single ESM file under dist/.
+// Builds the two runtime entrypoints:
+// - extension.mjs and its Node dependencies -> dist/extension.mjs
+// - public/app.js and its browser modules -> dist/public/app.js
 //
 // `@github/copilot-sdk/extension` is provided by the Copilot App host at
 // runtime, not an npm package we ship, so it must stay external. Node
@@ -9,11 +9,21 @@
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
+const PUBLIC_DIR = join(ROOT, "public");
+const CLIENT_DIST_DIR = join(DIST_DIR, "public");
 const MINIFY = process.argv.includes("--minify");
+const compatibilityClientEntries = [
+    join(PUBLIC_DIR, "selection-state.js"),
+    join(PUBLIC_DIR, "issue-report.js"),
+    ...readdirSync(join(PUBLIC_DIR, "app"))
+        .filter((name) => name.endsWith(".js"))
+        .sort()
+        .map((name) => join(PUBLIC_DIR, "app", name)),
+];
 const telemetryConnectionString = String(
     process.env.FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING || "",
 ).trim();
@@ -22,6 +32,8 @@ const telemetryConnectionStringBase64 = telemetryConnectionString
     : "";
 
 mkdirSync(DIST_DIR, { recursive: true });
+rmSync(CLIENT_DIST_DIR, { recursive: true, force: true });
+mkdirSync(CLIENT_DIST_DIR, { recursive: true });
 
 await build({
     entryPoints: [join(ROOT, "extension.mjs")],
@@ -50,3 +62,34 @@ await build({
 });
 
 console.log(`Bundled${MINIFY ? " and minified" : ""} extension.mjs -> ${join(DIST_DIR, "extension.mjs")}`);
+
+await Promise.all([
+    build({
+        entryPoints: [join(PUBLIC_DIR, "app.js")],
+        outfile: join(CLIENT_DIST_DIR, "app.js"),
+        bundle: true,
+        platform: "browser",
+        format: "esm",
+        target: "es2022",
+        minify: MINIFY,
+        logLevel: "info",
+    }),
+    // Retain minified standalone modules for restored canvases that may still
+    // request the previous modular graph while a host-managed update settles.
+    build({
+        entryPoints: compatibilityClientEntries,
+        outbase: PUBLIC_DIR,
+        outdir: CLIENT_DIST_DIR,
+        bundle: false,
+        platform: "browser",
+        format: "esm",
+        target: "es2022",
+        minify: MINIFY,
+        logLevel: "info",
+    }),
+]);
+
+console.log(
+    `Bundled${MINIFY ? " and minified" : ""} public/app.js -> `
+    + join(CLIENT_DIST_DIR, "app.js"),
+);

@@ -2,8 +2,9 @@
 // a trimmed package.json) under dist/pkg/ and zips it to
 // dist/microsoft-foundry.zip for GitHub Releases.
 //
-// Static assets (public/, inspector-ui/) are copied as-is; they are consumed
-// at runtime via readFileSync/serve-from-disk, not bundled by esbuild.
+// Static HTML/CSS/assets are copied as-is. Browser JavaScript is replaced with
+// the built output under dist/public/: one bundled app.js plus minified
+// compatibility modules for restored canvases.
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -12,6 +13,7 @@ import { execFileSync } from "node:child_process";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
+const BUILT_PUBLIC_DIR = join(DIST_DIR, "public");
 const PKG_DIR = join(DIST_DIR, "pkg");
 const ZIP_PATH = join(DIST_DIR, "microsoft-foundry.zip");
 const FLUENT_ICONS = [
@@ -54,6 +56,12 @@ mkdirSync(PKG_DIR, { recursive: true });
 
 cpSync(join(DIST_DIR, "extension.mjs"), join(PKG_DIR, "extension.mjs"));
 cpSync(join(ROOT, "public"), join(PKG_DIR, "public"), { recursive: true });
+const packagedPublicDir = join(PKG_DIR, "public");
+rmSync(join(packagedPublicDir, "app"), { recursive: true, force: true });
+rmSync(join(packagedPublicDir, "app.js"), { force: true });
+rmSync(join(packagedPublicDir, "selection-state.js"), { force: true });
+rmSync(join(packagedPublicDir, "issue-report.js"), { force: true });
+cpSync(BUILT_PUBLIC_DIR, packagedPublicDir, { recursive: true, force: true });
 cpSync(join(ROOT, "inspector-ui"), join(PKG_DIR, "inspector-ui"), { recursive: true });
 const fluentSrc = join(ROOT, "node_modules", "@fluentui", "svg-icons", "icons");
 const fluentDest = join(PKG_DIR, "public", "fluent-icons");
