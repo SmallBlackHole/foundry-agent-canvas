@@ -197,13 +197,16 @@ test("caches a successful check until the ttl expires or a refresh is forced", a
 
 // ------------------------------------------------------------------ client UI
 async function clientSource() {
-    return await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    return await readFile(
+        new URL("../public/app/plugin-update.js", import.meta.url),
+        "utf8",
+    );
 }
 
 function clientFunction(source, name) {
     const pattern = new RegExp(`(async )?function ${name}\\([\\s\\S]*?\\n\\}`);
     const extracted = source.match(pattern)?.[0];
-    assert.ok(extracted, `expected ${name} in public/app.js`);
+    assert.ok(extracted, `expected ${name} in public/app/plugin-update.js`);
     return extracted;
 }
 

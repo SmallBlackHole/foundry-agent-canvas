@@ -50,13 +50,13 @@ test("canvas input schema declares the optional idea used to prefill a clear tas
     assert.match(extensionSource, /idea: \{\s*type: "string"/);
     assert.match(extensionSource, /Exact original user prompt when it describes what the agent will do or produce/);
     const initSource = appSource.slice(appSource.indexOf("async function init()"));
-    const defaultsIndex = initSource.indexOf("applyInitDefaults(pi);");
+    const defaultsIndex = initSource.indexOf("applyInitDefaults(projectInit);");
     const modeIndex = initSource.indexOf(
         "if (initialCreatePrompt) showNewAgent(initialCreatePrompt);",
     );
     const fallbackRenderIndex = initSource.indexOf("else render();");
     assert.match(initSource, /let initialCreatePrompt = "";/);
-    assert.match(initSource, /initialCreatePrompt = s\.initPrompt;/);
+    assert.match(initSource, /initialCreatePrompt = initialState\.initPrompt;/);
     assert.ok(defaultsIndex >= 0);
     assert.ok(defaultsIndex < modeIndex);
     assert.ok(modeIndex < fallbackRenderIndex);

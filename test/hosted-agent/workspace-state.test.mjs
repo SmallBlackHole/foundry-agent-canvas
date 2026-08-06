@@ -125,7 +125,10 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
     const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
     const functionSource = source.match(/function applyWorkspaceTransition\(info\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
-    assert.match(source, /msg\.type === "workspaceState"\) applyWorkspaceTransition\(msg\)/);
+    assert.match(
+        source,
+        /message\.type === "workspaceState"[\s\S]*?applyWorkspaceTransition\(message\)/,
+    );
     const calls = [];
     const context = {
         info: {
@@ -153,7 +156,10 @@ test("SPA applies live workspace-state frames to the visible sections", async ()
 });
 
 test("creation prompt no longer asks Copilot to invoke a canvas action", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(
+        new URL("../../public/app/init-agent.js", import.meta.url),
+        "utf8",
+    );
     const functionSource = source.match(/function initPromptText\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(functionSource);
     const context = {
@@ -220,9 +226,19 @@ test("the client sends the create prompt without a pending workspace refresh", a
 });
 
 test("the client opens the build sections immediately after sending", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
-    const handler = source.match(/if \(e\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/)?.[0];
-    const functionSource = source.match(/function showBuildSections\(\) \{[\s\S]*?\n\}/)?.[0];
+    const [source, initSource] = await Promise.all([
+        readFile(new URL("../../public/app.js", import.meta.url), "utf8"),
+        readFile(
+            new URL("../../public/app/init-agent.js", import.meta.url),
+            "utf8",
+        ),
+    ]);
+    const handler = source.match(
+        /if \(event\.target\.closest\("#initStart"\)\) \{[\s\S]*?\n    \}/,
+    )?.[0];
+    const functionSource = initSource.match(
+        /function showBuildSections\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
     assert.ok(handler);
     assert.ok(functionSource);
     assert.match(

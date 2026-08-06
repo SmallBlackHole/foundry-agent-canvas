@@ -8,13 +8,17 @@ import {
     MICROSOFT_FOUNDRY_CANVAS_SYSTEM_MESSAGE,
     isGitHubCopilotAppEnvironment,
 } from "../src/agent-canvas-system-message.mjs";
+import {
+    readAllClientSource,
+    readClientModule,
+} from "../test-support/client-source.mjs";
 
 test("extension branding uses Microsoft Foundry", async () => {
     const files = await Promise.all([
         readFile(new URL("../extension.mjs", import.meta.url), "utf8"),
         readFile(new URL("../src/agent-canvas-system-message.mjs", import.meta.url), "utf8"),
         readFile(new URL("../public/index.html", import.meta.url), "utf8"),
-        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+        readAllClientSource(),
     ]);
     const copy = files.join("\n");
 
@@ -31,7 +35,7 @@ test("canvas tab is marked as preview", async () => {
 });
 
 test("toolbox and skill links use the Foundry tools tabs", async () => {
-    const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const app = await readClientModule("app.js");
 
     assert.match(app, /openPortalPage\("build\/tools\?tab=toolboxes"\)/);
     assert.match(app, /openPortalPage\("build\/tools\?tab=skills"\)/);
@@ -107,7 +111,7 @@ test("starter options can wrap without clipping their labels", async () => {
 test("the plugin update bar is informational and directs updates outside the live provider", async () => {
     const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
     const css = await readFile(new URL("../public/app.css", import.meta.url), "utf8");
-    const app = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+    const app = await readClientModule("app/plugin-update.js");
     const packageScript = await readFile(new URL("../scripts/package.mjs", import.meta.url), "utf8");
 
     assert.match(html, /<div class="update-bar" id="updateBar" role="status" hidden>/);
@@ -138,7 +142,7 @@ test("project header links to the Microsoft Foundry issue form", async () => {
         readFile(new URL("../public/index.html", import.meta.url), "utf8"),
         readFile(new URL("../public/app.css", import.meta.url), "utf8"),
         readFile(new URL("../scripts/package.mjs", import.meta.url), "utf8"),
-        readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+        readClientModule("app.js"),
         readFile(new URL("../src/routes.mjs", import.meta.url), "utf8"),
     ]);
 

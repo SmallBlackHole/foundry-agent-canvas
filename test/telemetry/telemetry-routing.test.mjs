@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { readAllClientSource } from "../../test-support/client-source.mjs";
+
 test("the browser routes every approved primary action through the local endpoint", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf-8");
+    const source = await readAllClientSource();
     const actions = [
         "start_agent_creation",
         "switch_model",

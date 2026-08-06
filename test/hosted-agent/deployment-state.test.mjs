@@ -5,6 +5,11 @@ import vm from "node:vm";
 
 import { DEPLOY_PROMPT } from "../../src/foundry/catalog.mjs";
 import { refreshDeploymentState } from "../../src/hosted-agent/deployment-state.mjs";
+import {
+    hostedAgentDeploymentDescription,
+    hostedAgentDeploymentFromResult,
+} from "../../public/app/hosted-agents.js";
+import { readAllClientSource } from "../../test-support/client-source.mjs";
 
 test("deployment refresh action emits the verified live result", async () => {
     const frames = [];
@@ -44,7 +49,7 @@ test("deploy prompt no longer asks Copilot to invoke a canvas action", async () 
     // The client tags the deploy prompt so the extension can auto-refresh.
     assert.match(
         appSource,
-        /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment", "agent"\)/,
+        /sendToChat\(\s*withActionContext\(state\.deployPrompt\),\s*"deployment",\s*"agent",?\s*\)/,
     );
     // The action is retained as a manual/recovery path alongside the idle-driven
     // manager (which also uses the same refresh function).
@@ -57,7 +62,7 @@ test("deploy prompt no longer asks Copilot to invoke a canvas action", async () 
 });
 
 test("SPA no longer polls deployment state on window focus or a TTL", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readAllClientSource();
     assert.doesNotMatch(source, /HOSTED_AGENT_REFRESH_TTL_MS/);
     assert.doesNotMatch(source, /hostedAgentDeploymentCheckedAt/);
     assert.doesNotMatch(source, /addEventListener\(\s*["']focus["']/);
@@ -70,7 +75,7 @@ test("SPA no longer polls deployment state on window focus or a TTL", async () =
 });
 
 test("SPA checks deployment only on open, project change, and bootstrap paths", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readAllClientSource();
     // Initial canvas load (init) resolves region support before the deployment check.
     assert.match(source, /await loadRegionSupport\(\);[\s\S]*?await loadHostedAgentDeployment\(\);/);
     // Selecting a project re-runs the one-shot check.
@@ -83,38 +88,47 @@ test("SPA checks deployment only on open, project change, and bootstrap paths", 
 });
 
 test("deploy click resets the deployment state so the playground link is hidden", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
-    const handler = source.match(/if \(e\.target\.closest\("#deployBtn"\)\) \{[\s\S]*?\n    \}/)?.[0];
+    const [appSource, hostedSource] = await Promise.all([
+        readFile(new URL("../../public/app.js", import.meta.url), "utf8"),
+        readFile(
+            new URL("../../public/app/hosted-agents.js", import.meta.url),
+            "utf8",
+        ),
+    ]);
+    const handler = appSource.match(
+        /if \(event\.target\.closest\("#deployBtn"\)\) \{[\s\S]*?\n    \}/,
+    )?.[0];
     assert.ok(handler);
     assert.match(handler, /resetHostedAgentDeployment\(\);/);
     // resetHostedAgentDeployment clears state and re-renders (hiding the link).
-    const reset = source.match(/function resetHostedAgentDeployment\(\) \{[\s\S]*?\n\}/)?.[0];
+    const reset = hostedSource.match(
+        /function resetHostedAgentDeployment\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
     assert.ok(reset);
     assert.match(reset, /emptyHostedAgentDeployment\(\)/);
     assert.match(reset, /renderHostedAgentDeployment\(\)/);
 });
 
 test("SPA maps deployment frames to the Foundry Portal state", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
-    const functionSource = source.match(/function hostedAgentDeploymentFromResult\(result\) \{[\s\S]*?\n\}/)?.[0];
-    const descriptionSource = source.match(/function hostedAgentDeploymentDescription\(deployment\) \{[\s\S]*?\n\}/)?.[0];
-    assert.ok(functionSource);
-    assert.ok(descriptionSource);
-    assert.match(source, /msg\.type === "deploymentState" && msg\.deployment/);
-    const context = {
-        deployment: {
-            ok: true,
-            deployed: true,
-            available: true,
-            portalUrl: "https://ai.azure.com/example",
-            agentName: "example-agent",
-            version: "4",
-        },
+    const appSource = await readFile(
+        new URL("../../public/app.js", import.meta.url),
+        "utf8",
+    );
+    assert.match(
+        appSource,
+        /message\.type === "deploymentState"[\s\S]*?applyHostedAgentDeploymentFrame\(message\.deployment\)/,
+    );
+    const deployment = {
+        ok: true,
+        deployed: true,
+        available: true,
+        portalUrl: "https://ai.azure.com/example",
+        agentName: "example-agent",
+        version: "4",
     };
 
-    vm.runInNewContext(`${functionSource}\nresult = hostedAgentDeploymentFromResult(deployment);`, context);
-
-    assert.deepEqual(JSON.parse(JSON.stringify(context.result)), {
+    const result = hostedAgentDeploymentFromResult(deployment);
+    assert.deepEqual(result, {
         status: "ready",
         deployed: true,
         available: true,
@@ -123,24 +137,27 @@ test("SPA maps deployment frames to the Foundry Portal state", async () => {
         version: "4",
         reason: "",
     });
-    vm.runInNewContext(`${descriptionSource}\ndescription = hostedAgentDeploymentDescription(result);`, context);
-    assert.equal(context.description, "Deployed as example-agent, version 4.");
+    assert.equal(
+        hostedAgentDeploymentDescription(result),
+        "Deployed as example-agent, version 4.",
+    );
 
-    context.deployment = {
+    const missing = hostedAgentDeploymentFromResult({
         ok: false,
         deployed: false,
         available: false,
         reason: "not_deployed",
-    };
-    vm.runInNewContext("result = hostedAgentDeploymentFromResult(deployment);", context);
-    assert.equal(context.result.available, false);
-    assert.equal(context.result.portalUrl, "");
-    vm.runInNewContext("description = hostedAgentDeploymentDescription(result);", context);
-    assert.equal(context.description, "");
+    });
+    assert.equal(missing.available, false);
+    assert.equal(missing.portalUrl, "");
+    assert.equal(hostedAgentDeploymentDescription(missing), "");
 });
 
 test("deployment description follows the rendered Deploy fold state", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(
+        new URL("../../public/app/layout.js", import.meta.url),
+        "utf8",
+    );
     const functionSource = source.match(
         /function syncDeployDescriptionVisibility\(open = state\.folds\.deploy\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -173,7 +190,10 @@ test("deployment description follows the rendered Deploy fold state", async () =
 });
 
 test("New Agent mode suppresses the previous deployment description and portal link", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(
+        new URL("../../public/app/hosted-agents.js", import.meta.url),
+        "utf8",
+    );
     const functionSource = source.match(
         /function renderHostedAgentDeployment\(\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -263,7 +283,10 @@ test("New Agent mode suppresses the previous deployment description and portal l
 });
 
 test("a failed agent-list refresh keeps the picker instead of collapsing it", async () => {
-    const source = await readFile(new URL("../../public/app.js", import.meta.url), "utf8");
+    const source = await readFile(
+        new URL("../../public/app/hosted-agents.js", import.meta.url),
+        "utf8",
+    );
     const loadSource = source.match(/async function loadHostedAgents\(force\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(loadSource);
     // Opening the menu must reuse the cached list; only explicit refreshes refetch.
@@ -308,7 +331,7 @@ test("startup reuses project-init agents before identity and region loading", as
 
     assert.match(
         source,
-        /if \(Array\.isArray\(pi\.agents\)\) \{[\s\S]*?state\.hostedAgents\.status = "ready";/,
+        /if \(Array\.isArray\(projectInit\.agents\)\) \{[\s\S]*?state\.hostedAgents\.status = "ready";/,
     );
     const initSource = source.slice(source.indexOf("async function init()"));
     const fallbackIndex = initSource.indexOf("const hostedAgentsPromise = loadHostedAgents();");

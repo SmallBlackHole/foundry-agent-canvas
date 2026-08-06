@@ -86,6 +86,12 @@ export function createRequestHandler(
         }
         if (method === "GET" && path === "/app.css") return serveStatic(res, "app.css", publicDir);
         if (method === "GET" && path === "/app.js") return serveStatic(res, "app.js", publicDir);
+        if (method === "GET" && path.startsWith("/app/")) {
+            const name = path.slice("/app/".length);
+            if (/^[a-z0-9-]+\.js$/.test(name)) {
+                return serveStatic(res, join("app", name), publicDir);
+            }
+        }
         if (method === "GET" && path === "/selection-state.js") {
             return serveStatic(res, "selection-state.js", publicDir);
         }
