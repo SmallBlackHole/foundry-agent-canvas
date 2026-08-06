@@ -47,6 +47,10 @@ export function createRequestHandler(
         onCanvasOpen,
         waitForFoundrySkill,
         markPendingRefresh,
+        clearPendingRefresh,
+        telemetry,
+        createAgentOperations,
+        deploymentOperations,
     },
 ) {
     const pluginVersion = resolvePluginVersion(extDir);
@@ -58,7 +62,11 @@ export function createRequestHandler(
             workspaceRootFn,
             waitForFoundrySkill,
             markPendingRefresh,
+            clearPendingRefresh,
             pluginVersion,
+            telemetry,
+            createAgentOperations,
+            deploymentOperations,
         }),
         reportError: (error, request) => session.log(
             `${request.method} ${request.path} failed: ${error?.message ?? error}`,

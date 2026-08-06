@@ -229,12 +229,21 @@ test("validates prompt handoff and preserves pending refresh metadata", async ()
     }, async (base) => {
         assert.deepEqual(await json(await fetch(`${base}/api/send`, {
             method: "POST",
-            body: JSON.stringify({ prompt: "  deploy it  ", refresh: "deployment" }),
+            body: JSON.stringify({
+                prompt: "  deploy it  ",
+                refresh: "deployment",
+                resourceKind: "agent",
+                arbitraryTelemetry: "must be dropped",
+            }),
         })), {
             status: 200,
             body: { ok: true, preview: true },
         });
-        assert.deepEqual(sent, [{ prompt: "deploy it", refresh: "deployment" }]);
+        assert.deepEqual(sent, [{
+            prompt: "deploy it",
+            refresh: "deployment",
+            resourceKind: "agent",
+        }]);
 
         assert.deepEqual(await json(await fetch(`${base}/api/send`, {
             method: "POST",
@@ -243,6 +252,51 @@ test("validates prompt handoff and preserves pending refresh metadata", async ()
             status: 400,
             body: { ok: false, error: "Missing prompt" },
         });
+    });
+});
+
+test("routes only strict allowlisted action telemetry", async () => {
+    const received = [];
+    await withRouter({
+        recordTelemetryAction: ({ body }) => {
+            received.push(body);
+            return { ok: true };
+        },
+    }, async (base) => {
+        assert.deepEqual(await json(await fetch(`${base}/api/telemetry/action`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "switch_model",
+                resourceKind: "model",
+            }),
+        })), {
+            status: 200,
+            body: { ok: true },
+        });
+
+        for (const body of [
+            { action: "open_dropdown" },
+            { action: "switch_model", resourceKind: "agent" },
+            {
+                action: "switch_model",
+                resourceKind: "model",
+                agentName: "must-not-pass",
+            },
+        ]) {
+            assert.deepEqual(await json(await fetch(`${base}/api/telemetry/action`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            })), {
+                status: 400,
+                body: { ok: false, error: "Invalid telemetry action" },
+            });
+        }
+        assert.deepEqual(received, [{
+            action: "switch_model",
+            resourceKind: "model",
+        }]);
     });
 });
 

@@ -1,4 +1,8 @@
 import { sendJson } from "./server-utils.mjs";
+import {
+    isTelemetryResourceKind,
+    validateActionPayload,
+} from "./telemetry/schema.mjs";
 
 const DEFAULT_BODY_LIMIT = 1_000_000;
 
@@ -105,6 +109,7 @@ route("POST", "/api/select-hosted-agent", "selectHostedAgent", {
         body: {
             ...body,
             agentName: requiredString(body, "agentName", "agentName"),
+            created: body.created === true,
         },
     }),
 });
@@ -146,11 +151,27 @@ route("POST", "/api/send", "sendPrompt", {
     parseBody: true,
     handle: async ({ services, url, body }) => {
         const prompt = requiredString(body, "prompt", "prompt");
+        const resourceKind =
+            typeof body.resourceKind === "string" && isTelemetryResourceKind(body.resourceKind)
+                ? body.resourceKind
+                : undefined;
         const result = await services.sendPrompt({
             url,
-            body: { ...body, prompt },
+            body: {
+                prompt,
+                ...(typeof body.refresh === "string" ? { refresh: body.refresh } : {}),
+                ...(resourceKind ? { resourceKind } : {}),
+            },
         });
         return { ok: true, ...result };
+    },
+});
+route("POST", "/api/telemetry/action", "recordTelemetryAction", {
+    parseBody: true,
+    handle: ({ services, url, body }) => {
+        const action = validateActionPayload(body);
+        if (!action) throw new ApiError(400, "Invalid telemetry action");
+        return services.recordTelemetryAction({ url, body: action });
     },
 });
 route("GET", "/api/project-init", "getProjectInit");

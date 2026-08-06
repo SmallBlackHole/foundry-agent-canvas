@@ -8,6 +8,7 @@ import { servers, defaultState, applyInput } from "./src/state.mjs";
 import { listenLoopbackServer, pushFrame } from "./src/server-utils.mjs";
 import { createRequestHandler } from "./src/routes.mjs";
 import { selectedHostedAgentPortalAction } from "./src/api/hosted-agent-selection.mjs";
+import { resolvePluginVersion } from "./src/plugin-update.mjs";
 import { setInspectorSession } from "./src/inspector.mjs";
 import { closeAgentTerminal } from "./src/agent-terminal.mjs";
 import { ensureFoundrySkillForSession } from "./src/skills.mjs";
@@ -23,12 +24,26 @@ import {
     createPendingRefreshManager,
     DEPLOYMENT_REFRESH,
 } from "./src/pending-refresh.mjs";
+import { createCanvasTelemetry, NOOP_TELEMETRY } from "./src/telemetry/index.mjs";
+import {
+    createPendingOperationTracker,
+    runTelemetryOperation,
+} from "./src/telemetry/operations.mjs";
+import {
+    deploymentVerificationOutcome,
+    foundrySkillOperation,
+    pendingDeploymentOutcome,
+} from "./src/telemetry/outcomes.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(EXT_DIR, "public");
 const INSPECTOR_UI_DIR = join(EXT_DIR, "inspector-ui");
 const FOUNDRY_SKILL_PROMPT_WAIT_MS = 3_000;
 const isGitHubCopilotApp = isGitHubCopilotAppEnvironment();
+const productVersion = resolvePluginVersion(EXT_DIR);
+const telemetry = isGitHubCopilotApp
+    ? createCanvasTelemetry({ productVersion })
+    : NOOP_TELEMETRY;
 const openInstances = new Set();
 const workspaceRoot = createWorkspaceRootResolver({ extensionDir: EXT_DIR });
 let markWorkspaceRootReady;
@@ -40,6 +55,19 @@ const resolveWorkspaceRoot = async () => {
     await workspaceRootReady;
     return workspaceRoot.resolve();
 };
+
+const createAgentOperations = createPendingOperationTracker({
+    telemetry,
+    operation: "create_agent",
+    source: "session_idle",
+    resourceKind: "agent",
+});
+const deploymentOperations = createPendingOperationTracker({
+    telemetry,
+    operation: "deployment_verification",
+    source: "session_idle",
+    resourceKind: "agent",
+});
 
 function notifyHostedAgentRefresh() {
     for (const instanceId of openInstances) {
@@ -56,13 +84,30 @@ const pendingRefresh = createPendingRefreshManager({
     inspectDeployment: (entry) => selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),
     refreshDeployment: refreshDeploymentState,
     log: (message, options) => session.log(message, options),
+    onTerminal: (instanceId, kind, terminal) => {
+        if (kind !== DEPLOYMENT_REFRESH) return;
+        const outcome = pendingDeploymentOutcome(terminal);
+        deploymentOperations.finish(
+            instanceId,
+            outcome.outcome,
+            outcome.failureCode,
+        );
+    },
 });
 
 async function ensureFoundrySkillForCanvas(session) {
+    const startedAt = Date.now();
     let failure = "";
     let ready = false;
+    let result = {
+        action: "check",
+        status: "unknown",
+        changed: false,
+        ready: false,
+        reloaded: false,
+    };
     try {
-        const result = await ensureFoundrySkillForSession(session);
+        result = await ensureFoundrySkillForSession(session);
         ready = !!result.ready;
         if (!ready || (!result.ok && result.status !== "unknown")) {
             const operation = result.action === "none" ? "check" : result.action;
@@ -72,6 +117,15 @@ async function ensureFoundrySkillForCanvas(session) {
         }
     } catch (err) {
         failure = `Foundry Skills automatic setup failed: ${err?.message ?? err}`;
+        result = {
+            ...result,
+            error: "skill_sync_failed",
+        };
+    } finally {
+        telemetry.recordOperation({
+            ...foundrySkillOperation(result),
+            durationMs: Math.max(0, Date.now() - startedAt),
+        });
     }
     if (failure) {
         try {
@@ -113,6 +167,10 @@ async function startServer(instanceId, session) {
             onCanvasOpen: syncFoundrySkill,
             waitForFoundrySkill: () => waitForFoundrySkillSync(foundrySkillSync || syncFoundrySkill()),
             markPendingRefresh: (kind) => pendingRefresh.mark(instanceId, kind),
+            clearPendingRefresh: (kind) => pendingRefresh.clear(instanceId, kind),
+            telemetry,
+            createAgentOperations,
+            deploymentOperations,
         })
     );
     const port = await listenLoopbackServer(server);
@@ -215,9 +273,14 @@ const session = await joinSession({
                     handler: async (ctx) => {
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
-                        return refreshDeploymentState(entry, () =>
+                        return runTelemetryOperation(telemetry, {
+                            operation: "deployment_verification",
+                            source: "canvas_action",
+                            resourceKind: "agent",
+                            classify: deploymentVerificationOutcome,
+                        }, () => refreshDeploymentState(entry, () =>
                             selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),
-                        );
+                        ));
                     },
                 },
             ],
@@ -233,12 +296,16 @@ const session = await joinSession({
                 }
                 openInstances.add(ctx.instanceId);
                 applyInput(entry.state, ctx.input);
+                telemetry.recordActive();
                 return { title: "Microsoft Foundry (Preview)", url: entry.url, status: "Build" };
             },
             onClose: async (ctx) => {
                 // Keep the unreferenced loopback server available for cached-URL
                 // reloads without allowing it to extend the provider lifetime.
                 openInstances.delete(ctx.instanceId);
+                createAgentOperations.clear(ctx.instanceId);
+                deploymentOperations.clear(ctx.instanceId);
+                pendingRefresh.clear(ctx.instanceId);
                 // The agent terminal is shared across builder instances, so only
                 // close it (stopping the local azd agent and freeing its port)
                 // once the last builder canvas is gone.
@@ -256,6 +323,9 @@ if (isGitHubCopilotApp) {
     // for workspaceRootReady when it needs the resolved workspace.
     session.on("session.idle", () => {
         notifyHostedAgentRefresh();
+        for (const instanceId of openInstances) {
+            createAgentOperations.tick(instanceId);
+        }
         pendingRefresh.handleSessionIdle().catch(async (err) => {
             try {
                 await session.log(`session.idle refresh handler failed: ${err?.message ?? err}`, { level: "error" });

@@ -49,6 +49,7 @@ export function createPendingRefreshManager({
     inspectDeployment,
     refreshDeployment,
     log = async () => {},
+    onTerminal = async () => {},
     maxAttempts = DEFAULT_MAX_ATTEMPTS,
 } = {}) {
     // instanceId -> Map<kind, { attempts, running }>
@@ -98,10 +99,19 @@ export function createPendingRefreshManager({
             // live deployment a second time.
             await refreshDeployment(entry, async () => deployment);
             clear(instanceId, DEPLOYMENT_REFRESH);
+            await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
+                outcome: "succeeded",
+                result: deployment,
+            });
             return;
         }
         if (isDeploymentDefinitiveFailure(deployment)) {
             clear(instanceId, DEPLOYMENT_REFRESH);
+            await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
+                outcome: "failed",
+                failureCode: deployment.reason,
+                result: deployment,
+            });
             await safeLog(
                 `Automatic deployment refresh for canvas ${instanceId} stopped: deployment reported "${deployment.reason}".`,
                 { level: "info" },
@@ -110,6 +120,11 @@ export function createPendingRefreshManager({
         }
         if (op.attempts >= maxAttempts) {
             clear(instanceId, DEPLOYMENT_REFRESH);
+            await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
+                outcome: "timed_out",
+                failureCode: "timeout",
+                result: deployment,
+            });
             await safeLog(
                 `Automatic deployment refresh for canvas ${instanceId} gave up after ${op.attempts} idle checks; deployment did not complete.`,
                 { level: "warning" },
@@ -130,6 +145,12 @@ export function createPendingRefreshManager({
             // A transient failure still counts against the budget so a broken
             // dependency can't keep us polling forever.
             if (op.attempts >= maxAttempts) clear(instanceId, kind);
+            if (op.attempts >= maxAttempts) {
+                await onTerminal(instanceId, kind, {
+                    outcome: "timed_out",
+                    failureCode: "timeout",
+                });
+            }
         } finally {
             op.running = false;
         }

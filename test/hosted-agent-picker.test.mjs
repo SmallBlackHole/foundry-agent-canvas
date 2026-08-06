@@ -89,11 +89,14 @@ test("chat actions append the selected workspace agent and Foundry project", asy
     assert.doesNotMatch(context.result, /research-agent/);
     assert.match(context.result, /Use my selected Foundry project "Agent Project"/);
 
-    assert.match(source, /sendToChat\(withActionContext\(m\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(t\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(g\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(s\.prompt\)\)/);
-    assert.match(source, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
+    assert.match(source, /sendToChat\(withActionContext\(m\.prompt\), "", "model"\)/);
+    assert.match(source, /sendToChat\(withActionContext\(t\.prompt\), "", "toolbox"\)/);
+    assert.match(source, /sendToChat\(withActionContext\(g\.prompt\), "", "guardrail"\)/);
+    assert.match(source, /sendToChat\(withActionContext\(s\.prompt\), "", "project_skill"\)/);
+    assert.match(
+        source,
+        /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment", "agent"\)/,
+    );
 });
 
 test("chat actions omit selected-agent context when the workspace has no agents", async () => {
@@ -180,6 +183,7 @@ test("Create Start enters new-agent state before adding action context", async (
         renderHostedAgentDeployment() {
             calls.push("deployment");
         },
+        recordAction() {},
         sendToChat(prompt) {
             calls.push(["send", prompt]);
         },
@@ -335,7 +339,10 @@ test("Inspect Locally asks for an existing agent while New Agent is active", asy
     assert.ok(handler);
     assert.match(handler, /if \(state\.hostedAgents\.creatingNew\)/);
     assert.match(handler, /toast\("Select an existing agent to inspect locally\."\)/);
-    assert.match(handler, /else \{\s*launchInspector\(e\.target\.closest\("#inspectBtn"\)\);/);
+    assert.match(
+        handler,
+        /else \{\s*recordAction\("inspect_locally", "agent"\);\s*launchInspector\(e\.target\.closest\("#inspectBtn"\)\);/,
+    );
 });
 
 test("session idle refresh selects the sole newly created agent", async () => {
@@ -368,8 +375,8 @@ test("session idle refresh selects the sole newly created agent", async () => {
                 { agentName: "new-agent" },
             ];
         },
-        async selectHostedAgent(agentName) {
-            selected.push(agentName);
+        async selectHostedAgent(agentName, options) {
+            selected.push({ agentName, options });
             state.hostedAgents.creatingNew = false;
         },
     };
@@ -380,7 +387,10 @@ test("session idle refresh selects the sole newly created agent", async () => {
         context,
     );
 
-    assert.deepEqual(selected, ["new-agent"]);
+    assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{
+        agentName: "new-agent",
+        options: { created: true },
+    }]);
     assert.equal(state.hostedAgents.creatingNew, false);
 });
 

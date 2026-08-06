@@ -14,6 +14,12 @@ import { mkdirSync } from "node:fs";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
 const MINIFY = process.argv.includes("--minify");
+const telemetryConnectionString = String(
+    process.env.FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING || "",
+).trim();
+const telemetryConnectionStringBase64 = telemetryConnectionString
+    ? Buffer.from(telemetryConnectionString, "utf-8").toString("base64")
+    : "";
 
 mkdirSync(DIST_DIR, { recursive: true });
 
@@ -26,6 +32,11 @@ await build({
     target: "node20.19",
     minify: MINIFY,
     external: ["@github/copilot-sdk/extension"],
+    define: {
+        __FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING_BASE64__: JSON.stringify(
+            telemetryConnectionStringBase64,
+        ),
+    },
     // esbuild's ESM output wraps bundled CommonJS deps (e.g. ws) in a
     // __require() shim that delegates to a global `require`. In a real ESM
     // module there is no global `require`, so calls like __require("events")

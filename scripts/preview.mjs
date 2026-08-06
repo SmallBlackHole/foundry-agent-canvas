@@ -559,6 +559,9 @@ function createPreviewApiServices() {
             console.log("\n[preview] prompt-to-chat stub\n" + body.prompt + "\n");
             return { preview: true };
         },
+        recordTelemetryAction() {
+            return { ok: true };
+        },
         async getProjectInit({ url }) {
             return {
                 ...(await projectInit(url)),

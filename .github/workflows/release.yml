@@ -26,7 +26,14 @@ jobs:
         run: npm ci
 
       - name: Build and package extension
-        run: npm run package
+        env:
+          FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING }}
+        run: |
+          if [ -z "$FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING" ]; then
+            echo "::error::FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING is not configured"
+            exit 1
+          fi
+          npm run package
 
       - name: Publish nightly release
         env:

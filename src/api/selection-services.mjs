@@ -10,6 +10,8 @@ import {
     listSubscriptions,
 } from "../foundry.mjs";
 import { enrichProjectLocation, saveSelection } from "../state.mjs";
+import { normalizeFailureCode } from "../telemetry/schema.mjs";
+import { runTelemetryOperation } from "../telemetry/operations.mjs";
 
 function listResult(result) {
     return result.ok
@@ -17,7 +19,13 @@ function listResult(result) {
         : { ok: false, reason: result.reason, items: [] };
 }
 
-export function createSelectionServices({ ctx, session }) {
+export function createSelectionServices({
+    ctx,
+    session,
+    telemetry,
+    saveSelection: persistSelection = saveSelection,
+    now = Date.now,
+}) {
     const { getEntry, getSelection } = ctx;
     const reportedRegionWarnings = new Set();
 
@@ -43,45 +51,77 @@ export function createSelectionServices({ ctx, session }) {
 
     return {
         async listSubscriptions() {
-            return listResult(await listSubscriptions());
+            return runTelemetryOperation(telemetry, {
+                operation: "load_resources",
+                source: "ui",
+                resourceKind: "subscription",
+                now,
+            }, async () => listResult(await listSubscriptions()));
         },
         async listProjects({ url }) {
             const subscriptionId = url.searchParams.get("sub")
                 || getSelection().subscription.id;
-            return listResult(await listProjects(subscriptionId));
+            return runTelemetryOperation(telemetry, {
+                operation: "load_resources",
+                source: "ui",
+                resourceKind: "project",
+                now,
+            }, async () => listResult(await listProjects(subscriptionId)));
         },
         async selectSubscription({ body }) {
-            const selection = selectSubscription(getSelection(), {
-                id: body.subscriptionId,
-                name: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
+            let persisted = false;
+            return runTelemetryOperation(telemetry, {
+                operation: "select_subscription",
+                source: "ui",
+                resourceKind: "subscription",
+                now,
+                classify: () => persisted
+                    ? { outcome: "succeeded" }
+                    : { outcome: "failed", failureCode: "persistence_failed" },
+            }, async () => {
+                const selection = selectSubscription(getSelection(), {
+                    id: body.subscriptionId,
+                    name: typeof body.subscriptionName === "string" ? body.subscriptionName : "",
+                });
+                const entry = getEntry();
+                if (entry) entry.state.selection = selection;
+                persisted = persistSelection(selection) !== false;
+                return { ok: true, selection };
             });
-            const entry = getEntry();
-            if (entry) entry.state.selection = selection;
-            saveSelection(selection);
-            return { ok: true, selection };
         },
         async selectProject({ body }) {
-            const current = getSelection();
-            const subscription = {
-                id: typeof body.subscriptionId === "string"
-                    ? body.subscriptionId.trim()
-                    : current.subscription.id,
-                name: typeof body.subscriptionName === "string"
-                    ? body.subscriptionName.trim()
-                    : current.subscription.name,
-            };
-            const selection = selectProject(current, {
-                subscriptionId: subscription.id,
-                name: typeof body.name === "string" ? body.name : "",
-                endpoint: body.endpoint,
-                location: typeof body.location === "string" ? body.location : "",
-                resourceGroup: typeof body.resourceGroup === "string" ? body.resourceGroup : "",
-                accountName: typeof body.accountName === "string" ? body.accountName : "",
-            }, subscription);
-            const entry = getEntry();
-            if (entry) entry.state.selection = selection;
-            saveSelection(selection);
-            return { ok: true, selection };
+            let persisted = false;
+            return runTelemetryOperation(telemetry, {
+                operation: "select_project",
+                source: "ui",
+                resourceKind: "project",
+                now,
+                classify: () => persisted
+                    ? { outcome: "succeeded" }
+                    : { outcome: "failed", failureCode: "persistence_failed" },
+            }, async () => {
+                const current = getSelection();
+                const subscription = {
+                    id: typeof body.subscriptionId === "string"
+                        ? body.subscriptionId.trim()
+                        : current.subscription.id,
+                    name: typeof body.subscriptionName === "string"
+                        ? body.subscriptionName.trim()
+                        : current.subscription.name,
+                };
+                const selection = selectProject(current, {
+                    subscriptionId: subscription.id,
+                    name: typeof body.name === "string" ? body.name : "",
+                    endpoint: body.endpoint,
+                    location: typeof body.location === "string" ? body.location : "",
+                    resourceGroup: typeof body.resourceGroup === "string" ? body.resourceGroup : "",
+                    accountName: typeof body.accountName === "string" ? body.accountName : "",
+                }, subscription);
+                const entry = getEntry();
+                if (entry) entry.state.selection = selection;
+                persisted = persistSelection(selection) !== false;
+                return { ok: true, selection };
+            });
         },
         async getRegionSupport() {
             const entry = getEntry();

@@ -42,7 +42,10 @@ test("deploy prompt no longer asks Copilot to invoke a canvas action", async () 
     assert.doesNotMatch(DEPLOY_PROMPT, /After deployment succeeds/);
     assert.doesNotMatch(DEPLOY_PROMPT, /refreshDeploymentState/);
     // The client tags the deploy prompt so the extension can auto-refresh.
-    assert.match(appSource, /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment"\)/);
+    assert.match(
+        appSource,
+        /sendToChat\(withActionContext\(state\.deployPrompt\), "deployment", "agent"\)/,
+    );
     // The action is retained as a manual/recovery path alongside the idle-driven
     // manager (which also uses the same refresh function).
     assert.match(extensionSource, /name: "refreshDeploymentState"/);

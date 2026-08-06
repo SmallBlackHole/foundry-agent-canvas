@@ -34,8 +34,10 @@ export function saveSelection(sel) {
     try {
         mkdirSync(STATE_DIR, { recursive: true });
         writeFileSync(STATE_FILE, JSON.stringify(serializeSelection(sel), null, 2), "utf-8");
+        return true;
     } catch {
         /* best-effort persistence */
+        return false;
     }
 }
 

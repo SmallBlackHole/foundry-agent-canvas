@@ -12,8 +12,14 @@
         "sync:hosted-agent-regions": "node scripts/sync-hosted-agent-regions.mjs"
     },
     "dependencies": {
+        "@azure/core-rest-pipeline": "^1.24.0",
         "@azure/identity": "^4.5.0",
+        "@azure/monitor-opentelemetry-exporter": "1.0.0-beta.32",
         "@fluentui/svg-icons": "^1.1.332",
+        "@opentelemetry/api": "^1.9.1",
+        "@opentelemetry/resources": "^2.10.0",
+        "@opentelemetry/sdk-trace-base": "^2.10.0",
+        "@opentelemetry/semantic-conventions": "^1.43.0",
         "ws": "^8.21.0",
         "yaml": "^2.8.3"
     },
