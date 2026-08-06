@@ -127,7 +127,8 @@ test("pending work is bounded by the attempt budget", async () => {
 
     assert.equal(calls, 3);
     assert.equal(manager.hasPending(), false);
-    assert.ok(logs.some((l) => /gave up/.test(l.message)));
+    assert.ok(logs.some((l) =>
+        /gave up/.test(l.message) && l.options?.level === "warning"));
 });
 
 test("stale (closed) canvas instances are dropped without running a refresh", async () => {

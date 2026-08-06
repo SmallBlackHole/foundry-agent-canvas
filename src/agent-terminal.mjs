@@ -64,7 +64,8 @@ const terminalExtensionIds = new WeakMap();
 
 function logTerminal(session, msg, level = "info") {
     try {
-        session?.log?.(`[agent-terminal] ${msg}`, { level });
+        const logLevel = level === "warn" ? "warning" : level;
+        Promise.resolve(session?.log?.(`[agent-terminal] ${msg}`, { level: logLevel })).catch(() => {});
     } catch {
         /* ignore logging failures */
     }
@@ -100,7 +101,7 @@ async function ensureTerminalInstanceId(session, extensionId, uuid = randomUUID)
     logTerminal(
         session,
         `canvas instance ${conflictedId} belongs to another provider; using ${replacementId}`,
-        "warn",
+        "warning",
     );
     return replacementId;
 }
@@ -242,7 +243,7 @@ async function restoreBuilderFocus(session, builderInstanceId) {
         logTerminal(
             session,
             `could not return focus to the builder canvas: ${String(err?.message ?? err)}`,
-            "warn",
+            "warning",
         );
     }
 }
@@ -383,7 +384,7 @@ async function launchAgentTerminalOnce(
                 session,
                 `found ${project.projects.length} hosted agent projects; using `
                     + `${project.manifestPath || project.projectDir}`,
-                "warn",
+                "warning",
             );
         }
 
@@ -457,7 +458,7 @@ async function launchAgentTerminalOnce(
                 terminalShell
                     ? `detected integrated terminal shell: ${terminalShell}`
                     : "integrated terminal shell was not recognized; launching without App attribution",
-                terminalShell ? "info" : "warn",
+                terminalShell ? "info" : "warning",
             );
         }
         const command = buildAgentRunCommand(project.projectDir, platform, {
@@ -550,6 +551,6 @@ export async function closeAgentTerminal(session) {
         terminalInstanceId = "";
         logTerminal(session, "closed agent terminal");
     } catch (err) {
-        logTerminal(session, `close agent terminal failed: ${String(err?.message ?? err)}`, "warn");
+        logTerminal(session, `close agent terminal failed: ${String(err?.message ?? err)}`, "warning");
     }
 }

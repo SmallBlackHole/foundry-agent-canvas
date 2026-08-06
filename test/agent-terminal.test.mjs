@@ -238,7 +238,7 @@ test("mounts the terminal by focusing it, then sends the run command and restore
         assert.equal(opened[1].canvasId, "agent-builder");
         assert.equal(opened[1].instanceId, "foundry-agent-builder");
         assert.equal(opened[1].input, undefined);
-        assert.ok(logs.some(({ options }) => options?.level === "warn"));
+        assert.ok(logs.some(({ options }) => options?.level === "warning"));
 
         // Terminal is live now, so a later click re-sends in place instead of
         // stealing focus again.
@@ -315,7 +315,77 @@ test("allocates a new terminal id when the tracked id belongs to another provide
         assert.deepEqual(result, { ok: true, status: "launched" });
         assert.equal(opened.instanceId, "foundry-agent-run-replacement");
         assert.ok(logs.some(({ message, options }) =>
-            message.includes("belongs to another provider") && options?.level === "warn"));
+            message.includes("belongs to another provider") && options?.level === "warning"));
+    } finally {
+        await closeAgentTerminal(session);
+    }
+});
+
+test("logging failures cannot interrupt terminal command injection", async () => {
+    await resetAgentTerminalState();
+    let mounted = false;
+    let terminalInstanceId = "";
+    const sent = [];
+    const levels = [];
+    const session = {
+        log(_message, options) {
+            levels.push(options?.level);
+            return Promise.reject(new Error("timeline unavailable"));
+        },
+        rpc: {
+            canvas: {
+                async listOpen() {
+                    return {
+                        openCanvases: mounted
+                            ? [{ canvasId: "terminal", instanceId: terminalInstanceId }]
+                            : [],
+                    };
+                },
+                async list() {
+                    return { canvases: [] };
+                },
+                async open(params) {
+                    terminalInstanceId = params.instanceId;
+                    mounted = true;
+                },
+                action: {
+                    async invoke(params) {
+                        if (params.actionName === "send_terminal_input") {
+                            sent.push(params.input.input);
+                        }
+                    },
+                },
+                async close() {
+                    mounted = false;
+                },
+            },
+        },
+    };
+    const projectDir = resolve("workspace", "apps", "alpha");
+
+    try {
+        assert.deepEqual(
+            await launchAgentTerminal(
+                session,
+                {
+                    projectDir,
+                    projects: [
+                        { projectDir },
+                        { projectDir: resolve("workspace", "apps", "zeta") },
+                    ],
+                },
+                {
+                    agentReachable: async () => false,
+                    terminalRunning: async () => mounted,
+                    sleep: async () => {},
+                    environment: {},
+                },
+            ),
+            { ok: true, status: "launched" },
+        );
+        assert.deepEqual(sent, [buildAgentRunCommand(projectDir)]);
+        assert.ok(levels.includes("warning"));
+        assert.ok(levels.every((level) => ["info", "warning", "error"].includes(level)));
     } finally {
         await closeAgentTerminal(session);
     }

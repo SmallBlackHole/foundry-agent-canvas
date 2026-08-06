@@ -112,7 +112,7 @@ export function createPendingRefreshManager({
             clear(instanceId, DEPLOYMENT_REFRESH);
             await safeLog(
                 `Automatic deployment refresh for canvas ${instanceId} gave up after ${op.attempts} idle checks; deployment did not complete.`,
-                { level: "warn" },
+                { level: "warning" },
             );
         }
     }
