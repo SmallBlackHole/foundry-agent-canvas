@@ -161,7 +161,7 @@ export function createTelemetryRecorder({
                 .then((resolvedDeviceId) => {
                     safeEmit(TELEMETRY_EVENTS.active, {
                         ...(resolvedDeviceId
-                            ? { "machine.devdeviceid": resolvedDeviceId }
+                            ? { "ftk.canvas.devDeviceId": resolvedDeviceId }
                             : {}),
                         [PRODUCT_VERSION]: productVersion,
                         "ftk.canvas.os": os,

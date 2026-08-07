@@ -106,7 +106,7 @@ test("active, action, and operation events expose only their allowlisted schemas
     assert.deepEqual(events[2], {
         name: TELEMETRY_EVENTS.active,
         attributes: {
-            "machine.devdeviceid": "device-123",
+            "ftk.canvas.devDeviceId": "device-123",
             "ftk.canvas.productVersion": "1.2.3",
             "ftk.canvas.os": "win32",
             "ftk.canvas.arch": "x64",
