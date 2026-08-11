@@ -30,6 +30,10 @@ test("serves allowlisted client modules without exposing arbitrary paths", async
         join(publicDir, "app", "runtime.js"),
         'export const ready = true;\n',
     );
+    await writeFile(
+        join(publicDir, "telemetry-constants.js"),
+        'export const TELEMETRY_ACTION = {};\n',
+    );
 
     const handler = createRequestHandler("client-modules-test", {
         session: { log: async () => {} },
@@ -50,6 +54,21 @@ test("serves allowlisted client modules without exposing arbitrary paths", async
         /text\/javascript/,
     );
     assert.equal(moduleResponse.body, "export const ready = true;\n");
+
+    const constantsResponse = response();
+    await handler(
+        { method: "GET", url: "/telemetry-constants.js" },
+        constantsResponse,
+    );
+    assert.equal(constantsResponse.status, 200);
+    assert.match(
+        constantsResponse.headers["Content-Type"],
+        /text\/javascript/,
+    );
+    assert.equal(
+        constantsResponse.body,
+        "export const TELEMETRY_ACTION = {};\n",
+    );
 
     const nestedResponse = response();
     await handler(

@@ -8,6 +8,12 @@ import {
     signOut,
 } from "../foundry/foundry-auth.mjs";
 import { clearSelection, servers } from "../state.mjs";
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";
 
@@ -31,11 +37,11 @@ export function createAuthServices({
         if (startedAt === undefined) return;
         signInOperations.delete(sessionId);
         telemetry?.recordOperation?.({
-            operation: "sign_in",
+            operation: TELEMETRY_OPERATION.SIGN_IN,
             outcome,
             ...(failureCode ? { failureCode } : {}),
             durationMs: Math.max(0, now() - startedAt),
-            source: "ui",
+            source: TELEMETRY_SOURCE.UI,
         });
     }
 
@@ -51,21 +57,21 @@ export function createAuthServices({
                     signInOperations.set(result.sessionId, startedAt);
                 } else {
                     telemetry?.recordOperation?.({
-                        operation: "sign_in",
-                        outcome: "failed",
+                        operation: TELEMETRY_OPERATION.SIGN_IN,
+                        outcome: TELEMETRY_OUTCOME.FAILED,
                         failureCode: normalizeFailureCode(result?.reason),
                         durationMs: Math.max(0, now() - startedAt),
-                        source: "ui",
+                        source: TELEMETRY_SOURCE.UI,
                     });
                 }
                 return result;
             } catch (error) {
                 telemetry?.recordOperation?.({
-                    operation: "sign_in",
-                    outcome: "failed",
+                    operation: TELEMETRY_OPERATION.SIGN_IN,
+                    outcome: TELEMETRY_OUTCOME.FAILED,
                     failureCode: normalizeFailureCode(error),
                     durationMs: Math.max(0, now() - startedAt),
-                    source: "ui",
+                    source: TELEMETRY_SOURCE.UI,
                 });
                 throw error;
             }
@@ -74,32 +80,50 @@ export function createAuthServices({
             const sessionId = url.searchParams.get("sessionId") || "";
             const result = await auth.signInStatus(sessionId);
             if (result.ok && result.status === "done") clearResourceCache();
-            if (result.status === "done") finishSignIn(sessionId, "succeeded");
-            else if (result.status === "cancelled") finishSignIn(sessionId, "cancelled", "cancelled");
-            else if (result.status === "error") {
-                finishSignIn(sessionId, "failed", normalizeFailureCode(result?.reason));
+            if (result.status === "done") {
+                finishSignIn(sessionId, TELEMETRY_OUTCOME.SUCCEEDED);
+            } else if (result.status === "cancelled") {
+                finishSignIn(
+                    sessionId,
+                    TELEMETRY_OUTCOME.CANCELLED,
+                    TELEMETRY_FAILURE_CODE.CANCELLED,
+                );
+            } else if (result.status === "error") {
+                finishSignIn(
+                    sessionId,
+                    TELEMETRY_OUTCOME.FAILED,
+                    normalizeFailureCode(result?.reason),
+                );
             } else if (result.status === "unknown") {
-                finishSignIn(sessionId, "unknown", "unknown");
+                finishSignIn(
+                    sessionId,
+                    TELEMETRY_OUTCOME.UNKNOWN,
+                    TELEMETRY_FAILURE_CODE.UNKNOWN,
+                );
             }
             return result;
         },
         cancelSignIn({ body }) {
             const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
             const result = auth.signInCancel(sessionId);
-            finishSignIn(sessionId, "cancelled", "cancelled");
+            finishSignIn(
+                sessionId,
+                TELEMETRY_OUTCOME.CANCELLED,
+                TELEMETRY_FAILURE_CODE.CANCELLED,
+            );
             return result;
         },
         // Signing out is global, not per-instance: every open canvas has to drop
         // the signed-in selection, not just the one that issued the request.
         async signOut() {
             return runTelemetryOperation(telemetry, {
-                operation: "sign_out",
-                source: "ui",
+                operation: TELEMETRY_OPERATION.SIGN_OUT,
+                source: TELEMETRY_SOURCE.UI,
                 now,
                 classify: (result) => result?.ok
-                    ? { outcome: "succeeded" }
+                    ? { outcome: TELEMETRY_OUTCOME.SUCCEEDED }
                     : {
-                        outcome: "failed",
+                        outcome: TELEMETRY_OUTCOME.FAILED,
                         failureCode: normalizeFailureCode(result?.reason),
                     },
             }, async () => {

@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 
+import { TELEMETRY_CONNECTION_STRING_ENV } from "../public/telemetry-constants.js";
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DIST_DIR = join(ROOT, "dist");
 const PUBLIC_DIR = join(ROOT, "public");
@@ -19,13 +21,14 @@ const MINIFY = process.argv.includes("--minify");
 const compatibilityClientEntries = [
     join(PUBLIC_DIR, "selection-state.js"),
     join(PUBLIC_DIR, "issue-report.js"),
+    join(PUBLIC_DIR, "telemetry-constants.js"),
     ...readdirSync(join(PUBLIC_DIR, "app"))
         .filter((name) => name.endsWith(".js"))
         .sort()
         .map((name) => join(PUBLIC_DIR, "app", name)),
 ];
 const telemetryConnectionString = String(
-    process.env.FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING || "",
+    process.env[TELEMETRY_CONNECTION_STRING_ENV] || "",
 ).trim();
 const telemetryConnectionStringBase64 = telemetryConnectionString
     ? Buffer.from(telemetryConnectionString, "utf-8").toString("base64")

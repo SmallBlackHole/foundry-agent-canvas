@@ -1,4 +1,8 @@
 import {
+    TELEMETRY_ACTION,
+    TELEMETRY_RESOURCE_KIND,
+} from "../telemetry-constants.js";
+import {
     dataLoadErrorRow,
     fluentIcon,
     getJSON,
@@ -50,7 +54,10 @@ export function renderDeployList() {
 
         item.addEventListener("click", () => {
             closeModelMenu();
-            recordAction("switch_model", "model");
+            recordAction(
+                TELEMETRY_ACTION.SWITCH_MODEL,
+                TELEMETRY_RESOURCE_KIND.MODEL,
+            );
             sendToChat(withActionContext(model.prompt), "", "model");
         });
         host.appendChild(item);
@@ -126,7 +133,10 @@ export function renderToolboxList() {
         connect.addEventListener("click", (event) => {
             event.stopPropagation();
             closeToolMenu();
-            recordAction("connect_toolbox", "toolbox");
+            recordAction(
+                TELEMETRY_ACTION.CONNECT_TOOLBOX,
+                TELEMETRY_RESOURCE_KIND.TOOLBOX,
+            );
             sendToChat(withActionContext(toolbox.prompt), "", "toolbox");
         });
         item.append(toggle, connect);
@@ -211,7 +221,10 @@ export function renderGuardrailList() {
 
         item.addEventListener("click", () => {
             closeGuardrailMenu();
-            recordAction("apply_guardrail", "guardrail");
+            recordAction(
+                TELEMETRY_ACTION.APPLY_GUARDRAIL,
+                TELEMETRY_RESOURCE_KIND.GUARDRAIL,
+            );
             sendToChat(
                 withActionContext(guardrail.prompt),
                 "",
@@ -260,7 +273,10 @@ export function renderSkillList() {
 
         item.addEventListener("click", () => {
             closeSkillMenu();
-            recordAction("add_project_skill", "project_skill");
+            recordAction(
+                TELEMETRY_ACTION.ADD_PROJECT_SKILL,
+                TELEMETRY_RESOURCE_KIND.PROJECT_SKILL,
+            );
             sendToChat(
                 withActionContext(skill.prompt),
                 "",

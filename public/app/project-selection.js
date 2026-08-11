@@ -5,6 +5,10 @@ import {
     selectSubscription as transitionSubscription,
 } from "../selection-state.js";
 import {
+    TELEMETRY_ACTION,
+    TELEMETRY_RESOURCE_KIND,
+} from "../telemetry-constants.js";
+import {
     fluentIcon,
     getJSON,
     menuError,
@@ -456,7 +460,10 @@ export function renderSubList() {
 }
 
 export async function selectSubscription(subscription) {
-    recordAction("select_subscription", "subscription");
+    recordAction(
+        TELEMETRY_ACTION.SELECT_SUBSCRIPTION,
+        TELEMETRY_RESOURCE_KIND.SUBSCRIPTION,
+    );
     const previousProject = state.selection.project?.endpoint || "";
     const next = transitionSubscription(state.selection, subscription);
     try {
@@ -580,7 +587,10 @@ export function renderProjList() {
 }
 
 export async function selectProject(project) {
-    recordAction("select_project", "project");
+    recordAction(
+        TELEMETRY_ACTION.SELECT_PROJECT,
+        TELEMETRY_RESOURCE_KIND.PROJECT,
+    );
     const subscription = state.selection.subscription;
     const next = transitionProject(
         state.selection,

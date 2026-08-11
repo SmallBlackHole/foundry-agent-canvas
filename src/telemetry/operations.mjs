@@ -1,3 +1,7 @@
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OUTCOME,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "./schema.mjs";
 
 export async function runTelemetryOperation(
@@ -7,7 +11,9 @@ export async function runTelemetryOperation(
         source,
         resourceKind,
         classify = (result) => ({
-            outcome: result?.ok === false ? "failed" : "succeeded",
+            outcome: result?.ok === false
+                ? TELEMETRY_OUTCOME.FAILED
+                : TELEMETRY_OUTCOME.SUCCEEDED,
             failureCode: result?.ok === false
                 ? normalizeFailureCode(result?.reason)
                 : undefined,
@@ -19,7 +25,9 @@ export async function runTelemetryOperation(
     const startedAt = now();
     try {
         const result = await run();
-        const terminal = classify(result) || { outcome: "unknown" };
+        const terminal = classify(result) || {
+            outcome: TELEMETRY_OUTCOME.UNKNOWN,
+        };
         telemetry?.recordOperation?.({
             operation,
             source,
@@ -33,7 +41,7 @@ export async function runTelemetryOperation(
             operation,
             source,
             resourceKind,
-            outcome: "failed",
+            outcome: TELEMETRY_OUTCOME.FAILED,
             failureCode: normalizeFailureCode(error),
             durationMs: Math.max(0, now() - startedAt),
         });
@@ -53,6 +61,13 @@ export function createPendingOperationTracker({
 
     function start(key) {
         if (!key) return false;
+        if (pending.has(key)) {
+            finish(
+                key,
+                TELEMETRY_OUTCOME.CANCELLED,
+                TELEMETRY_FAILURE_CODE.CANCELLED,
+            );
+        }
         pending.set(key, { startedAt: now(), idleAttempts: 0 });
         return true;
     }
@@ -77,13 +92,21 @@ export function createPendingOperationTracker({
         if (!entry) return false;
         entry.idleAttempts += 1;
         if (entry.idleAttempts >= maxIdleAttempts) {
-            return finish(key, "timed_out", "timeout");
+            return finish(
+                key,
+                TELEMETRY_OUTCOME.TIMED_OUT,
+                TELEMETRY_FAILURE_CODE.TIMEOUT,
+            );
         }
         return false;
     }
 
     function clear(key) {
-        return pending.delete(key);
+        return finish(
+            key,
+            TELEMETRY_OUTCOME.CANCELLED,
+            TELEMETRY_FAILURE_CODE.CANCELLED,
+        );
     }
 
     return {

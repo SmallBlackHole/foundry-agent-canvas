@@ -12,15 +12,18 @@ function aliveEntry(id = "canvas-1") {
 
 function managerWith(overrides = {}) {
     const logs = [];
+    const terminals = [];
     const servers = overrides.servers || new Map();
     const manager = createPendingRefreshManager({
         servers,
         inspectDeployment: overrides.inspectDeployment || (async () => ({ ok: true, deployed: false, reason: "not_deployed" })),
         refreshDeployment: overrides.refreshDeployment || (async () => ({})),
         log: async (message, options) => logs.push({ message, options }),
+        onTerminal: overrides.onTerminal
+            || (async (...args) => terminals.push(args)),
         maxAttempts: overrides.maxAttempts ?? 12,
     });
-    return { manager, servers, logs };
+    return { manager, servers, logs, terminals };
 }
 
 test("mark ignores unknown kinds and empty instance ids", () => {
@@ -134,7 +137,7 @@ test("pending work is bounded by the attempt budget", async () => {
 test("stale (closed) canvas instances are dropped without running a refresh", async () => {
     const servers = new Map([["canvas-1", { server: { listening: false } }]]);
     let calls = 0;
-    const { manager } = managerWith({
+    const { manager, terminals } = managerWith({
         servers,
         inspectDeployment: async () => {
             calls += 1;
@@ -147,12 +150,17 @@ test("stale (closed) canvas instances are dropped without running a refresh", as
 
     assert.equal(calls, 0);
     assert.equal(manager.hasPending(), false);
+    assert.deepEqual(terminals, [[
+        "canvas-1",
+        DEPLOYMENT_REFRESH,
+        { outcome: "cancelled", failureCode: "cancelled" },
+    ]]);
 });
 
 test("a missing canvas entry is treated as stale and cleared", async () => {
     const servers = new Map();
     let calls = 0;
-    const { manager } = managerWith({
+    const { manager, terminals } = managerWith({
         servers,
         inspectDeployment: async () => {
             calls += 1;
@@ -165,6 +173,11 @@ test("a missing canvas entry is treated as stale and cleared", async () => {
 
     assert.equal(calls, 0);
     assert.equal(manager.hasPending(), false);
+    assert.deepEqual(terminals, [[
+        "canvas-1",
+        DEPLOYMENT_REFRESH,
+        { outcome: "cancelled", failureCode: "cancelled" },
+    ]]);
 });
 
 test("a refresh failure is logged and never rejects the idle handler", async () => {
@@ -212,4 +225,49 @@ test("an in-flight op is not started concurrently by a second idle", async () =>
     await Promise.all([first, second]);
 
     assert.equal(maxActive, 1);
+});
+
+test("an in-flight deployment cannot complete a newer marked attempt", async () => {
+    const servers = new Map([["canvas-1", aliveEntry()]]);
+    const deployments = [
+        { ok: true, deployed: true, version: "1" },
+        { ok: true, deployed: true, version: "2" },
+    ];
+    const terminals = [];
+    let releaseFirst;
+    const firstGate = new Promise((resolve) => {
+        releaseFirst = resolve;
+    });
+    let calls = 0;
+    const { manager } = managerWith({
+        servers,
+        inspectDeployment: async () => {
+            const deployment = deployments[calls];
+            calls += 1;
+            if (calls === 1) await firstGate;
+            return deployment;
+        },
+        onTerminal: async (...args) => terminals.push(args),
+    });
+
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
+    const firstIdle = manager.handleSessionIdle();
+    manager.mark("canvas-1", DEPLOYMENT_REFRESH);
+    releaseFirst();
+    await firstIdle;
+
+    assert.equal(manager.hasPending(), true);
+    assert.deepEqual(terminals, []);
+
+    await manager.handleSessionIdle();
+    assert.equal(manager.hasPending(), false);
+    assert.equal(calls, 2);
+    assert.deepEqual(terminals, [[
+        "canvas-1",
+        DEPLOYMENT_REFRESH,
+        {
+            outcome: "succeeded",
+            result: deployments[1],
+        },
+    ]]);
 });

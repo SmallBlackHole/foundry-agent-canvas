@@ -98,6 +98,9 @@ export function createRequestHandler(
         if (method === "GET" && path === "/issue-report.js") {
             return serveStatic(res, "issue-report.js", publicDir);
         }
+        if (method === "GET" && path === "/telemetry-constants.js") {
+            return serveStatic(res, "telemetry-constants.js", publicDir);
+        }
         if (method === "GET" && path === "/codicons/codicon.ttf") {
             return serveStatic(res, join("codicons", "codicon.ttf"), publicDir);
         }

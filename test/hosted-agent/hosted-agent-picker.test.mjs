@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 
+import {
+    TELEMETRY_ACTION,
+    TELEMETRY_RESOURCE_KIND,
+} from "../../public/telemetry-constants.js";
 import { readAllClientSource } from "../../test-support/client-source.mjs";
 
 test("multi-agent picker is rendered between the project header and accordions", async () => {
@@ -172,6 +176,8 @@ test("Create Start enters new-agent state before adding action context", async (
 
     const calls = [];
     const context = {
+        TELEMETRY_ACTION,
+        TELEMETRY_RESOURCE_KIND,
         state: {
             agentName: "",
             init: { promptText: "" },
@@ -386,7 +392,7 @@ test("Inspect Locally asks for an existing agent while New Agent is active", asy
     assert.match(handler, /toast\("Select an existing agent to inspect locally\."\)/);
     assert.match(
         handler,
-        /else \{\s*recordAction\("inspect_locally", "agent"\);\s*launchInspector\(event\.target\.closest\("#inspectBtn"\)\);/,
+        /else \{\s*recordAction\(\s*TELEMETRY_ACTION\.INSPECT_LOCALLY,\s*TELEMETRY_RESOURCE_KIND\.AGENT,\s*\);\s*launchInspector\(event\.target\.closest\("#inspectBtn"\)\);/,
     );
 });
 

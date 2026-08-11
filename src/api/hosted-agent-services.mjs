@@ -8,6 +8,10 @@ import {
     selectedHostedAgentName,
     selectedHostedAgentPortalAction,
 } from "./hosted-agent-selection.mjs";
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OUTCOME,
+} from "../../public/telemetry-constants.js";
 
 export function createHostedAgentServices({
     ctx,
@@ -41,8 +45,10 @@ export function createHostedAgentServices({
                 const detected = lastAgentNames.has(agentName.toLowerCase());
                 createAgentOperations?.finish?.(
                     ctx.instanceId,
-                    detected ? "succeeded" : "failed",
-                    detected ? undefined : "no_agent",
+                    detected
+                        ? TELEMETRY_OUTCOME.SUCCEEDED
+                        : TELEMETRY_OUTCOME.FAILED,
+                    detected ? undefined : TELEMETRY_FAILURE_CODE.NO_AGENT,
                 );
             }
             return { ok: true, selected: agentName };

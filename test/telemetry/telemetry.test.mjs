@@ -83,27 +83,6 @@ test("active, action, and operation events expose only their allowlisted schemas
     await nextTurn();
 
     assert.deepEqual(events[0], {
-        name: TELEMETRY_EVENTS.action,
-        attributes: {
-            "ftk.canvas.action": "switch_model",
-            "ftk.canvas.productVersion": "1.2.3",
-            "ftk.canvas.resourceKind": "model",
-        },
-        options: undefined,
-    });
-    assert.deepEqual(events[1], {
-        name: TELEMETRY_EVENTS.operation,
-        attributes: {
-            "ftk.canvas.operation": "prompt_delivery",
-            "ftk.canvas.outcome": "accepted",
-            "ftk.canvas.durationMs": 13,
-            "ftk.canvas.source": "ui",
-            "ftk.canvas.productVersion": "1.2.3",
-            "ftk.canvas.resourceKind": "model",
-        },
-        options: { failed: false },
-    });
-    assert.deepEqual(events[2], {
         name: TELEMETRY_EVENTS.active,
         attributes: {
             "ftk.canvas.devDeviceId": "device-123",
@@ -113,6 +92,114 @@ test("active, action, and operation events expose only their allowlisted schemas
         },
         options: undefined,
     });
+    assert.deepEqual(events[1], {
+        name: TELEMETRY_EVENTS.action,
+        attributes: {
+            "ftk.canvas.devDeviceId": "device-123",
+            "ftk.canvas.action": "switch_model",
+            "ftk.canvas.productVersion": "1.2.3",
+            "ftk.canvas.resourceKind": "model",
+        },
+        options: undefined,
+    });
+    assert.deepEqual(events[2], {
+        name: TELEMETRY_EVENTS.operation,
+        attributes: {
+            "ftk.canvas.devDeviceId": "device-123",
+            "ftk.canvas.operation": "prompt_delivery",
+            "ftk.canvas.outcome": "accepted",
+            "ftk.canvas.durationMs": 13,
+            "ftk.canvas.source": "ui",
+            "ftk.canvas.productVersion": "1.2.3",
+            "ftk.canvas.resourceKind": "model",
+        },
+        options: { failed: false },
+    });
+});
+
+test("device ID lookup retries after a null result and caches only success", async () => {
+    const events = [];
+    let deviceReads = 0;
+    const telemetry = createTelemetryRecorder({
+        productVersion: "1",
+        deviceId: async () => {
+            deviceReads += 1;
+            return deviceReads === 1 ? null : "device-456";
+        },
+        emitter: {
+            emit(name, attributes) {
+                events.push({ name, attributes });
+            },
+        },
+    });
+
+    assert.equal(telemetry.recordAction({ action: "report_issue" }), true);
+    await nextTurn();
+    assert.equal(deviceReads, 1);
+    assert.equal("ftk.canvas.devDeviceId" in events[0].attributes, false);
+
+    assert.equal(telemetry.recordOperation({
+        operation: "sign_out",
+        outcome: "succeeded",
+        durationMs: 1,
+        source: "ui",
+    }), true);
+    await nextTurn();
+    assert.equal(deviceReads, 2);
+    assert.equal(
+        events[1].attributes["ftk.canvas.devDeviceId"],
+        "device-456",
+    );
+
+    assert.equal(telemetry.recordActive(), true);
+    assert.equal(deviceReads, 2);
+    assert.equal(
+        events[2].attributes["ftk.canvas.devDeviceId"],
+        "device-456",
+    );
+});
+
+test("unsuccessful operations get failure codes and error span status", async () => {
+    const events = [];
+    const telemetry = createTelemetryRecorder({
+        deviceId: "device-123",
+        emitter: {
+            emit(name, attributes, options) {
+                events.push({ name, attributes, options });
+            },
+        },
+    });
+
+    for (const outcome of ["failed", "cancelled", "timed_out", "unknown"]) {
+        assert.equal(telemetry.recordOperation({
+            operation: "deployment_verification",
+            outcome,
+            durationMs: 1,
+            source: "session_idle",
+            resourceKind: "agent",
+        }), true);
+    }
+
+    assert.deepEqual(
+        events.map(({ attributes, options }) => ({
+            outcome: attributes["ftk.canvas.outcome"],
+            failureCode: attributes["ftk.canvas.failureCode"],
+            failed: options.failed,
+        })),
+        [
+            { outcome: "failed", failureCode: "unknown", failed: true },
+            { outcome: "cancelled", failureCode: "cancelled", failed: true },
+            { outcome: "timed_out", failureCode: "timeout", failed: true },
+            { outcome: "unknown", failureCode: "unknown", failed: true },
+        ],
+    );
+    assert.equal(telemetry.recordOperation({
+        operation: "sign_out",
+        outcome: "succeeded",
+        failureCode: "unknown",
+        durationMs: 1,
+        source: "ui",
+    }), false);
 });
 
 test("schema validation rejects view-state actions and arbitrary privacy fields", () => {
@@ -148,6 +235,7 @@ test("schema validation rejects view-state actions and arbitrary privacy fields"
 
 test("telemetry exporter failures are isolated from Canvas callers", async () => {
     const telemetry = createTelemetryRecorder({
+        deviceId: "device-123",
         emitter: {
             emit() {
                 throw new Error("export failed");

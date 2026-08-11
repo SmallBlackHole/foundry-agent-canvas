@@ -1,6 +1,12 @@
 import { DEPLOY_PROMPT } from "../foundry/catalog.mjs";
 import { checkPluginUpdate } from "../plugin-update.mjs";
 import { bootstrapInstance, defaultState } from "../state.mjs";
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 
 export function createCanvasServices({
@@ -52,10 +58,10 @@ export function createCanvasServices({
                 await waitForFoundrySkill?.();
                 await session.send({ prompt: body.prompt });
                 telemetry?.recordOperation?.({
-                    operation: "prompt_delivery",
-                    outcome: "accepted",
+                    operation: TELEMETRY_OPERATION.PROMPT_DELIVERY,
+                    outcome: TELEMETRY_OUTCOME.ACCEPTED,
                     durationMs: Math.max(0, now() - startedAt),
-                    source: "ui",
+                    source: TELEMETRY_SOURCE.UI,
                     ...(body.resourceKind ? { resourceKind: body.resourceKind } : {}),
                 });
                 if (body.resourceKind === "agent" && !refresh) {
@@ -67,16 +73,16 @@ export function createCanvasServices({
                 if (refresh === "deployment") {
                     deploymentOperations?.finish?.(
                         ctx.instanceId,
-                        "failed",
-                        "prompt_not_accepted",
+                        TELEMETRY_OUTCOME.FAILED,
+                        TELEMETRY_FAILURE_CODE.PROMPT_NOT_ACCEPTED,
                     );
                 }
                 telemetry?.recordOperation?.({
-                    operation: "prompt_delivery",
-                    outcome: "failed",
+                    operation: TELEMETRY_OPERATION.PROMPT_DELIVERY,
+                    outcome: TELEMETRY_OUTCOME.FAILED,
                     failureCode: normalizeFailureCode(error),
                     durationMs: Math.max(0, now() - startedAt),
-                    source: "ui",
+                    source: TELEMETRY_SOURCE.UI,
                     ...(body.resourceKind ? { resourceKind: body.resourceKind } : {}),
                 });
                 throw error;

@@ -1,5 +1,9 @@
 // Microsoft Foundry canvas client composition and bootstrap.
 
+import {
+    TELEMETRY_ACTION,
+    TELEMETRY_RESOURCE_KIND,
+} from "./telemetry-constants.js";
 import { normalizeSelection } from "./selection-state.js";
 import { buildIssueReportUrl, detectOperatingSystem } from "./issue-report.js";
 import {
@@ -99,7 +103,7 @@ function renderBuild() {
             pluginVersion: state.pluginVersion,
         });
         issueLink.addEventListener("click", () =>
-            recordAction("report_issue"));
+            recordAction(TELEMETRY_ACTION.REPORT_ISSUE));
     }
 
     const modelLink = node.querySelector("#deployNewModelLink");
@@ -108,28 +112,40 @@ function renderBuild() {
     const guardrailLink = node.querySelector("#createGuardrailLink");
     if (modelLink) {
         modelLink.addEventListener("click", () => {
-            recordAction("open_foundry_creation_link", "model");
+            recordAction(
+                TELEMETRY_ACTION.OPEN_FOUNDRY_CREATION_LINK,
+                TELEMETRY_RESOURCE_KIND.MODEL,
+            );
             closeModelMenu();
             openPortalPage("build/models/deployments");
         });
     }
     if (toolboxLink) {
         toolboxLink.addEventListener("click", () => {
-            recordAction("open_foundry_creation_link", "toolbox");
+            recordAction(
+                TELEMETRY_ACTION.OPEN_FOUNDRY_CREATION_LINK,
+                TELEMETRY_RESOURCE_KIND.TOOLBOX,
+            );
             closeToolMenu();
             openPortalPage("build/tools?tab=toolboxes");
         });
     }
     if (skillLink) {
         skillLink.addEventListener("click", () => {
-            recordAction("open_foundry_creation_link", "project_skill");
+            recordAction(
+                TELEMETRY_ACTION.OPEN_FOUNDRY_CREATION_LINK,
+                TELEMETRY_RESOURCE_KIND.PROJECT_SKILL,
+            );
             closeSkillMenu();
             openPortalPage("build/tools?tab=skills");
         });
     }
     if (guardrailLink) {
         guardrailLink.addEventListener("click", () => {
-            recordAction("open_foundry_creation_link", "guardrail");
+            recordAction(
+                TELEMETRY_ACTION.OPEN_FOUNDRY_CREATION_LINK,
+                TELEMETRY_RESOURCE_KIND.GUARDRAIL,
+            );
             closeGuardrailMenu();
             openPortalPage("build/guardrails/list");
         });
@@ -137,7 +153,10 @@ function renderBuild() {
     const playgroundLink = node.querySelector("#testPlaygroundLink");
     if (playgroundLink) {
         playgroundLink.addEventListener("click", () =>
-            recordAction("test_in_foundry_portal", "agent"));
+            recordAction(
+                TELEMETRY_ACTION.TEST_IN_FOUNDRY_PORTAL,
+                TELEMETRY_RESOURCE_KIND.AGENT,
+            ));
     }
 
     root.replaceChildren(node);
@@ -229,7 +248,10 @@ root.addEventListener("click", async (event) => {
             state.hostedAgents.creatingNew = true;
             renderHostedAgentPicker();
             renderHostedAgentDeployment();
-            recordAction("start_agent_creation", "agent");
+            recordAction(
+                TELEMETRY_ACTION.START_AGENT_CREATION,
+                TELEMETRY_RESOURCE_KIND.AGENT,
+            );
             sendToChat(withActionContext(text), "", "agent");
             showBuildSections();
         }
@@ -258,7 +280,10 @@ root.addEventListener("click", async (event) => {
         return;
     }
     if (event.target.closest("#deployRefresh")) {
-        recordAction("refresh_resources", "model");
+        recordAction(
+            TELEMETRY_ACTION.REFRESH_RESOURCES,
+            TELEMETRY_RESOURCE_KIND.MODEL,
+        );
         loadDeployments(true);
         return;
     }
@@ -268,7 +293,10 @@ root.addEventListener("click", async (event) => {
         return;
     }
     if (event.target.closest("#toolboxRefresh")) {
-        recordAction("refresh_resources", "toolbox");
+        recordAction(
+            TELEMETRY_ACTION.REFRESH_RESOURCES,
+            TELEMETRY_RESOURCE_KIND.TOOLBOX,
+        );
         loadToolboxes(true);
         return;
     }
@@ -278,7 +306,10 @@ root.addEventListener("click", async (event) => {
         return;
     }
     if (event.target.closest("#guardrailRefresh")) {
-        recordAction("refresh_resources", "guardrail");
+        recordAction(
+            TELEMETRY_ACTION.REFRESH_RESOURCES,
+            TELEMETRY_RESOURCE_KIND.GUARDRAIL,
+        );
         loadGuardrails(true);
         return;
     }
@@ -288,12 +319,18 @@ root.addEventListener("click", async (event) => {
         return;
     }
     if (event.target.closest("#skillRefresh")) {
-        recordAction("refresh_resources", "project_skill");
+        recordAction(
+            TELEMETRY_ACTION.REFRESH_RESOURCES,
+            TELEMETRY_RESOURCE_KIND.PROJECT_SKILL,
+        );
         loadSkills(true);
         return;
     }
     if (event.target.closest("#newHostedAgentBtn")) {
-        recordAction("create_agent", "agent");
+        recordAction(
+            TELEMETRY_ACTION.CREATE_AGENT,
+            TELEMETRY_RESOURCE_KIND.AGENT,
+        );
         showNewAgent();
         return;
     }
@@ -307,16 +344,19 @@ root.addEventListener("click", async (event) => {
     }
     if (event.target.closest("#pmAuthBtn")) {
         if (state.identity.signedIn) {
-            recordAction("sign_out");
+            recordAction(TELEMETRY_ACTION.SIGN_OUT);
             doSignOut();
         } else {
-            recordAction("sign_in");
+            recordAction(TELEMETRY_ACTION.SIGN_IN);
             startSignIn();
         }
         return;
     }
     if (event.target.closest("#createProjectLink")) {
-        recordAction("open_foundry_creation_link", "project");
+        recordAction(
+            TELEMETRY_ACTION.OPEN_FOUNDRY_CREATION_LINK,
+            TELEMETRY_RESOURCE_KIND.PROJECT,
+        );
         closeProjectMenu();
         openFoundryHome();
         return;
@@ -355,7 +395,10 @@ root.addEventListener("click", async (event) => {
             return;
         }
         resetHostedAgentDeployment();
-        recordAction("deploy_to_foundry", "agent");
+        recordAction(
+            TELEMETRY_ACTION.DEPLOY_TO_FOUNDRY,
+            TELEMETRY_RESOURCE_KIND.AGENT,
+        );
         sendToChat(
             withActionContext(state.deployPrompt),
             "deployment",
@@ -367,7 +410,10 @@ root.addEventListener("click", async (event) => {
         if (state.hostedAgents.creatingNew) {
             toast("Select an existing agent to inspect locally.");
         } else {
-            recordAction("inspect_locally", "agent");
+            recordAction(
+                TELEMETRY_ACTION.INSPECT_LOCALLY,
+                TELEMETRY_RESOURCE_KIND.AGENT,
+            );
             launchInspector(event.target.closest("#inspectBtn"));
         }
     }

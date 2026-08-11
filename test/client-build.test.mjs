@@ -21,6 +21,7 @@ test("the release build bundles app.js and minifies compatibility modules", asyn
         join(ROOT, "public", "app.js"),
         join(ROOT, "public", "selection-state.js"),
         join(ROOT, "public", "issue-report.js"),
+        join(ROOT, "public", "telemetry-constants.js"),
         ...sourceModules
             .filter((name) => name.endsWith(".js"))
             .map((name) => join(ROOT, "public", "app", name)),
@@ -47,6 +48,7 @@ test("the release build bundles app.js and minifies compatibility modules", asyn
     await Promise.all([
         readFile(join(ROOT, "dist", "public", "selection-state.js"), "utf8"),
         readFile(join(ROOT, "dist", "public", "issue-report.js"), "utf8"),
+        readFile(join(ROOT, "dist", "public", "telemetry-constants.js"), "utf8"),
     ]);
 });
 

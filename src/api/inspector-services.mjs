@@ -5,6 +5,13 @@ import {
     resolveHostedAgentProject,
 } from "../hosted-agent/local-agent.mjs";
 import { selectedHostedAgentName } from "./hosted-agent-selection.mjs";
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_RESOURCE_KIND,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";
 
@@ -34,21 +41,21 @@ export function createInspectorServices({
                 readiness.attempts += 1;
                 if (ready) {
                     telemetry?.recordOperation?.({
-                        operation: "inspector_readiness",
-                        outcome: "succeeded",
+                        operation: TELEMETRY_OPERATION.INSPECTOR_READINESS,
+                        outcome: TELEMETRY_OUTCOME.SUCCEEDED,
                         durationMs: Math.max(0, now() - readiness.startedAt),
-                        source: "ui",
-                        resourceKind: "agent",
+                        source: TELEMETRY_SOURCE.UI,
+                        resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
                     });
                     readiness = null;
                 } else if (readiness.attempts >= readinessMaxAttempts) {
                     telemetry?.recordOperation?.({
-                        operation: "inspector_readiness",
-                        outcome: "timed_out",
-                        failureCode: "timeout",
+                        operation: TELEMETRY_OPERATION.INSPECTOR_READINESS,
+                        outcome: TELEMETRY_OUTCOME.TIMED_OUT,
+                        failureCode: TELEMETRY_FAILURE_CODE.TIMEOUT,
                         durationMs: Math.max(0, now() - readiness.startedAt),
-                        source: "ui",
-                        resourceKind: "agent",
+                        source: TELEMETRY_SOURCE.UI,
+                        resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
                     });
                     readiness = null;
                 }
@@ -57,15 +64,17 @@ export function createInspectorServices({
         },
         async startInspector() {
             const result = await runTelemetryOperation(telemetry, {
-                operation: "inspector_startup",
-                source: "ui",
-                resourceKind: "agent",
+                operation: TELEMETRY_OPERATION.INSPECTOR_STARTUP,
+                source: TELEMETRY_SOURCE.UI,
+                resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
                 now,
                 classify: (value) => value?.ok
-                    ? { outcome: "succeeded" }
+                    ? { outcome: TELEMETRY_OUTCOME.SUCCEEDED }
                     : {
-                        outcome: "failed",
-                        failureCode: normalizeFailureCode(value?.reason || "unavailable"),
+                        outcome: TELEMETRY_OUTCOME.FAILED,
+                        failureCode: normalizeFailureCode(
+                            value?.reason || TELEMETRY_FAILURE_CODE.UNAVAILABLE,
+                        ),
                     },
             }, async () => {
                 const root = await workspaceRootFn();

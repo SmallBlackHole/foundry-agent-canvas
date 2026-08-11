@@ -1,40 +1,59 @@
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_SKILL_ACTION,
+    TELEMETRY_SKILL_STATUS,
+    TELEMETRY_SKILL_STATUSES,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "./schema.mjs";
 
 export function foundrySkillOperation(result) {
-    const skillAction = ["install", "update"].includes(result?.action)
+    const skillAction = [
+        TELEMETRY_SKILL_ACTION.INSTALL,
+        TELEMETRY_SKILL_ACTION.UPDATE,
+    ].includes(result?.action)
         ? result.action
         : result?.changed && result?.reloaded
-            ? "reload"
-            : result?.action === "none"
-                ? "none"
-                : "check";
-    const previousStatus = ["missing", "outdated", "latest", "unknown"].includes(
-        result?.previousStatus,
-    )
+            ? TELEMETRY_SKILL_ACTION.RELOAD
+            : result?.action === TELEMETRY_SKILL_ACTION.NONE
+                ? TELEMETRY_SKILL_ACTION.NONE
+                : TELEMETRY_SKILL_ACTION.CHECK;
+    const previousStatus = TELEMETRY_SKILL_STATUSES.includes(result?.previousStatus)
         ? result.previousStatus
-        : ["missing", "outdated", "latest", "unknown"].includes(result?.status)
+        : TELEMETRY_SKILL_STATUSES.includes(result?.status)
             ? result.status
-            : "unknown";
+            : TELEMETRY_SKILL_STATUS.UNKNOWN;
     const ready = result?.ready === true;
     const succeeded = ready
-        && (skillAction === "none" || skillAction === "check" || result?.ok === true);
+        && (
+            skillAction === TELEMETRY_SKILL_ACTION.NONE
+            || skillAction === TELEMETRY_SKILL_ACTION.CHECK
+            || result?.ok === true
+        );
     let failureCode;
     if (!succeeded) {
         if (result?.changed && !result?.reloaded) {
             failureCode = String(result?.error || "").includes("does not support")
-                ? "runtime_unsupported"
-                : "reload_failed";
-        } else if (skillAction === "install" || skillAction === "update") {
-            failureCode = "install_failed";
+                ? TELEMETRY_FAILURE_CODE.RUNTIME_UNSUPPORTED
+                : TELEMETRY_FAILURE_CODE.RELOAD_FAILED;
+        } else if (
+            skillAction === TELEMETRY_SKILL_ACTION.INSTALL
+            || skillAction === TELEMETRY_SKILL_ACTION.UPDATE
+        ) {
+            failureCode = TELEMETRY_FAILURE_CODE.INSTALL_FAILED;
         } else {
             failureCode = normalizeFailureCode(result?.reason);
         }
     }
     return {
-        operation: "foundry_skill_sync",
-        outcome: succeeded ? "succeeded" : "failed",
+        operation: TELEMETRY_OPERATION.FOUNDRY_SKILL_SYNC,
+        outcome: succeeded
+            ? TELEMETRY_OUTCOME.SUCCEEDED
+            : TELEMETRY_OUTCOME.FAILED,
         ...(failureCode ? { failureCode } : {}),
-        source: "automatic",
+        source: TELEMETRY_SOURCE.AUTOMATIC,
         skillAction,
         previousStatus,
         changed: result?.changed === true,
@@ -45,23 +64,26 @@ export function foundrySkillOperation(result) {
 
 export function deploymentVerificationOutcome(result) {
     if (result?.ok && result?.deployed && String(result?.version || "").trim()) {
-        return { outcome: "succeeded" };
+        return { outcome: TELEMETRY_OUTCOME.SUCCEEDED };
     }
     if (result?.reason === "creating" || result?.reason === "not_deployed") {
-        return { outcome: "unknown" };
+        return { outcome: TELEMETRY_OUTCOME.UNKNOWN };
     }
     return {
-        outcome: "failed",
+        outcome: TELEMETRY_OUTCOME.FAILED,
         failureCode: normalizeFailureCode(result?.reason),
     };
 }
 
 export function pendingDeploymentOutcome(terminal) {
-    if (terminal?.outcome === "succeeded" && terminal.result) {
+    if (
+        terminal?.outcome === TELEMETRY_OUTCOME.SUCCEEDED
+        && terminal.result
+    ) {
         return deploymentVerificationOutcome(terminal.result);
     }
     return {
-        outcome: terminal?.outcome || "unknown",
+        outcome: terminal?.outcome || TELEMETRY_OUTCOME.UNKNOWN,
         ...(terminal?.failureCode
             ? { failureCode: normalizeFailureCode(terminal.failureCode) }
             : {}),

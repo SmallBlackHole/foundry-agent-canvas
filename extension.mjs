@@ -26,6 +26,11 @@ import {
 } from "./src/hosted-agent/pending-refresh.mjs";
 import { createCanvasTelemetry, NOOP_TELEMETRY } from "./src/telemetry/index.mjs";
 import {
+    TELEMETRY_OPERATION,
+    TELEMETRY_RESOURCE_KIND,
+    TELEMETRY_SOURCE,
+} from "./public/telemetry-constants.js";
+import {
     createPendingOperationTracker,
     runTelemetryOperation,
 } from "./src/telemetry/operations.mjs";
@@ -58,15 +63,15 @@ const resolveWorkspaceRoot = async () => {
 
 const createAgentOperations = createPendingOperationTracker({
     telemetry,
-    operation: "create_agent",
-    source: "session_idle",
-    resourceKind: "agent",
+    operation: TELEMETRY_OPERATION.CREATE_AGENT,
+    source: TELEMETRY_SOURCE.SESSION_IDLE,
+    resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
 });
 const deploymentOperations = createPendingOperationTracker({
     telemetry,
-    operation: "deployment_verification",
-    source: "session_idle",
-    resourceKind: "agent",
+    operation: TELEMETRY_OPERATION.DEPLOYMENT_VERIFICATION,
+    source: TELEMETRY_SOURCE.SESSION_IDLE,
+    resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
 });
 
 function notifyHostedAgentRefresh() {
@@ -274,9 +279,9 @@ const session = await joinSession({
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) throw new CanvasError("canvas_not_open", "No open canvas instance for this id.");
                         return runTelemetryOperation(telemetry, {
-                            operation: "deployment_verification",
-                            source: "canvas_action",
-                            resourceKind: "agent",
+                            operation: TELEMETRY_OPERATION.DEPLOYMENT_VERIFICATION,
+                            source: TELEMETRY_SOURCE.CANVAS_ACTION,
+                            resourceKind: TELEMETRY_RESOURCE_KIND.AGENT,
                             classify: deploymentVerificationOutcome,
                         }, () => refreshDeploymentState(entry, () =>
                             selectedHostedAgentPortalAction(entry, resolveWorkspaceRoot),

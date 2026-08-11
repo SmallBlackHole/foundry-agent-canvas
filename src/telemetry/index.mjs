@@ -17,22 +17,23 @@ import {
 import { getOrCreateDeviceId } from "./device-id.mjs";
 import { createUnrefHttpClient } from "./http-client.mjs";
 import {
+    TELEMETRY_ATTRIBUTE,
     TELEMETRY_CONNECTION_STRING_ENV,
-    TELEMETRY_EVENTS,
+    TELEMETRY_EVENT,
+    TELEMETRY_EXPORTER_ENV,
+    TELEMETRY_OPERATION,
     TELEMETRY_SERVICE_NAME,
+    TELEMETRY_SUCCESS_OUTCOMES,
+} from "../../public/telemetry-constants.js";
+import {
     validateActionPayload,
     validateOperationPayload,
 } from "./schema.mjs";
 
-const PRODUCT_VERSION = "ftk.canvas.productVersion";
 const BUNDLED_CONNECTION_STRING_BASE64 =
     typeof __FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING_BASE64__ === "string"
         ? __FOUNDRY_CANVAS_APPINSIGHTS_CONNECTION_STRING_BASE64__
         : "";
-const TEMPORARY_EXPORTER_ENV = {
-    APPLICATION_INSIGHTS_NO_STATSBEAT: "1",
-    APPLICATIONINSIGHTS_OPENTELEMETRY_RESOURCE_METRIC_DISABLED: "true",
-};
 
 function decodeBundledConnectionString(encoded) {
     if (!encoded) return "";
@@ -65,7 +66,7 @@ export function createOtelEmitter({
     exporterFactory = (options) => new AzureMonitorTraceExporter(options),
     httpClient = createUnrefHttpClient(),
 }) {
-    const exporter = withTemporaryEnvironment(TEMPORARY_EXPORTER_ENV, () =>
+    const exporter = withTemporaryEnvironment(TELEMETRY_EXPORTER_ENV, () =>
         exporterFactory({
             connectionString,
             disableOfflineStorage: true,
@@ -104,24 +105,24 @@ export function createOtelEmitter({
 
 function operationAttributes(event, productVersion) {
     return {
-        "ftk.canvas.operation": event.operation,
-        "ftk.canvas.outcome": event.outcome,
-        "ftk.canvas.durationMs": event.durationMs,
-        "ftk.canvas.source": event.source,
-        [PRODUCT_VERSION]: productVersion,
+        [TELEMETRY_ATTRIBUTE.OPERATION]: event.operation,
+        [TELEMETRY_ATTRIBUTE.OUTCOME]: event.outcome,
+        [TELEMETRY_ATTRIBUTE.DURATION_MS]: event.durationMs,
+        [TELEMETRY_ATTRIBUTE.SOURCE]: event.source,
+        [TELEMETRY_ATTRIBUTE.PRODUCT_VERSION]: productVersion,
         ...(event.failureCode
-            ? { "ftk.canvas.failureCode": event.failureCode }
+            ? { [TELEMETRY_ATTRIBUTE.FAILURE_CODE]: event.failureCode }
             : {}),
         ...(event.resourceKind
-            ? { "ftk.canvas.resourceKind": event.resourceKind }
+            ? { [TELEMETRY_ATTRIBUTE.RESOURCE_KIND]: event.resourceKind }
             : {}),
-        ...(event.operation === "foundry_skill_sync"
+        ...(event.operation === TELEMETRY_OPERATION.FOUNDRY_SKILL_SYNC
             ? {
-                "ftk.canvas.skillAction": event.skillAction,
-                "ftk.canvas.previousStatus": event.previousStatus,
-                "ftk.canvas.changed": event.changed,
-                "ftk.canvas.ready": event.ready,
-                "ftk.canvas.reloaded": event.reloaded,
+                [TELEMETRY_ATTRIBUTE.SKILL_ACTION]: event.skillAction,
+                [TELEMETRY_ATTRIBUTE.PREVIOUS_STATUS]: event.previousStatus,
+                [TELEMETRY_ATTRIBUTE.CHANGED]: event.changed,
+                [TELEMETRY_ATTRIBUTE.READY]: event.ready,
+                [TELEMETRY_ATTRIBUTE.RELOADED]: event.reloaded,
             }
             : {}),
     };
@@ -134,12 +135,25 @@ export function createTelemetryRecorder({
     os = platform(),
     architecture = arch(),
 } = {}) {
+    let cachedDeviceId =
+        typeof deviceId === "string" ? deviceId.trim() : "";
     let deviceIdPromise = null;
     const resolveDeviceId = () => {
+        if (cachedDeviceId) return Promise.resolve(cachedDeviceId);
         if (!deviceIdPromise) {
-            deviceIdPromise = Promise.resolve(
-                typeof deviceId === "function" ? deviceId() : deviceId,
-            );
+            deviceIdPromise = Promise.resolve()
+                .then(() =>
+                    typeof deviceId === "function" ? deviceId() : deviceId)
+                .then((value) => {
+                    const resolved =
+                        typeof value === "string" ? value.trim() : "";
+                    if (resolved) cachedDeviceId = resolved;
+                    return resolved || null;
+                })
+                .catch(() => null)
+                .finally(() => {
+                    deviceIdPromise = null;
+                });
         }
         return deviceIdPromise;
     };
@@ -152,51 +166,53 @@ export function createTelemetryRecorder({
             return false;
         }
     };
+    const emitWithDeviceId = (name, attributes, options) => {
+        if (!emitter) return false;
+        if (cachedDeviceId) {
+            return safeEmit(name, {
+                [TELEMETRY_ATTRIBUTE.DEVICE_ID]: cachedDeviceId,
+                ...attributes,
+            }, options);
+        }
+        resolveDeviceId().then((resolvedDeviceId) => {
+            safeEmit(name, {
+                ...(resolvedDeviceId
+                    ? { [TELEMETRY_ATTRIBUTE.DEVICE_ID]: resolvedDeviceId }
+                    : {}),
+                ...attributes,
+            }, options);
+        });
+        return true;
+    };
 
     return {
         enabled: !!emitter,
         recordActive() {
-            if (!emitter) return false;
-            resolveDeviceId()
-                .then((resolvedDeviceId) => {
-                    safeEmit(TELEMETRY_EVENTS.active, {
-                        ...(resolvedDeviceId
-                            ? { "ftk.canvas.devDeviceId": resolvedDeviceId }
-                            : {}),
-                        [PRODUCT_VERSION]: productVersion,
-                        "ftk.canvas.os": os,
-                        "ftk.canvas.arch": architecture,
-                    });
-                })
-                .catch(() => {
-                    safeEmit(TELEMETRY_EVENTS.active, {
-                        [PRODUCT_VERSION]: productVersion,
-                        "ftk.canvas.os": os,
-                        "ftk.canvas.arch": architecture,
-                    });
-                });
-            return true;
+            return emitWithDeviceId(TELEMETRY_EVENT.ACTIVE, {
+                [TELEMETRY_ATTRIBUTE.PRODUCT_VERSION]: productVersion,
+                [TELEMETRY_ATTRIBUTE.OS]: os,
+                [TELEMETRY_ATTRIBUTE.ARCHITECTURE]: architecture,
+            });
         },
         recordAction(payload) {
             const event = validateActionPayload(payload);
             if (!event) return false;
-            return safeEmit(TELEMETRY_EVENTS.action, {
-                "ftk.canvas.action": event.action,
-                [PRODUCT_VERSION]: productVersion,
+            return emitWithDeviceId(TELEMETRY_EVENT.ACTION, {
+                [TELEMETRY_ATTRIBUTE.ACTION]: event.action,
+                [TELEMETRY_ATTRIBUTE.PRODUCT_VERSION]: productVersion,
                 ...(event.resourceKind
-                    ? { "ftk.canvas.resourceKind": event.resourceKind }
+                    ? { [TELEMETRY_ATTRIBUTE.RESOURCE_KIND]: event.resourceKind }
                     : {}),
             });
         },
         recordOperation(payload) {
             const event = validateOperationPayload(payload);
             if (!event) return false;
-            return safeEmit(
-                TELEMETRY_EVENTS.operation,
+            return emitWithDeviceId(
+                TELEMETRY_EVENT.OPERATION,
                 operationAttributes(event, productVersion),
                 {
-                    failed: event.outcome === "failed"
-                        || event.outcome === "timed_out",
+                    failed: !TELEMETRY_SUCCESS_OUTCOMES.includes(event.outcome),
                 },
             );
         },

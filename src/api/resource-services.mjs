@@ -12,6 +12,12 @@ import {
     enrichSkill,
     enrichToolbox,
 } from "../foundry/mappers.mjs";
+import {
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_RESOURCE_KIND,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 
 function liveItems(result, mapItem) {
@@ -30,23 +36,25 @@ export function createResourceServices({ ctx, telemetry, now = Date.now }) {
             const result = await run();
             const response = mapResult(result);
             telemetry?.recordOperation?.({
-                operation: "load_resources",
-                outcome: result.ok ? "succeeded" : "failed",
+                operation: TELEMETRY_OPERATION.LOAD_RESOURCES,
+                outcome: result.ok
+                    ? TELEMETRY_OUTCOME.SUCCEEDED
+                    : TELEMETRY_OUTCOME.FAILED,
                 ...(result.ok
                     ? {}
                     : { failureCode: normalizeFailureCode(result.reason) }),
                 durationMs: Math.max(0, now() - startedAt),
-                source: "ui",
+                source: TELEMETRY_SOURCE.UI,
                 resourceKind,
             });
             return response;
         } catch (error) {
             telemetry?.recordOperation?.({
-                operation: "load_resources",
-                outcome: "failed",
+                operation: TELEMETRY_OPERATION.LOAD_RESOURCES,
+                outcome: TELEMETRY_OUTCOME.FAILED,
                 failureCode: normalizeFailureCode(error),
                 durationMs: Math.max(0, now() - startedAt),
-                source: "ui",
+                source: TELEMETRY_SOURCE.UI,
                 resourceKind,
             });
             throw error;
@@ -59,7 +67,7 @@ export function createResourceServices({ ctx, telemetry, now = Date.now }) {
         // sign-in or when the project read fails.
         async listDeployments({ url }) {
             return load(
-                "model",
+                TELEMETRY_RESOURCE_KIND.MODEL,
                 () => listDeployments(getEndpoint(), forced(url)),
                 (result) => result.ok
                     ? {
@@ -77,21 +85,21 @@ export function createResourceServices({ ctx, telemetry, now = Date.now }) {
         },
         async listToolboxes({ url }) {
             return load(
-                "toolbox",
+                TELEMETRY_RESOURCE_KIND.TOOLBOX,
                 () => listToolboxes(getEndpoint(), forced(url)),
                 (result) => liveItems(result, enrichToolbox),
             );
         },
         async listSkills({ url }) {
             return load(
-                "project_skill",
+                TELEMETRY_RESOURCE_KIND.PROJECT_SKILL,
                 () => listSkills(getEndpoint(), forced(url)),
                 (result) => liveItems(result, enrichSkill),
             );
         },
         async listGuardrails({ url }) {
             return load(
-                "guardrail",
+                TELEMETRY_RESOURCE_KIND.GUARDRAIL,
                 () => listGuardrails(
                     getEndpoint(),
                     getSelection().subscription.id,
@@ -102,7 +110,7 @@ export function createResourceServices({ ctx, telemetry, now = Date.now }) {
         },
         async listToolboxTools({ url }) {
             return load(
-                "toolbox",
+                TELEMETRY_RESOURCE_KIND.TOOLBOX,
                 () => listToolboxTools(
                     getEndpoint(),
                     url.searchParams.get("name") || "",

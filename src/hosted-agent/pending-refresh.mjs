@@ -2,6 +2,11 @@
 // happen once the agent finishes. On every `session.idle` we verify the live
 // deployment state and update the relevant open canvas instance.
 
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OUTCOME,
+} from "../../public/telemetry-constants.js";
+
 export const DEPLOYMENT_REFRESH = "deployment";
 
 const REFRESH_KINDS = new Set([DEPLOYMENT_REFRESH]);
@@ -70,10 +75,16 @@ export function createPendingRefreshManager({
             ops = new Map();
             pending.set(instanceId, ops);
         }
-        // Re-marking resets the attempt budget but preserves an in-flight run so
-        // we never lose the `running` guard against a concurrent refresh.
+        // Re-marking resets the attempt budget and advances the generation.
+        // An in-flight run keeps the concurrency guard but cannot complete the
+        // newer generation when it eventually returns.
         const existing = ops.get(kind);
-        ops.set(kind, { attempts: 0, running: existing ? existing.running : false });
+        if (existing) {
+            existing.attempts = 0;
+            existing.generation += 1;
+        } else {
+            ops.set(kind, { attempts: 0, running: false, generation: 1 });
+        }
         return true;
     }
 
@@ -92,15 +103,22 @@ export function createPendingRefreshManager({
         return false;
     }
 
-    async function runDeployment(instanceId, entry, op) {
+    function isCurrent(instanceId, kind, op, generation) {
+        return pending.get(instanceId)?.get(kind) === op
+            && op.generation === generation;
+    }
+
+    async function runDeployment(instanceId, entry, op, generation) {
         const deployment = await inspectDeployment(entry);
+        if (!isCurrent(instanceId, DEPLOYMENT_REFRESH, op, generation)) return;
         if (isDeploymentComplete(deployment)) {
             // Reuse the verified result so refreshDeployment does not query the
             // live deployment a second time.
             await refreshDeployment(entry, async () => deployment);
+            if (!isCurrent(instanceId, DEPLOYMENT_REFRESH, op, generation)) return;
             clear(instanceId, DEPLOYMENT_REFRESH);
             await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
-                outcome: "succeeded",
+                outcome: TELEMETRY_OUTCOME.SUCCEEDED,
                 result: deployment,
             });
             return;
@@ -108,7 +126,7 @@ export function createPendingRefreshManager({
         if (isDeploymentDefinitiveFailure(deployment)) {
             clear(instanceId, DEPLOYMENT_REFRESH);
             await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
-                outcome: "failed",
+                outcome: TELEMETRY_OUTCOME.FAILED,
                 failureCode: deployment.reason,
                 result: deployment,
             });
@@ -121,8 +139,8 @@ export function createPendingRefreshManager({
         if (op.attempts >= maxAttempts) {
             clear(instanceId, DEPLOYMENT_REFRESH);
             await onTerminal(instanceId, DEPLOYMENT_REFRESH, {
-                outcome: "timed_out",
-                failureCode: "timeout",
+                outcome: TELEMETRY_OUTCOME.TIMED_OUT,
+                failureCode: TELEMETRY_FAILURE_CODE.TIMEOUT,
                 result: deployment,
             });
             await safeLog(
@@ -133,11 +151,13 @@ export function createPendingRefreshManager({
     }
 
     async function runOp(instanceId, entry, kind, op) {
+        const generation = op.generation;
         op.running = true;
         op.attempts += 1;
         try {
-            await runDeployment(instanceId, entry, op);
+            await runDeployment(instanceId, entry, op, generation);
         } catch (err) {
+            if (!isCurrent(instanceId, kind, op, generation)) return;
             await safeLog(
                 `Automatic ${kind} refresh failed for canvas ${instanceId}: ${err?.message ?? err}`,
                 { level: "error" },
@@ -147,8 +167,8 @@ export function createPendingRefreshManager({
             if (op.attempts >= maxAttempts) clear(instanceId, kind);
             if (op.attempts >= maxAttempts) {
                 await onTerminal(instanceId, kind, {
-                    outcome: "timed_out",
-                    failureCode: "timeout",
+                    outcome: TELEMETRY_OUTCOME.TIMED_OUT,
+                    failureCode: TELEMETRY_FAILURE_CODE.TIMEOUT,
                 });
             }
         } finally {
@@ -163,7 +183,15 @@ export function createPendingRefreshManager({
         for (const [instanceId, ops] of [...pending]) {
             const entry = servers?.get(instanceId);
             if (!isEntryAlive(entry)) {
+                const kinds = [...ops.keys()];
                 clear(instanceId);
+                for (const kind of kinds) {
+                    tasks.push(Promise.resolve().then(() =>
+                        onTerminal(instanceId, kind, {
+                            outcome: TELEMETRY_OUTCOME.CANCELLED,
+                            failureCode: TELEMETRY_FAILURE_CODE.CANCELLED,
+                        })));
+                }
                 continue;
             }
             for (const [kind, op] of [...ops]) {

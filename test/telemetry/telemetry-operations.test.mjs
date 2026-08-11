@@ -111,6 +111,55 @@ test("pending operations emit verified success and bounded timeout outcomes", ()
     ]);
 });
 
+test("repeated and cleared pending operations emit terminal cancellation", () => {
+    const { events, telemetry } = recorder();
+    let current = 1_000;
+    const tracker = createPendingOperationTracker({
+        telemetry,
+        operation: "deployment_verification",
+        source: "session_idle",
+        resourceKind: "agent",
+        now: () => current,
+    });
+
+    assert.equal(tracker.start("canvas-1"), true);
+    current = 1_025;
+    assert.equal(tracker.start("canvas-1"), true);
+    current = 1_050;
+    assert.equal(tracker.finish("canvas-1", "succeeded"), true);
+
+    current = 2_000;
+    assert.equal(tracker.start("canvas-2"), true);
+    current = 2_010;
+    assert.equal(tracker.clear("canvas-2"), true);
+
+    assert.deepEqual(events, [
+        {
+            operation: "deployment_verification",
+            source: "session_idle",
+            resourceKind: "agent",
+            outcome: "cancelled",
+            failureCode: "cancelled",
+            durationMs: 25,
+        },
+        {
+            operation: "deployment_verification",
+            source: "session_idle",
+            resourceKind: "agent",
+            outcome: "succeeded",
+            durationMs: 25,
+        },
+        {
+            operation: "deployment_verification",
+            source: "session_idle",
+            resourceKind: "agent",
+            outcome: "cancelled",
+            failureCode: "cancelled",
+            durationMs: 10,
+        },
+    ]);
+});
+
 test("Foundry skill outcomes distinguish successful sync from usable stale fallback", () => {
     assert.deepEqual(foundrySkillOperation({
         ok: true,

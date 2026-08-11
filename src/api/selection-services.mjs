@@ -10,6 +10,13 @@ import {
     listSubscriptions,
 } from "../foundry/foundry.mjs";
 import { enrichProjectLocation, saveSelection } from "../state.mjs";
+import {
+    TELEMETRY_FAILURE_CODE,
+    TELEMETRY_OPERATION,
+    TELEMETRY_OUTCOME,
+    TELEMETRY_RESOURCE_KIND,
+    TELEMETRY_SOURCE,
+} from "../../public/telemetry-constants.js";
 import { normalizeFailureCode } from "../telemetry/schema.mjs";
 import { runTelemetryOperation } from "../telemetry/operations.mjs";
 
@@ -52,9 +59,9 @@ export function createSelectionServices({
     return {
         async listSubscriptions() {
             return runTelemetryOperation(telemetry, {
-                operation: "load_resources",
-                source: "ui",
-                resourceKind: "subscription",
+                operation: TELEMETRY_OPERATION.LOAD_RESOURCES,
+                source: TELEMETRY_SOURCE.UI,
+                resourceKind: TELEMETRY_RESOURCE_KIND.SUBSCRIPTION,
                 now,
             }, async () => listResult(await listSubscriptions()));
         },
@@ -62,22 +69,25 @@ export function createSelectionServices({
             const subscriptionId = url.searchParams.get("sub")
                 || getSelection().subscription.id;
             return runTelemetryOperation(telemetry, {
-                operation: "load_resources",
-                source: "ui",
-                resourceKind: "project",
+                operation: TELEMETRY_OPERATION.LOAD_RESOURCES,
+                source: TELEMETRY_SOURCE.UI,
+                resourceKind: TELEMETRY_RESOURCE_KIND.PROJECT,
                 now,
             }, async () => listResult(await listProjects(subscriptionId)));
         },
         async selectSubscription({ body }) {
             let persisted = false;
             return runTelemetryOperation(telemetry, {
-                operation: "select_subscription",
-                source: "ui",
-                resourceKind: "subscription",
+                operation: TELEMETRY_OPERATION.SELECT_SUBSCRIPTION,
+                source: TELEMETRY_SOURCE.UI,
+                resourceKind: TELEMETRY_RESOURCE_KIND.SUBSCRIPTION,
                 now,
                 classify: () => persisted
-                    ? { outcome: "succeeded" }
-                    : { outcome: "failed", failureCode: "persistence_failed" },
+                    ? { outcome: TELEMETRY_OUTCOME.SUCCEEDED }
+                    : {
+                        outcome: TELEMETRY_OUTCOME.FAILED,
+                        failureCode: TELEMETRY_FAILURE_CODE.PERSISTENCE_FAILED,
+                    },
             }, async () => {
                 const selection = selectSubscription(getSelection(), {
                     id: body.subscriptionId,
@@ -92,13 +102,16 @@ export function createSelectionServices({
         async selectProject({ body }) {
             let persisted = false;
             return runTelemetryOperation(telemetry, {
-                operation: "select_project",
-                source: "ui",
-                resourceKind: "project",
+                operation: TELEMETRY_OPERATION.SELECT_PROJECT,
+                source: TELEMETRY_SOURCE.UI,
+                resourceKind: TELEMETRY_RESOURCE_KIND.PROJECT,
                 now,
                 classify: () => persisted
-                    ? { outcome: "succeeded" }
-                    : { outcome: "failed", failureCode: "persistence_failed" },
+                    ? { outcome: TELEMETRY_OUTCOME.SUCCEEDED }
+                    : {
+                        outcome: TELEMETRY_OUTCOME.FAILED,
+                        failureCode: TELEMETRY_FAILURE_CODE.PERSISTENCE_FAILED,
+                    },
             }, async () => {
                 const current = getSelection();
                 const subscription = {

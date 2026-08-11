@@ -1,4 +1,8 @@
 import {
+    TELEMETRY_ACTION,
+    TELEMETRY_RESOURCE_KIND,
+} from "../telemetry-constants.js";
+import {
     fluentIcon,
     getJSON,
     postJSON,
@@ -287,7 +291,10 @@ export function renderHostedAgentPicker() {
 
         item.addEventListener("click", () => {
             closeHostedAgentMenu();
-            recordAction("switch_agent", "agent");
+            recordAction(
+                TELEMETRY_ACTION.SWITCH_AGENT,
+                TELEMETRY_RESOURCE_KIND.AGENT,
+            );
             selectHostedAgent(agent.agentName);
         });
         list.appendChild(item);
